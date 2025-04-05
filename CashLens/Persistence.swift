@@ -14,18 +14,23 @@ struct PersistenceController {
     static let preview: PersistenceController = {
         let result = PersistenceController(inMemory: true)
         let viewContext = result.container.viewContext
-        for _ in 0..<10 {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-        }
+        
+        // Create some sample expenses for preview
+        let sampleExpense = ExpenseEntity(context: viewContext)
+        sampleExpense.id = UUID()
+        sampleExpense.title = "Sample Expense"
+        sampleExpense.amount = 49.99
+        sampleExpense.currency = "USD"
+        sampleExpense.date = Date()
+        sampleExpense.category = "Food"
+        
         do {
             try viewContext.save()
         } catch {
-            // Replace this implementation with code to handle the error appropriately.
-            // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
             let nsError = error as NSError
-            fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            print("Error creating preview data: \(nsError), \(nsError.userInfo)")
         }
+        
         return result
     }()
 
@@ -33,25 +38,35 @@ struct PersistenceController {
 
     init(inMemory: Bool = false) {
         container = NSPersistentContainer(name: "CashLens")
+        
         if inMemory {
             container.persistentStoreDescriptions.first!.url = URL(fileURLWithPath: "/dev/null")
+        } else {
+            // Optimize SQLite store with pragmas for better performance
+            let description = container.persistentStoreDescriptions.first
+            description?.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+            
+            // Add SQLite pragmas for performance optimization
+            let pragmas: [String: String] = [
+                "journal_mode": "WAL",       // Use Write-Ahead Logging
+                "synchronous": "NORMAL"      // Less synchronization (still safe for most cases)
+            ]
+            description?.setOption(pragmas as NSDictionary, forKey: NSSQLitePragmasOption)
         }
+        
         container.loadPersistentStores(completionHandler: { (storeDescription, error) in
             if let error = error as NSError? {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-
-                /*
-                 Typical reasons for an error here include:
-                 * The parent directory does not exist, cannot be created, or disallows writing.
-                 * The persistent store is not accessible, due to permissions or data protection when the device is locked.
-                 * The device is out of space.
-                 * The store could not be migrated to the current model version.
-                 Check the error message to determine what the actual problem was.
-                 */
-                fatalError("Unresolved error \(error), \(error.userInfo)")
+                // Log the error with more detailed information for debugging
+                fatalError("Persistent store failed to load: \(error), \(error.userInfo)")
             }
         })
+        
+        // Configure container settings for better performance
         container.viewContext.automaticallyMergesChangesFromParent = true
+        container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        
+        // Optimize fetch performance
+        container.viewContext.undoManager = nil
+        container.viewContext.shouldDeleteInaccessibleFaults = true
     }
 }
