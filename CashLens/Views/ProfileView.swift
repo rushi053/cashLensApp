@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct ProfileView: View {
     @Environment(\.presentationMode) var presentationMode
@@ -59,6 +60,9 @@ struct ProfileView: View {
             .onAppear {
                 // Initialize the temporary user name with the current value
                 tempUserName = viewModel.userName
+            }
+            .sheet(isPresented: $showingCurrencyPicker) {
+                CurrencyPickerView(viewModel: viewModel)
             }
         }
     }
@@ -192,50 +196,6 @@ struct ProfileView: View {
             .onTapGesture {
                 hapticFeedback(style: .light)
                 showingCurrencyPicker.toggle()
-            }
-            
-            if showingCurrencyPicker {
-                VStack(spacing: 0) {
-                    ForEach(Expense.Currency.allCases, id: \.self) { currency in
-                        HStack {
-                            Text("\(currency.symbol) \(currency.rawValue) - \(currency.name)")
-                                .foregroundColor(.primary)
-                            
-                            Spacer()
-                            
-                            if viewModel.selectedCurrency == currency {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.appPrimary)
-                            }
-                        }
-                        .padding()
-                        .background(
-                            viewModel.selectedCurrency == currency ?
-                            Color.appPrimary.opacity(0.1) :
-                            Color.clear
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            hapticFeedback(style: .medium)
-                            withAnimation(.spring()) {
-                                viewModel.selectedCurrency = currency
-                            }
-                            showingCurrencyPicker = false
-                        }
-                        
-                        if currency != Expense.Currency.allCases.last {
-                            Divider()
-                                .padding(.horizontal)
-                        }
-                    }
-                }
-                .background(Color.secondarySystemBackground)
-                .cornerRadius(10)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.mauve.opacity(0.3), lineWidth: 1)
-                )
-                .transition(.opacity)
             }
             
             // Appearance Setting
