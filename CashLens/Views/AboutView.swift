@@ -3,6 +3,13 @@ import SwiftUI
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
     
+    // Get version and build from Info.plist
+    private var versionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
+        return "Version \(version) (\(build))"
+    }
+    
     var body: some View {
         NavigationView {
             ScrollView {
@@ -23,7 +30,7 @@ struct AboutView: View {
                             .font(.largeTitle)
                             .fontWeight(.bold)
                         
-                        Text("Version 1.0.0")
+                        Text(versionString)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
@@ -53,6 +60,41 @@ struct AboutView: View {
                             featureRow(icon: "square.and.arrow.up", text: "Export your financial data")
                         }
                         .padding(.leading, 8)
+                    }
+                    .padding()
+                    .background(Color.secondarySystemBackground)
+                    .cornerRadius(16)
+                    
+                    // Contact Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Contact")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Link(destination: URL(string: "mailto:email@rushiraj.me")!) {
+                            HStack {
+                                Image(systemName: "envelope.fill")
+                                    .foregroundColor(.appPrimary)
+                                Text("email@rushiraj.me")
+                                    .foregroundColor(.primary)
+                                Spacer()
+                            }
+                            .padding(10)
+                            .background(Color.secondarySystemBackground)
+                            .cornerRadius(10)
+                        }
+                        Link(destination: URL(string: "https://cashlens.app")!) {
+                            HStack {
+                                Image(systemName: "globe")
+                                    .foregroundColor(.appPrimary)
+                                Text("cashlens.app")
+                                    .foregroundColor(.primary)
+                                Spacer()
+                            }
+                            .padding(10)
+                            .background(Color.secondarySystemBackground)
+                            .cornerRadius(10)
+                        }
                     }
                     .padding()
                     .background(Color.secondarySystemBackground)

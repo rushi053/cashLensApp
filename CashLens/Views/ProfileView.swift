@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import StoreKit
 
 struct ProfileView: View {
     @Environment(\.presentationMode) var presentationMode
@@ -11,6 +12,14 @@ struct ProfileView: View {
     @State private var showingConfirmation = false
     @State private var showingAboutSheet = false
     @State private var showingExportSheet = false
+    @State private var showingDonationSheet = false
+    
+    // Get version and build from Info.plist
+    private var versionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
+        return "\(version) (\(build))"
+    }
     
     var body: some View {
         NavigationView {
@@ -226,6 +235,31 @@ struct ProfileView: View {
                 showingAppearancePicker.toggle()
             }
             
+            // Donation Entry
+            HStack {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(.pink)
+                    .frame(width: 30)
+                
+                Text("Support the App")
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+            .background(Color.secondarySystemBackground)
+            .cornerRadius(10)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                hapticFeedback(style: .light)
+                showingDonationSheet = true
+            }
+            
             if showingAppearancePicker {
                 VStack(spacing: 0) {
                     ForEach(ExpenseViewModel.AppearanceMode.allCases, id: \.self) { mode in
@@ -278,6 +312,11 @@ struct ProfileView: View {
         .padding()
         .background(Color.secondarySystemBackground.opacity(0.5))
         .cornerRadius(20)
+        .sheet(isPresented: $showingDonationSheet) {
+            NavigationView {
+                DonationView()
+            }
+        }
     }
     
     // MARK: - App Info Section
@@ -300,7 +339,7 @@ struct ProfileView: View {
                 
                 Spacer()
                 
-                Text("1.0.0")
+                Text(versionString)
                     .foregroundColor(.secondary)
             }
             .padding()
