@@ -49,7 +49,7 @@ struct HomeView: View {
                 AddExpenseView(
                     viewModel: viewModel,
                     title: expense.title,
-                    amount: String(format: "%.2f", expense.amount),
+                    amount: viewModel.formattedAmount(expense.amount),
                     date: expense.date,
                     selectedCategory: expense.category,
                     selectedCustomCategoryId: expense.customCategoryId,
@@ -383,7 +383,6 @@ struct HomeView: View {
                     amount: viewModel.totalExpenses(),
                     icon: "creditcard.fill",
                     color: .mauve,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
                     action: {
                         HapticManager.shared.lightTap()
                         // Show all expenses
@@ -398,7 +397,6 @@ struct HomeView: View {
                     amount: viewModel.totalExpenses(for: .food),
                     icon: "fork.knife",
                     color: .champagnePink,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
                     action: {
                         HapticManager.shared.lightTap()
                         // Filter by food category
@@ -413,7 +411,6 @@ struct HomeView: View {
                     amount: viewModel.totalExpenses(for: .shopping),
                     icon: "bag.fill",
                     color: .teaRose,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
                     action: {
                         HapticManager.shared.lightTap()
                         // Filter by shopping category
@@ -428,7 +425,6 @@ struct HomeView: View {
                     amount: viewModel.totalExpenses(for: .transportation),
                     icon: "car.fill",
                     color: .nonPhotoBlue,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
                     action: {
                         HapticManager.shared.lightTap()
                         // Filter by transportation category
@@ -730,7 +726,6 @@ struct HomeView: View {
                 amount: viewModel.totalExpenses(),
                 icon: "creditcard.fill",
                 color: .mauve,
-                currencySymbol: viewModel.selectedCurrency.symbol,
                 action: {
                     HapticManager.shared.lightTap()
                     // Show all expenses
@@ -745,7 +740,6 @@ struct HomeView: View {
                 amount: viewModel.totalExpenses(for: .food),
                 icon: "fork.knife",
                 color: .champagnePink,
-                currencySymbol: viewModel.selectedCurrency.symbol,
                 action: {
                     HapticManager.shared.lightTap()
                     // Filter by food category
@@ -760,7 +754,6 @@ struct HomeView: View {
                 amount: viewModel.totalExpenses(for: .shopping),
                 icon: "bag.fill",
                 color: .teaRose,
-                currencySymbol: viewModel.selectedCurrency.symbol,
                 action: {
                     HapticManager.shared.lightTap()
                     // Filter by shopping category
@@ -775,7 +768,6 @@ struct HomeView: View {
                 amount: viewModel.totalExpenses(for: .transportation),
                 icon: "car.fill",
                 color: .nonPhotoBlue,
-                currencySymbol: viewModel.selectedCurrency.symbol,
                 action: {
                     HapticManager.shared.lightTap()
                     // Filter by transportation category

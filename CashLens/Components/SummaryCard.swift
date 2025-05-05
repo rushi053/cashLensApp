@@ -5,15 +5,14 @@ struct SummaryCard: View {
     let amount: Double
     let icon: String
     let color: Color
-    let currencySymbol: String
+    @EnvironmentObject var viewModel: ExpenseViewModel
     var action: () -> Void
     
-    init(title: String, amount: Double, icon: String, color: Color, currencySymbol: String = "$", action: @escaping () -> Void = {}) {
+    init(title: String, amount: Double, icon: String, color: Color, action: @escaping () -> Void = {}) {
         self.title = title
         self.amount = amount
         self.icon = icon
         self.color = color
-        self.currencySymbol = currencySymbol
         self.action = action
     }
     
@@ -37,7 +36,7 @@ struct SummaryCard: View {
                     .foregroundColor(.secondary)
                 
                 // Amount
-                Text("\(currencySymbol)\(String(format: "%.2f", amount))")
+                Text(viewModel.formattedAmount(amount))
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.primary)
             }

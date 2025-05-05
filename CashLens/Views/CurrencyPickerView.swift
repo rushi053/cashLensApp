@@ -9,10 +9,11 @@ struct CurrencyPickerView: View {
     
     var filteredCurrencies: [Expense.Currency] {
         let regionCurrencies = selectedRegion.currencies
+        let uniqueCurrencies = Array(Set(regionCurrencies)).sorted { $0.rawValue < $1.rawValue }
         if searchText.isEmpty {
-            return regionCurrencies
+            return uniqueCurrencies
         }
-        return regionCurrencies.filter { currency in
+        return uniqueCurrencies.filter { currency in
             currency.rawValue.localizedCaseInsensitiveContains(searchText) ||
             currency.name.localizedCaseInsensitiveContains(searchText)
         }
@@ -57,43 +58,51 @@ struct CurrencyPickerView: View {
                 .padding(.vertical, 8)
                 
                 // Currency list
-                List {
-                    ForEach(filteredCurrencies, id: \.rawValue) { currency in
-                        Button(action: {
-                            hapticFeedback(style: .medium)
-                            viewModel.selectedCurrency = currency
-                        }) {
-                            HStack {
-                                Text(currency.symbol)
-                                    .font(.title2)
-                                    .frame(width: 40)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(currency.rawValue)
-                                        .font(.headline)
-                                        .foregroundColor(.primary)
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(filteredCurrencies, id: \.rawValue) { currency in
+                            Button(action: {
+                                hapticFeedback(style: .medium)
+                                viewModel.selectedCurrency = currency
+                            }) {
+                                HStack {
+                                    Text(currency.symbol)
+                                        .font(.title2)
+                                        .frame(width: 40)
                                     
-                                    Text(currency.name)
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
-                                
-                                Spacer()
-                                
-                                if viewModel.selectedCurrency == currency {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.appPrimary)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(currency.rawValue)
+                                            .font(.headline)
+                                            .foregroundColor(.primary)
+                                        
+                                        Text(currency.name)
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if viewModel.selectedCurrency == currency {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.appPrimary)
+                                    }
                                 }
                             }
+                            .listRowBackground(
+                                viewModel.selectedCurrency == currency ?
+                                Color.appPrimary.opacity(0.1) :
+                                Color.clear
+                            )
+                            .id(currency.rawValue)
                         }
-                        .listRowBackground(
-                            viewModel.selectedCurrency == currency ?
-                            Color.appPrimary.opacity(0.1) :
-                            Color.clear
-                        )
+                    }
+                    .listStyle(InsetGroupedListStyle())
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            proxy.scrollTo(viewModel.selectedCurrency.rawValue, anchor: .center)
+                        }
                     }
                 }
-                .listStyle(InsetGroupedListStyle())
             }
             .navigationBarTitle("Select Currency", displayMode: .inline)
             .navigationBarItems(trailing: 

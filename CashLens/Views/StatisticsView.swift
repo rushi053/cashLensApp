@@ -479,7 +479,7 @@ struct StatisticsView: View {
                     .foregroundColor(.secondary)
             }
             
-            Text("\(viewModel.selectedCurrency.symbol)\(String(format: "%.2f", totalExpenses()))")
+            Text(viewModel.formattedAmount(totalExpenses()))
                 .font(.system(size: 36, weight: .bold))
                 .foregroundColor(.primary)
             
@@ -553,7 +553,7 @@ struct StatisticsView: View {
                 Spacer()
                 
                 // Amount
-                Text("\(viewModel.selectedCurrency.symbol)\(String(format: "%.2f", totalExpenses(for: category)))")
+                Text(viewModel.formattedAmount(totalExpenses(for: category)))
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 

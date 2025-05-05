@@ -39,7 +39,7 @@ struct ExpenseCard: View {
             
             // Amount and Date
             VStack(alignment: .trailing, spacing: 4) {
-                Text("\(expense.currency.symbol)\(String(format: "%.2f", expense.amount))")
+                Text(viewModel.formattedAmount(expense.amount))
                     .font(.headline)
                     .foregroundColor(.primary)
                 

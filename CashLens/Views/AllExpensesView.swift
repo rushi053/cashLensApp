@@ -250,7 +250,7 @@ struct AllExpensesView: View {
                 AddExpenseView(
                     viewModel: viewModel,
                     title: expense.title,
-                    amount: String(format: "%.2f", expense.amount),
+                    amount: viewModel.formattedAmount(expense.amount),
                     date: expense.date,
                     selectedCategory: expense.category,
                     selectedCustomCategoryId: expense.customCategoryId,

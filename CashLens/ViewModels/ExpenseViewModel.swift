@@ -83,11 +83,23 @@ class ExpenseViewModel: ObservableObject {
     // Show currency picker on first launch
     @AppStorage("hasShownCurrencyPicker") var hasShownCurrencyPicker: Bool = false
     
+    // Number formatter for consistent formatting across the app
+    private let numberFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        return formatter
+    }()
+    
     init(context: NSManagedObjectContext = PersistenceController.shared.container.viewContext) {
         self.viewContext = context
         
         // Load user preferences from UserDefaults
         loadUserPreferences()
+        
+        // Auto-select currency based on locale if not set
+        autoSelectCurrencyIfNeeded()
         
         // Check if this is the first launch
         checkFirstLaunch()
@@ -116,6 +128,17 @@ class ExpenseViewModel: ObservableObject {
         }
         
         hasShownCurrencyPicker = UserDefaults.standard.bool(forKey: "hasShownCurrencyPicker")
+    }
+    
+    // Auto-select currency based on user's locale if not already set
+    private func autoSelectCurrencyIfNeeded() {
+        if UserDefaults.standard.string(forKey: "selectedCurrency") == nil {
+            let locale = Locale.current
+            if let currencyCode = locale.currencyCode,
+               let currency = Expense.Currency(rawValue: currencyCode.uppercased()) {
+                selectedCurrency = currency
+            }
+        }
     }
     
     // Check if this is the first launch
@@ -311,9 +334,35 @@ class ExpenseViewModel: ObservableObject {
         }
     }
     
-    // Format amount with currency symbol
+    // Format amount with currency symbol and locale-specific formatting
     func formattedAmount(_ amount: Double) -> String {
-        return "\(selectedCurrency.symbol)\(String(format: "%.2f", amount))"
+        numberFormatter.numberStyle = .decimal
+        let formatted = numberFormatter.string(from: NSNumber(value: amount)) ?? "0.00"
+        return "\(selectedCurrency.symbol)\(formatted)"
+    }
+    
+    // Parse amount string to Double, handling locale-specific decimal separators
+    func parseAmount(_ amountString: String) -> Double? {
+        // First try parsing with current locale
+        if let number = numberFormatter.number(from: amountString) {
+            return number.doubleValue
+        }
+        
+        // If that fails, try parsing with standard decimal point
+        let standardFormatter = NumberFormatter()
+        standardFormatter.decimalSeparator = "."
+        if let number = standardFormatter.number(from: amountString) {
+            return number.doubleValue
+        }
+        
+        // If that fails, try parsing with comma
+        let commaFormatter = NumberFormatter()
+        commaFormatter.decimalSeparator = ","
+        if let number = commaFormatter.number(from: amountString) {
+            return number.doubleValue
+        }
+        
+        return nil
     }
     
     // Currency symbol for formatting

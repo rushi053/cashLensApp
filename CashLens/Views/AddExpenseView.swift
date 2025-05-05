@@ -380,12 +380,12 @@ struct AddExpenseView: View {
     private var isFormValid: Bool {
         !title.isEmpty && 
         !amount.isEmpty && 
-        (Double(amount) ?? 0) > 0
+        (viewModel.parseAmount(amount) ?? 0) > 0
     }
     
     private var saveButton: some View {
         Button(action: {
-            guard let amountValue = Double(amount) else { return }
+            guard let amountValue = viewModel.parseAmount(amount) else { return }
             
             // Start saving animation
             isSaving = true
@@ -454,7 +454,7 @@ struct AddExpenseView: View {
                     )
             }
         }
-        .disabled(isSaving || !isFormValid)
+        .disabled(!isFormValid)
         .padding(.horizontal, 20)
         .padding(.bottom, 20)
     }
@@ -535,7 +535,7 @@ struct AddExpenseView: View {
     // MARK: - Actions
     
     private func addExpense() {
-        guard let amountValue = Double(amount) else { return }
+        guard let amountValue = viewModel.parseAmount(amount) else { return }
         
         // Enhanced haptic feedback sequence
         HapticManager.shared.mediumTap()
