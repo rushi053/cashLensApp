@@ -343,22 +343,31 @@ class ExpenseViewModel: ObservableObject {
     
     // Parse amount string to Double, handling locale-specific decimal separators
     func parseAmount(_ amountString: String) -> Double? {
+        // Remove all currency symbols and whitespace
+        let cleanedAmount = amountString.replacingOccurrences(of: "[^0-9.,]", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // If nothing left after cleaning, return nil
+        if cleanedAmount.isEmpty {
+            return nil
+        }
+        
         // First try parsing with current locale
-        if let number = numberFormatter.number(from: amountString) {
+        if let number = numberFormatter.number(from: cleanedAmount) {
             return number.doubleValue
         }
         
         // If that fails, try parsing with standard decimal point
         let standardFormatter = NumberFormatter()
         standardFormatter.decimalSeparator = "."
-        if let number = standardFormatter.number(from: amountString) {
+        if let number = standardFormatter.number(from: cleanedAmount) {
             return number.doubleValue
         }
         
         // If that fails, try parsing with comma
         let commaFormatter = NumberFormatter()
         commaFormatter.decimalSeparator = ","
-        if let number = commaFormatter.number(from: amountString) {
+        if let number = commaFormatter.number(from: cleanedAmount) {
             return number.doubleValue
         }
         

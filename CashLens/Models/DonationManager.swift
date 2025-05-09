@@ -9,9 +9,9 @@ class DonationManager: ObservableObject {
     @Published private(set) var purchasedProductIDs = Set<String>()
     
     private let productIdentifiers = [
-        "com.cashlens.donation.small",
-        "com.cashlens.donation.medium",
-        "com.cashlens.donation.large"
+        "com.cashlens.donation.coffee",
+        "com.cashlens.donation.lunch",
+        "com.cashlens.donation.fuel"
     ]
     
     private init() {

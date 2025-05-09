@@ -378,9 +378,17 @@ struct AddExpenseView: View {
     
     // Computed property to check if form is valid
     private var isFormValid: Bool {
-        !title.isEmpty && 
-        !amount.isEmpty && 
-        (viewModel.parseAmount(amount) ?? 0) > 0
+        if isEditing {
+            // For editing, we only need a non-empty title and a valid amount
+            let parsedAmount = viewModel.parseAmount(amount)
+            // In edit mode, don't require the amount to be positive, just valid
+            return !title.isEmpty && parsedAmount != nil
+        } else {
+            // For new expenses, we need a non-empty title and a positive amount
+            return !title.isEmpty && 
+                   !amount.isEmpty && 
+                   (viewModel.parseAmount(amount) ?? 0) > 0
+        }
     }
     
     private var saveButton: some View {

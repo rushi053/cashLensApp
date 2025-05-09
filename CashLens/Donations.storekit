@@ -20,28 +20,28 @@
       "internalID" : "FA479C57",
       "localizations" : [
         {
-          "description" : "Thank you for supporting CashLens!",
-          "displayName" : "Support CashLens (small)",
+          "description" : "Help fuel development with a coffee!",
+          "displayName" : "Coffee for the Coder\n",
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.cashlens.donation.small",
-      "referenceName" : "Small Donation",
+      "productID" : "com.cashlens.donation.coffee",
+      "referenceName" : "Coffee for the Coder ",
       "type" : "Consumable"
     },
     {
-      "displayPrice" : "5.99",
+      "displayPrice" : "4.99",
       "familyShareable" : false,
       "internalID" : "0CE91436",
       "localizations" : [
         {
-          "description" : "Thank you for supporting CashLens!",
-          "displayName" : "Medium Donation",
+          "description" : "Helps power new features and timely updates.",
+          "displayName" : "Lunch for the Library\n",
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.cashlens.donation.medium",
-      "referenceName" : "Medium Donation",
+      "productID" : "com.cashlens.donation.lunch",
+      "referenceName" : "Lunch for the Library ",
       "type" : "Consumable"
     },
     {
@@ -50,13 +50,13 @@
       "internalID" : "8135B0F0",
       "localizations" : [
         {
-          "description" : "To add new features and keep the app free.",
-          "displayName" : "Large Donation",
+          "description" : "You’re propelling CashLens to new heights :)",
+          "displayName" : "Fuel the Feature Rocket\n",
           "locale" : "en_US"
         }
       ],
-      "productID" : "com.cashlens.donation.large",
-      "referenceName" : "Large Donation",
+      "productID" : "com.cashlens.donation.fuel",
+      "referenceName" : "Fuel the Feature Rocket ",
       "type" : "Consumable"
     }
   ],

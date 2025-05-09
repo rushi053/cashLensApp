@@ -61,7 +61,7 @@ struct DonationView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 24)
             }
-            .navigationTitle("Donate")
+            .navigationTitle("Support")
             .navigationBarTitleDisplayMode(.inline)
             .alert("Error", isPresented: $showError, presenting: errorMessage) { _ in
                 Button("OK", role: .cancel) {}

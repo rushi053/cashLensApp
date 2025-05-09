@@ -71,6 +71,11 @@ struct AboutView: View {
                             .font(.title2)
                             .fontWeight(.bold)
                         
+                        Text("For any bugs, feature requests, or feedback, feel free to reach out!")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.leading)
+                        
                         Link(destination: URL(string: "mailto:email@rushiraj.me")!) {
                             HStack {
                                 Image(systemName: "envelope.fill")
