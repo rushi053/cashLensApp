@@ -9,6 +9,8 @@ struct Expense: Identifiable, Codable {
     var category: Category
     var notes: String?
     var customCategoryId: UUID?
+    var isFromSubscription: Bool = false
+    var subscriptionId: UUID?
     
     enum Currency: String, CaseIterable, Codable {
         case usd = "USD"
