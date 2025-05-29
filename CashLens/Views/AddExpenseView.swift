@@ -321,8 +321,8 @@ struct AddExpenseView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
-                    // Standard categories
-                    ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                    // Standard categories (excluding deleted ones)
+                    ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         categoryButton(category)
                     }
                     
@@ -340,6 +340,7 @@ struct AddExpenseView: View {
         }) {
             ManageCategoriesView()
                 .environmentObject(categoryViewModel)
+                .environmentObject(viewModel)
         }
         .onAppear {
             // Make sure we have the latest custom categories

@@ -508,6 +508,43 @@ class ExpenseViewModel: ObservableObject {
         return categoryViewModel.customCategories
     }
     
+    // Get available default categories (excluding deleted ones)
+    func getAvailableDefaultCategories() -> [Expense.Category] {
+        let deletedCategories = getDeletedDefaultCategories()
+        return Expense.Category.allCases.filter { category in
+            category != .custom && !deletedCategories.contains(category.rawValue)
+        }
+    }
+    
+    // Get deleted default categories from UserDefaults
+    func getDeletedDefaultCategories() -> Set<String> {
+        if let deleted = UserDefaults.standard.array(forKey: "deletedDefaultCategories") as? [String] {
+            return Set(deleted)
+        }
+        return []
+    }
+    
+    // Move expenses from a deleted category to "Other"
+    func moveExpensesFromDeletedCategory(_ categoryName: String) {
+        let fetchRequest: NSFetchRequest<ExpenseEntity> = ExpenseEntity.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "category == %@", categoryName)
+        
+        do {
+            let results = try viewContext.fetch(fetchRequest)
+            for entity in results {
+                entity.category = Expense.Category.other.rawValue
+            }
+            
+            if !results.isEmpty {
+                saveContext()
+                loadExpenses()
+                print("Moved \(results.count) expenses from \(categoryName) to Other")
+            }
+        } catch {
+            print("Error moving expenses from deleted category: \(error.localizedDescription)")
+        }
+    }
+    
     // Get display name for a category (handles custom categories)
     func categoryDisplayName(for expense: Expense) -> String {
         if expense.category == .custom, let customCategoryId = expense.customCategoryId {

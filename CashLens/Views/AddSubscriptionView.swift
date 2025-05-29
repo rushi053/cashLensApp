@@ -224,17 +224,25 @@ struct AddSubscriptionView: View {
                 
                 Spacer()
                 
-                Button("Manage") {
+                Button(action: {
                     showingManageCategories = true
+                }) {
+                    HStack(spacing: 6) {
+                        Text("Manage")
+                            .foregroundColor(.mauve)
+                        
+                        Image(systemName: "gearshape.circle")
+                            .font(.system(size: 14))
+                            .foregroundColor(.mauve)
+                    }
                 }
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.mauve)
             }
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
-                    // Standard categories
-                    ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                    // Standard categories (excluding deleted ones)
+                    ForEach(expenseViewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         categoryButton(category)
                     }
                     
@@ -250,6 +258,7 @@ struct AddSubscriptionView: View {
         .sheet(isPresented: $showingManageCategories) {
             ManageCategoriesView()
                 .environmentObject(categoryViewModel)
+                .environmentObject(expenseViewModel)
         }
     }
     
@@ -582,16 +591,22 @@ struct AddSubscriptionView: View {
         finalSubscription.reminderEnabled = reminderEnabled
         finalSubscription.reminderDaysBefore = reminderDaysBefore
         
-        if let editingSubscription = editingSubscription {
-            finalSubscription.id = editingSubscription.id
-            subscriptionViewModel.updateSubscription(finalSubscription)
-        } else {
-            subscriptionViewModel.addSubscription(finalSubscription)
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            isSaving = false
-            dismiss()
+        Task {
+            do {
+                if let editingSubscription = editingSubscription {
+                    finalSubscription.id = editingSubscription.id
+                    await subscriptionViewModel.updateSubscription(finalSubscription)
+                } else {
+                    await subscriptionViewModel.addSubscription(finalSubscription)
+                }
+                
+                await MainActor.run {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        isSaving = false
+                        dismiss()
+                    }
+                }
+            }
         }
     }
     

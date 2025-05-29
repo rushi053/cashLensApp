@@ -4,6 +4,7 @@ import Combine
 import CoreData
 import UserNotifications
 
+@MainActor
 class SubscriptionViewModel: ObservableObject {
     @Published var subscriptions: [Subscription] = []
     @Published var dueSubscriptions: [Subscription] = []
@@ -18,7 +19,6 @@ class SubscriptionViewModel: ObservableObject {
         
         loadSubscriptions()
         setupDueSubscriptionsFiltering()
-        requestNotificationPermission()
     }
     
     // MARK: - Core Data Operations
@@ -39,14 +39,29 @@ class SubscriptionViewModel: ObservableObject {
         }
     }
     
-    func addSubscription(_ subscription: Subscription) {
+    func addSubscription(_ subscription: Subscription) async {
+        // Request notification permission only if reminders are enabled
+        if subscription.reminderEnabled {
+            await requestNotificationPermissionIfNeeded()
+        }
+        
         _ = SubscriptionEntity.fromSubscription(subscription, context: viewContext)
         saveContext()
         loadSubscriptions()
         scheduleNotificationForSubscription(subscription)
     }
     
-    func updateSubscription(_ subscription: Subscription) {
+    func updateSubscription(_ subscription: Subscription) async {
+        // Request notification permission only if reminders are enabled
+        if subscription.reminderEnabled {
+            await requestNotificationPermissionIfNeeded()
+        }
+        
+        updateSubscriptionInternal(subscription)
+    }
+    
+    // Internal synchronous method for updating subscriptions without permission requests
+    private func updateSubscriptionInternal(_ subscription: Subscription) {
         let fetchRequest: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id == %@", subscription.id as CVarArg)
         
@@ -80,10 +95,10 @@ class SubscriptionViewModel: ObservableObject {
         }
     }
     
-    func toggleSubscriptionStatus(_ subscription: Subscription) {
+    func toggleSubscriptionStatus(_ subscription: Subscription) async {
         var updatedSubscription = subscription
         updatedSubscription.isActive.toggle()
-        updateSubscription(updatedSubscription)
+        await updateSubscription(updatedSubscription)
     }
     
     private func saveContext() {
@@ -101,6 +116,7 @@ class SubscriptionViewModel: ObservableObject {
             .map { subscriptions in
                 subscriptions.filter { $0.isDue }
             }
+            .receive(on: DispatchQueue.main)
             .assign(to: \.dueSubscriptions, on: self)
             .store(in: &cancellables)
     }
@@ -123,10 +139,7 @@ class SubscriptionViewModel: ObservableObject {
         // Update subscription's next due date
         var updatedSubscription = subscription
         updatedSubscription.updateNextDueDate()
-        updateSubscription(updatedSubscription)
-        
-        // Schedule next notification
-        scheduleNotificationForSubscription(updatedSubscription)
+        updateSubscriptionInternal(updatedSubscription)
         
         print("Processed subscription: \(subscription.name) - Next due: \(updatedSubscription.formattedNextDueDate)")
     }
@@ -162,38 +175,74 @@ class SubscriptionViewModel: ObservableObject {
     
     // MARK: - Notifications
     
-    private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
+    // Request notification permission only when needed (contextually)
+    private func requestNotificationPermissionIfNeeded() async {
+        let center = UNUserNotificationCenter.current()
+        
+        // Check current authorization status
+        let settings = await center.notificationSettings()
+        
+        switch settings.authorizationStatus {
+        case .notDetermined:
+            // Only request permission if not determined yet
+            do {
+                let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+                if granted {
+                    print("Notification permission granted")
+                } else {
+                    print("Notification permission denied")
+                }
+            } catch {
                 print("Notification permission error: \(error.localizedDescription)")
             }
+        case .authorized, .provisional:
+            // Already authorized, no need to request again
+            break
+        case .denied:
+            // Permission was denied, we can't request again programmatically
+            print("Notification permission was previously denied")
+        case .ephemeral:
+            // For app clips, not applicable here
+            break
+        @unknown default:
+            break
         }
     }
     
     private func scheduleNotificationForSubscription(_ subscription: Subscription) {
         guard subscription.reminderEnabled && subscription.isActive else { return }
         
-        let content = UNMutableNotificationContent()
-        content.title = "Subscription Due"
-        content.body = "\(subscription.name) payment of \(subscription.formattedAmount) is due soon"
-        content.sound = .default
-        content.categoryIdentifier = "SUBSCRIPTION_REMINDER"
-        
-        let calendar = Calendar.current
-        let reminderDate = calendar.date(byAdding: .day, value: -subscription.reminderDaysBefore, to: subscription.nextDueDate) ?? subscription.nextDueDate
-        
-        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: reminderDate)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        
-        let request = UNNotificationRequest(
-            identifier: "subscription_\(subscription.id.uuidString)",
-            content: content,
-            trigger: trigger
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Error scheduling notification: \(error.localizedDescription)")
+        // Check notification permission before scheduling
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+                print("Cannot schedule notification: permission not granted")
+                return
+            }
+            
+            let content = UNMutableNotificationContent()
+            content.title = "Subscription Due"
+            content.body = "\(subscription.name) payment of \(subscription.formattedAmount) is due soon"
+            content.sound = .default
+            content.categoryIdentifier = "SUBSCRIPTION_REMINDER"
+            
+            let calendar = Calendar.current
+            let reminderDate = calendar.date(byAdding: .day, value: -subscription.reminderDaysBefore, to: subscription.nextDueDate) ?? subscription.nextDueDate
+            
+            let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: reminderDate)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            
+            let request = UNNotificationRequest(
+                identifier: "subscription_\(subscription.id.uuidString)",
+                content: content,
+                trigger: trigger
+            )
+            
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("Error scheduling notification: \(error.localizedDescription)")
+                } else {
+                    print("Successfully scheduled notification for \(subscription.name)")
+                }
             }
         }
     }
@@ -226,7 +275,7 @@ class SubscriptionViewModel: ObservableObject {
     
     // MARK: - Manual Payment Processing
     
-    func markSubscriptionAsPaid(_ subscription: Subscription) {
+    func markSubscriptionAsPaid(_ subscription: Subscription) async {
         // Create expense from subscription
         var expense = subscription.toExpense()
         expense.isFromSubscription = true
@@ -238,10 +287,7 @@ class SubscriptionViewModel: ObservableObject {
         // Update subscription's next due date
         var updatedSubscription = subscription
         updatedSubscription.updateNextDueDate()
-        updateSubscription(updatedSubscription)
-        
-        // Schedule next notification
-        scheduleNotificationForSubscription(updatedSubscription)
+        await updateSubscription(updatedSubscription)
         
         print("Marked subscription as paid: \(subscription.name) - Next due: \(updatedSubscription.formattedNextDueDate)")
     }

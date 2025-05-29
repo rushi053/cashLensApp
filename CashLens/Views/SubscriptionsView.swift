@@ -236,14 +236,18 @@ struct SubscriptionsView: View {
                         subscription: subscription,
                         onToggle: {
                             HapticManager.shared.impact(style: .light)
-                            subscriptionViewModel.toggleSubscriptionStatus(subscription)
+                            Task {
+                                await subscriptionViewModel.toggleSubscriptionStatus(subscription)
+                            }
                         },
                         onEdit: {
                             selectedSubscription = subscription
                         },
                         onMarkPaid: subscription.isActive && subscription.daysUntilNext <= 0 ? {
                             // Mark subscription as paid - create expense and update next due date
-                            subscriptionViewModel.markSubscriptionAsPaid(subscription)
+                            Task {
+                                await subscriptionViewModel.markSubscriptionAsPaid(subscription)
+                            }
                         } : nil
                     )
                 }

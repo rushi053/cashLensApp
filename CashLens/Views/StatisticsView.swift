@@ -33,7 +33,20 @@ struct StatisticsView: View {
         
         // Filter by local category selection if needed
         if let category = selectedCategory {
-            filtered = filtered.filter { $0.category == category }
+            if category == .custom {
+                // For custom categories, filter by both category type and specific custom category ID
+                if let selectedCustomCategoryId = viewModel.selectedCustomCategoryId {
+                    filtered = filtered.filter { 
+                        $0.category == .custom && $0.customCategoryId == selectedCustomCategoryId 
+                    }
+                } else {
+                    // If custom is selected but no specific ID, show all custom categories
+                    filtered = filtered.filter { $0.category == .custom }
+                }
+            } else {
+                // For default categories, filter normally
+                filtered = filtered.filter { $0.category == category }
+            }
         }
         
         // Sort by date (newest first)
@@ -48,6 +61,13 @@ struct StatisticsView: View {
     // Calculate total expenses for a specific category
     private func totalExpenses(for category: Expense.Category) -> Double {
         return filteredExpenses.filter { $0.category == category }.reduce(0) { $0 + $1.amount }
+    }
+    
+    // Calculate total expenses for a specific custom category
+    private func totalExpenses(for customCategory: CustomCategory) -> Double {
+        return filteredExpenses.filter { 
+            $0.category == .custom && $0.customCategoryId == customCategory.id 
+        }.reduce(0) { $0 + $1.amount }
     }
     
     private var isIPad: Bool {
@@ -185,6 +205,7 @@ struct StatisticsView: View {
                                 Button(action: {
                                     HapticManager.shared.selectionChanged()
                                     selectedCategory = nil
+                                    viewModel.selectedCustomCategoryId = nil
                                 }) {
                                     Text("Clear")
                                         .font(.subheadline)
@@ -375,6 +396,7 @@ struct StatisticsView: View {
                     Button(action: {
                         HapticManager.shared.selectionChanged()
                         selectedCategory = nil
+                        viewModel.selectedCustomCategoryId = nil
                     }) {
                         Text("Clear")
                             .font(.subheadline)
@@ -387,13 +409,15 @@ struct StatisticsView: View {
             // Standard categories
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                    ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         Button(action: {
                             HapticManager.shared.selectionChanged()
                             if selectedCategory == category {
                                 selectedCategory = nil
+                                viewModel.selectedCustomCategoryId = nil
                             } else {
                                 selectedCategory = category
+                                viewModel.selectedCustomCategoryId = nil
                             }
                         }) {
                             HStack {
@@ -469,7 +493,7 @@ struct StatisticsView: View {
     private var totalExpensesCard: some View {
         VStack(spacing: 16) {
             HStack {
-                Text(selectedCategory == nil ? "Total Expenses" : "\(selectedCategory!.rawValue) Expenses")
+                Text(categoryDisplayName())
                     .font(.headline)
                 
                 Spacer()
@@ -507,6 +531,23 @@ struct StatisticsView: View {
         .cornerRadius(16)
     }
     
+    // Helper function to get the correct category display name for the total expenses card
+    private func categoryDisplayName() -> String {
+        if selectedCategory == nil {
+            return "Total Expenses"
+        } else if selectedCategory == .custom {
+            // Handle custom category selection
+            let customCategories = viewModel.getCustomCategories()
+            if let selectedCustomCategoryId = viewModel.selectedCustomCategoryId,
+               let customCategory = customCategories.first(where: { $0.id == selectedCustomCategoryId }) {
+                return "\(customCategory.name) Expenses"
+            }
+            return "Custom Expenses"
+        } else {
+            return "\(selectedCategory!.rawValue) Expenses"
+        }
+    }
+    
     // MARK: - Category Breakdown
     private var categoryBreakdown: some View {
         VStack(spacing: 16) {
@@ -516,14 +557,33 @@ struct StatisticsView: View {
             
             if selectedCategory == nil {
                 // Show all categories when no filter is applied
-                ForEach(Expense.Category.allCases, id: \.self) { category in
+                // Default categories (excluding deleted ones)
+                ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                     if totalExpenses(for: category) > 0 {
                         categoryRow(for: category)
                     }
                 }
+                
+                // Individual custom categories
+                let customCategories = viewModel.getCustomCategories()
+                ForEach(customCategories) { customCategory in
+                    if totalExpenses(for: customCategory) > 0 {
+                        customCategoryRow(for: customCategory)
+                    }
+                }
             } else {
                 // Show only the selected category
-                categoryRow(for: selectedCategory!)
+                if selectedCategory == .custom {
+                    // If custom category is selected, show the specific custom category
+                    let customCategories = viewModel.getCustomCategories()
+                    if let selectedCustomCategoryId = viewModel.selectedCustomCategoryId,
+                       let customCategory = customCategories.first(where: { $0.id == selectedCustomCategoryId }) {
+                        customCategoryRow(for: customCategory)
+                    }
+                } else {
+                    // Show the selected default category
+                    categoryRow(for: selectedCategory!)
+                }
             }
         }
         .padding()
@@ -579,6 +639,62 @@ struct StatisticsView: View {
                         Rectangle()
                             .fill(Color.forCategory(category.color))
                             .frame(width: geometry.size.width * CGFloat(totalExpenses(for: category) / totalExpenses()), height: 8)
+                            .cornerRadius(4)
+                    }
+                }
+                .frame(height: 8)
+            }
+        }
+    }
+    
+    // Helper function to create a custom category row
+    private func customCategoryRow(for customCategory: CustomCategory) -> some View {
+        VStack(spacing: 8) {
+            HStack {
+                // Category Icon
+                ZStack {
+                    Circle()
+                        .fill(Color.forCategory(customCategory.colorName).opacity(0.3))
+                        .frame(width: 40, height: 40)
+                    
+                    Image(systemName: customCategory.icon)
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.forCategory(customCategory.colorName))
+                }
+                
+                // Category Name
+                Text(customCategory.name)
+                    .font(.subheadline)
+                
+                Spacer()
+                
+                // Amount
+                Text(viewModel.formattedAmount(totalExpenses(for: customCategory)))
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                
+                // Percentage
+                if selectedCategory == nil && totalExpenses() > 0 {
+                    Text("\(String(format: "%.1f", (totalExpenses(for: customCategory) / totalExpenses()) * 100))%")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .frame(width: 50, alignment: .trailing)
+                }
+            }
+            .padding(.vertical, 8)
+            
+            // Progress Bar
+            if selectedCategory == nil && totalExpenses() > 0 {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.2))
+                            .frame(height: 8)
+                            .cornerRadius(4)
+                        
+                        Rectangle()
+                            .fill(Color.forCategory(customCategory.colorName))
+                            .frame(width: geometry.size.width * CGFloat(totalExpenses(for: customCategory) / totalExpenses()), height: 8)
                             .cornerRadius(4)
                     }
                 }
@@ -643,7 +759,17 @@ struct StatisticsView: View {
         }
         
         if let category = selectedCategory {
-            return "Showing spending trend for \(category.rawValue) expenses."
+            if category == .custom {
+                // Handle custom category selection
+                let customCategories = viewModel.getCustomCategories()
+                if let selectedCustomCategoryId = viewModel.selectedCustomCategoryId,
+                   let customCategory = customCategories.first(where: { $0.id == selectedCustomCategoryId }) {
+                    return "Showing spending trend for \(customCategory.name) expenses."
+                }
+                return "Showing spending trend for Custom expenses."
+            } else {
+                return "Showing spending trend for \(category.rawValue) expenses."
+            }
         } else {
             return "Showing overall spending trend for \(selectedTimeFrame.rawValue.lowercased())."
         }
@@ -655,13 +781,15 @@ struct StatisticsView: View {
             // Standard categories
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                    ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         Button(action: {
                             HapticManager.shared.selectionChanged()
                             if selectedCategory == category {
                                 selectedCategory = nil
+                                viewModel.selectedCustomCategoryId = nil
                             } else {
                                 selectedCategory = category
+                                viewModel.selectedCustomCategoryId = nil
                             }
                         }) {
                             HStack {

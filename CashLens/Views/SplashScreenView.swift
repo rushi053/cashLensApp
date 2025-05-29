@@ -24,9 +24,11 @@ struct SplashScreenView: View {
                         .fill(Color.white.opacity(0.1))
                         .frame(width: 120, height: 120)
                     
-                    Image(systemName: "creditcard.viewfinder")
-                        .font(.system(size: 70, weight: .bold))
-                        .foregroundColor(.white)
+                    Image("Logo")
+                        .resizable()
+                        .frame(width: 100, height: 100)
+                        .clipShape(Circle())
+                        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
                 }
                 .scaleEffect(isAnimating ? 1.0 : 0.6)
                 .opacity(isAnimating ? 1.0 : 0.7)

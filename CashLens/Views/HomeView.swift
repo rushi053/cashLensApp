@@ -209,8 +209,8 @@ struct HomeView: View {
                                 
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 20) {
-                                        // Standard categories
-                                        ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                                        // Standard categories (excluding deleted ones)
+                                        ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                                             CategoryItem(
                                                 category: category,
                                                 isSelected: viewModel.selectedCategory == category,
@@ -541,8 +541,8 @@ struct HomeView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
-                    // Standard categories
-                    ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                    // Standard categories (excluding deleted ones)
+                    ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         CategoryItem(
                             category: category,
                             isSelected: viewModel.selectedCategory == category,
@@ -560,7 +560,7 @@ struct HomeView: View {
                         )
                     }
                     
-                    // Custom categories - force a fresh fetch to ensure latest data
+                    // Custom categories
                     let customCategories = viewModel.getCustomCategories()
                     ForEach(customCategories) { category in
                         CustomCategoryItem(
@@ -573,11 +573,8 @@ struct HomeView: View {
                                         viewModel.selectedCategory = nil
                                         viewModel.selectedCustomCategoryId = nil
                                     } else {
-                                        // First set the category ID, then the category type to ensure proper filtering
                                         viewModel.selectedCustomCategoryId = category.id
                                         viewModel.selectedCategory = .custom
-                                        
-                                        print("Selected custom category: \(category.name) with ID: \(category.id)")
                                     }
                                 }
                             }

@@ -20,6 +20,12 @@ struct OnboardingView: View {
             backgroundColor: .teaRose
         ),
         OnboardingPage(
+            title: "Track Subscriptions",
+            description: "Never miss a payment! Track recurring expenses like Netflix, Spotify, and gym memberships with smart reminders.",
+            imageName: "creditcard.and.123",
+            backgroundColor: .pinkLavender
+        ),
+        OnboardingPage(
             title: "View Statistics",
             description: "Get insights into your spending patterns with beautiful visualizations and breakdowns.",
             imageName: "chart.pie.fill",

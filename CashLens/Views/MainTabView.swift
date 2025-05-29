@@ -92,16 +92,16 @@ struct MainTabView: View {
                     // Tab bar background and items
                     VStack(spacing: 0) {
                         // Tab bar background
-                        Rectangle()
-                            .fill(Color.systemBackground)
+                            Rectangle()
+                                .fill(Color.systemBackground)
                             .frame(height: tabBarHeight)
                             .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: -4)
-                        
+                            
                         // Bottom safe area background
-                        Rectangle()
-                            .fill(Color.systemBackground)
-                            .frame(height: geometry.safeAreaInsets.bottom)
-                    }
+                            Rectangle()
+                                .fill(Color.systemBackground)
+                                .frame(height: geometry.safeAreaInsets.bottom)
+                        }
                     .overlay(
                         // Tab items
                         VStack(spacing: 0) {
@@ -146,7 +146,7 @@ struct MainTabView: View {
                             
                             Spacer()
                         }
-                    )
+                        )
                 }
             }
             .ignoresSafeArea(.all, edges: .bottom)
