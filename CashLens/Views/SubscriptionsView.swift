@@ -8,17 +8,15 @@ struct SubscriptionsView: View {
     
     var body: some View {
         NavigationView {
-            ZStack(alignment: .top) {
-                // White background for the entire screen
-                Color(.systemBackground)
-                    .ignoresSafeArea(edges: .all)
-                
+            ScrollView {
                 VStack(spacing: 0) {
-                    // Header and stats on white
+                    // Header section
                     headerSection
+                    
+                    // Statistics section  
                     statisticsSection
                     
-                    // Rest of the content (subscriptions list, etc.)
+                    // Content section
                     if subscriptionViewModel.subscriptions.isEmpty {
                         emptyStateView
                     } else {
@@ -26,6 +24,7 @@ struct SubscriptionsView: View {
                     }
                 }
             }
+            .background(Color(.systemBackground))
             .onAppear {
                 subscriptionViewModel.setExpenseViewModel(expenseViewModel)
                 subscriptionViewModel.loadSubscriptions()
@@ -55,7 +54,7 @@ struct SubscriptionsView: View {
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Subscriptions")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.system(size: 32, weight: .bold))
                         .foregroundColor(.primary)
                     
                     Text("\(subscriptionViewModel.activeSubscriptionsCount) active subscription\(subscriptionViewModel.activeSubscriptionsCount == 1 ? "" : "s")")
@@ -97,7 +96,7 @@ struct SubscriptionsView: View {
     
     private var statisticsSection: some View {
         VStack(spacing: 16) {
-            // Large Stats Card - more compact with white background
+            // Large Stats Card - removed extra padding and background
             VStack(spacing: 16) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -106,7 +105,8 @@ struct SubscriptionsView: View {
                             .foregroundColor(.secondary)
                         
                         Text(subscriptionViewModel.formattedTotalMonthlyAmount(currency: expenseViewModel.selectedCurrency))
-                            .font(.system(size: 24, weight: .bold))
+                            .font(.title)
+                            .fontWeight(.bold)
                             .foregroundColor(.primary)
                     }
                     
@@ -147,9 +147,6 @@ struct SubscriptionsView: View {
                     )
                 }
             }
-            .padding(16)
-            .background(Color(.systemBackground))
-            .cornerRadius(16)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 16)
@@ -176,7 +173,8 @@ struct SubscriptionsView: View {
             
             VStack(spacing: 12) {
                 Text("No Subscriptions Yet")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.title2)
+                    .fontWeight(.bold)
                     .foregroundColor(.primary)
                 
                 Text("Track your recurring expenses like Netflix, Spotify, or gym memberships and never miss a payment")
@@ -222,7 +220,8 @@ struct SubscriptionsView: View {
             // Section Header
             HStack {
                 Text("Your Subscriptions")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.title3)
+                    .fontWeight(.bold)
                     .foregroundColor(.primary)
                 
                 Spacer()
@@ -241,13 +240,17 @@ struct SubscriptionsView: View {
                         },
                         onEdit: {
                             selectedSubscription = subscription
-                        }
+                        },
+                        onMarkPaid: subscription.isActive && subscription.daysUntilNext <= 0 ? {
+                            // Mark subscription as paid - create expense and update next due date
+                            subscriptionViewModel.markSubscriptionAsPaid(subscription)
+                        } : nil
                     )
                 }
                 .onDelete(perform: deleteSubscriptions)
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 100) // Extra padding for tab bar
+            .padding(.bottom, 120) // Adjusted padding for tab bar and floating button
         }
     }
     

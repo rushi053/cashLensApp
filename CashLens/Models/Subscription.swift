@@ -114,11 +114,11 @@ struct Subscription: Identifiable, Codable {
         )
     }
     
-    // Days until next payment
+    // Days until next payment (can be negative for overdue)
     var daysUntilNext: Int {
         let calendar = Calendar.current
         let components = calendar.dateComponents([.day], from: Date(), to: nextDueDate)
-        return max(0, components.day ?? 0)
+        return components.day ?? 0
     }
     
     // Formatted next due date

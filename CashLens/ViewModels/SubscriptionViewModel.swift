@@ -223,4 +223,26 @@ class SubscriptionViewModel: ObservableObject {
     func manuallyProcessDueSubscriptions() {
         checkAndProcessDueSubscriptions()
     }
+    
+    // MARK: - Manual Payment Processing
+    
+    func markSubscriptionAsPaid(_ subscription: Subscription) {
+        // Create expense from subscription
+        var expense = subscription.toExpense()
+        expense.isFromSubscription = true
+        expense.subscriptionId = subscription.id
+        
+        // Add expense through the expense view model
+        expenseViewModel?.addExpense(expense)
+        
+        // Update subscription's next due date
+        var updatedSubscription = subscription
+        updatedSubscription.updateNextDueDate()
+        updateSubscription(updatedSubscription)
+        
+        // Schedule next notification
+        scheduleNotificationForSubscription(updatedSubscription)
+        
+        print("Marked subscription as paid: \(subscription.name) - Next due: \(updatedSubscription.formattedNextDueDate)")
+    }
 } 

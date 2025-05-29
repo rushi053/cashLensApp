@@ -478,11 +478,6 @@ struct AllExpensesView: View {
         VStack(spacing: 1) {
             ForEach(Array(expenses.enumerated()), id: \.element.id) { expenseIndex, expense in
                 expenseRowView(expense: expense, groupIndex: groupIndex, expenseIndex: expenseIndex)
-                
-                if expenseIndex < expenses.count - 1 {
-                    Divider()
-                        .padding(.horizontal)
-                }
             }
         }
         .background(Color.systemBackground)
