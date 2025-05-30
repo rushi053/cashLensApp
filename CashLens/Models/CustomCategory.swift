@@ -30,4 +30,38 @@ struct CustomCategory: Identifiable, Codable, Hashable {
         "mauve", "jordyBlue", "nonPhotoBlue", "electricBlue", 
         "aquamarine", "celadon"
     ]
+}
+
+// MARK: - Import Extensions
+extension CustomCategory {
+    init(from json: [String: Any]) throws {
+        guard let idString = json["id"] as? String,
+              let id = UUID(uuidString: idString),
+              let name = json["name"] as? String,
+              let icon = json["icon"] as? String,
+              let colorName = json["colorName"] as? String else {
+            throw ImportError.parseError("Invalid custom category data")
+        }
+        
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.colorName = colorName
+    }
+    
+    init(fromCSV line: String) throws {
+        let fields = parseCSVFields(line)
+        guard fields.count >= 4 else {
+            throw ImportError.parseError("Invalid CSV custom category format: expected 4 fields, got \(fields.count)")
+        }
+        
+        guard let id = UUID(uuidString: parseCSVField(fields[0])) else {
+            throw ImportError.parseError("Invalid CSV custom category ID: '\(parseCSVField(fields[0]))'")
+        }
+        
+        self.id = id
+        self.name = parseCSVField(fields[1])
+        self.icon = parseCSVField(fields[2])
+        self.colorName = parseCSVField(fields[3])
+    }
 } 

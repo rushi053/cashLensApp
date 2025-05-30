@@ -230,4 +230,117 @@ extension Expense {
         Expense(title: "Coffee", amount: 4.25, currency: .usd, date: Date(), category: .food, notes: "Morning coffee with Sarah"),
         Expense(title: "New Headphones", amount: 89.99, currency: .usd, date: Date().addingTimeInterval(-432000), category: .shopping)
     ]
+}
+
+// MARK: - Import Extensions
+extension Expense {
+    init(from json: [String: Any]) throws {
+        guard let idString = json["id"] as? String,
+              let id = UUID(uuidString: idString),
+              let title = json["title"] as? String,
+              let amount = json["amount"] as? Double,
+              let currencyRaw = json["currency"] as? String,
+              let currency = Currency(rawValue: currencyRaw),
+              let dateString = json["date"] as? String,
+              let date = ISO8601DateFormatter().date(from: dateString),
+              let categoryRaw = json["category"] as? String,
+              let category = Category(rawValue: categoryRaw) else {
+            throw ImportError.parseError("Invalid expense data")
+        }
+        
+        self.id = id
+        self.title = title
+        self.amount = amount
+        self.currency = currency
+        self.date = date
+        self.category = category
+        self.notes = json["notes"] as? String
+        
+        // Safety check for NaN or invalid amounts
+        guard amount.isFinite && amount >= 0 else {
+            throw ImportError.parseError("Invalid expense amount in JSON: \(amount). Amount must be a positive finite number.")
+        }
+        
+        if let customCategoryIdString = json["customCategoryId"] as? String {
+            self.customCategoryId = UUID(uuidString: customCategoryIdString)
+        }
+        
+        self.isFromSubscription = json["isFromSubscription"] as? Bool ?? false
+        
+        if let subscriptionIdString = json["subscriptionId"] as? String {
+            self.subscriptionId = UUID(uuidString: subscriptionIdString)
+        }
+    }
+    
+    init(fromCSV line: String) throws {
+        let fields = parseCSVFields(line)
+        guard fields.count >= 8 else {
+            throw ImportError.parseError("Invalid CSV expense format: expected 8 fields, got \(fields.count)")
+        }
+        
+        // Try multiple date formats for better compatibility
+        let dateString = parseCSVField(fields[1]) // Date is now field 1 (after ID)
+        var date: Date?
+        
+        // Try medium style first (matches export format)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        date = dateFormatter.date(from: dateString)
+        
+        // If that fails, try other common formats
+        if date == nil {
+            dateFormatter.dateFormat = "MMM d, yyyy"
+            date = dateFormatter.date(from: dateString)
+        }
+        
+        if date == nil {
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            date = dateFormatter.date(from: dateString)
+        }
+        
+        if date == nil {
+            dateFormatter.dateFormat = "MM/dd/yyyy"
+            date = dateFormatter.date(from: dateString)
+        }
+        
+        // Parse ID from CSV or generate new one as fallback
+        var expenseId: UUID
+        let idString = parseCSVField(fields[0])
+        if let parsedId = UUID(uuidString: idString) {
+            expenseId = parsedId
+        } else {
+            // Fallback: generate new ID if parsing fails
+            expenseId = UUID()
+        }
+        
+        guard let finalDate = date,
+              let amount = Double(parseCSVField(fields[3])), // Amount is now field 3
+              let currency = Currency(rawValue: parseCSVField(fields[4])), // Currency is now field 4
+              let category = Category(rawValue: parseCSVField(fields[5])) else { // Category is now field 5
+            throw ImportError.parseError("Invalid CSV expense data: id='\(idString)', date='\(dateString)', title='\(parseCSVField(fields[2]))', amount='\(parseCSVField(fields[3]))', currency='\(parseCSVField(fields[4]))', category='\(parseCSVField(fields[5]))'")
+        }
+        
+        // Safety check for NaN or invalid amounts
+        guard amount.isFinite && amount >= 0 else {
+            throw ImportError.parseError("Invalid expense amount: \(amount). Amount must be a positive finite number.")
+        }
+        
+        self.id = expenseId
+        self.title = parseCSVField(fields[2]) // Title is now field 2
+        self.amount = amount
+        self.currency = currency
+        self.date = finalDate
+        self.category = category
+        
+        let customCategoryIdString = parseCSVField(fields[6]) // CustomCategoryId is now field 6
+        if !customCategoryIdString.isEmpty {
+            self.customCategoryId = UUID(uuidString: customCategoryIdString)
+        }
+        
+        let notes = parseCSVField(fields[7]) // Notes is now field 7
+        self.notes = notes.isEmpty ? nil : notes
+        
+        self.isFromSubscription = false
+        self.subscriptionId = nil
+    }
 } 

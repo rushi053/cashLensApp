@@ -177,4 +177,114 @@ extension Subscription {
             category: .health
         )
     ]
+}
+
+// MARK: - Import Extensions
+extension Subscription {
+    init(from json: [String: Any]) throws {
+        guard let idString = json["id"] as? String,
+              let id = UUID(uuidString: idString),
+              let name = json["name"] as? String,
+              let amount = json["amount"] as? Double,
+              let currencyRaw = json["currency"] as? String,
+              let currency = Expense.Currency(rawValue: currencyRaw),
+              let startDateString = json["startDate"] as? String,
+              let startDate = ISO8601DateFormatter().date(from: startDateString),
+              let frequencyRaw = json["frequency"] as? String,
+              let frequency = Frequency(rawValue: frequencyRaw),
+              let nextDueDateString = json["nextDueDate"] as? String,
+              let nextDueDate = ISO8601DateFormatter().date(from: nextDueDateString),
+              let categoryRaw = json["category"] as? String,
+              let category = Expense.Category(rawValue: categoryRaw) else {
+            throw ImportError.parseError("Invalid subscription data")
+        }
+        
+        self.id = id
+        self.name = name
+        self.amount = amount
+        self.currency = currency
+        self.startDate = startDate
+        self.frequency = frequency
+        self.nextDueDate = nextDueDate
+        self.category = category
+        self.notes = json["notes"] as? String
+        
+        // Safety check for NaN or invalid amounts
+        guard amount.isFinite && amount >= 0 else {
+            throw ImportError.parseError("Invalid subscription amount in JSON: \(amount). Amount must be a positive finite number.")
+        }
+        
+        if let customCategoryIdString = json["customCategoryId"] as? String {
+            self.customCategoryId = UUID(uuidString: customCategoryIdString)
+        }
+        
+        self.isActive = json["isActive"] as? Bool ?? true
+        self.reminderEnabled = json["reminderEnabled"] as? Bool ?? true
+        self.reminderDaysBefore = json["reminderDaysBefore"] as? Int ?? 1
+    }
+    
+    init(fromCSV line: String) throws {
+        let fields = parseCSVFields(line)
+        guard fields.count >= 13 else {
+            throw ImportError.parseError("Invalid CSV subscription format: expected 13 fields, got \(fields.count)")
+        }
+        
+        // Helper function to parse dates with multiple formats
+        func parseDate(_ dateString: String) -> Date? {
+            let dateFormatter = DateFormatter()
+            
+            // Try medium style first (matches export format)
+            dateFormatter.dateStyle = .medium
+            if let date = dateFormatter.date(from: dateString) {
+                return date
+            }
+            
+            // Try other common formats
+            let formats = ["MMM d, yyyy", "yyyy-MM-dd", "MM/dd/yyyy"]
+            for format in formats {
+                dateFormatter.dateFormat = format
+                if let date = dateFormatter.date(from: dateString) {
+                    return date
+                }
+            }
+            
+            return nil
+        }
+        
+        guard let id = UUID(uuidString: parseCSVField(fields[0])),
+              let amount = Double(parseCSVField(fields[2])),
+              let currency = Expense.Currency(rawValue: parseCSVField(fields[3])),
+              let startDate = parseDate(parseCSVField(fields[4])),
+              let frequency = Frequency(rawValue: parseCSVField(fields[5])),
+              let nextDueDate = parseDate(parseCSVField(fields[6])),
+              let category = Expense.Category(rawValue: parseCSVField(fields[7])) else {
+            throw ImportError.parseError("Invalid CSV subscription data: id='\(parseCSVField(fields[0]))', amount='\(parseCSVField(fields[2]))', currency='\(parseCSVField(fields[3]))', startDate='\(parseCSVField(fields[4]))', frequency='\(parseCSVField(fields[5]))', nextDueDate='\(parseCSVField(fields[6]))', category='\(parseCSVField(fields[7]))'")
+        }
+        
+        // Safety check for NaN or invalid amounts
+        guard amount.isFinite && amount >= 0 else {
+            throw ImportError.parseError("Invalid subscription amount: \(amount). Amount must be a positive finite number.")
+        }
+        
+        self.id = id
+        self.name = parseCSVField(fields[1])
+        self.amount = amount
+        self.currency = currency
+        self.startDate = startDate
+        self.frequency = frequency
+        self.nextDueDate = nextDueDate
+        self.category = category
+        
+        let customCategoryIdString = parseCSVField(fields[8])
+        if !customCategoryIdString.isEmpty {
+            self.customCategoryId = UUID(uuidString: customCategoryIdString)
+        }
+        
+        let notes = parseCSVField(fields[9])
+        self.notes = notes.isEmpty ? nil : notes
+        
+        self.isActive = parseCSVField(fields[10]).lowercased() == "true"
+        self.reminderEnabled = parseCSVField(fields[11]).lowercased() == "true"
+        self.reminderDaysBefore = Int(parseCSVField(fields[12])) ?? 1
+    }
 } 

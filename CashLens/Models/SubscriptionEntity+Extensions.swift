@@ -61,4 +61,11 @@ extension SubscriptionEntity {
         self.reminderEnabled = subscription.reminderEnabled
         self.reminderDaysBefore = Int16(subscription.reminderDaysBefore)
     }
+}
+
+// Extension for fetching and sorting subscriptions
+extension Collection where Element == SubscriptionEntity {
+    func toSubscriptions() -> [Subscription] {
+        return self.map { $0.toSubscription() }
+    }
 } 

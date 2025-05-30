@@ -13,6 +13,7 @@ struct ProfileView: View {
     @State private var showingAboutSheet = false
     @State private var showingExportSheet = false
     @State private var showingDonationSheet = false
+    @State private var showingImportSheet = false
     
     // Get version and build from Info.plist
     private var versionString: String {
@@ -56,7 +57,7 @@ struct ProfileView: View {
             .alert(isPresented: $showingConfirmation) {
                 Alert(
                     title: Text("Clear All Data"),
-                    message: Text("Are you sure you want to delete all expenses? This action cannot be undone."),
+                    message: Text("Are you sure you want to delete ALL your data? This includes expenses, subscriptions, custom categories, and deleted category preferences. This action cannot be undone."),
                     primaryButton: .destructive(Text("Delete All")) {
                         withAnimation {
                             viewModel.clearAllData()
@@ -413,6 +414,35 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showingExportSheet) {
                 ExportDataView()
+                    .environmentObject(viewModel)
+            }
+            
+            // Import Data
+            HStack {
+                Image(systemName: "square.and.arrow.down.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(.appSecondary)
+                    .frame(width: 30)
+                
+                Text("Import Data")
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+            .background(Color.secondarySystemBackground)
+            .cornerRadius(10)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                hapticFeedback(style: .light)
+                showingImportSheet = true
+            }
+            .sheet(isPresented: $showingImportSheet) {
+                ImportDataView()
                     .environmentObject(viewModel)
             }
             

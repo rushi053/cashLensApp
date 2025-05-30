@@ -30,7 +30,7 @@ struct ExportDataView: View {
                             .font(.title)
                             .fontWeight(.bold)
                         
-                        Text("Choose a format to export your expense data")
+                        Text("Choose a format to export all your financial data including expenses, subscriptions, and custom categories")
                             .font(.body)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
@@ -159,8 +159,15 @@ struct ExportDataView: View {
     }
     
     private func exportData() {
-        if viewModel.expenses.isEmpty {
-            alertMessage = "You don't have any expenses to export."
+        // Check if there's any data to export
+        let customCategories = viewModel.getCustomCategories()
+        let hasExpenses = !viewModel.expenses.isEmpty
+        let hasSubscriptions = !viewModel.loadSubscriptionsForExport().isEmpty
+        let hasCustomCategories = !customCategories.isEmpty
+        let hasDeletedCategories = !viewModel.getDeletedDefaultCategories().isEmpty
+        
+        if !hasExpenses && !hasSubscriptions && !hasCustomCategories && !hasDeletedCategories {
+            alertMessage = "You don't have any data to export."
             showingAlert = true
             return
         }
