@@ -125,26 +125,58 @@ struct SubscriptionsView: View {
                 
                 // Mini stats row - back to horizontal layout
                 HStack(spacing: 8) {
-                    StatMiniCard(
-                        title: "Due Soon",
-                        value: "\(subscriptionViewModel.upcomingSubscriptions.count)",
-                        icon: "clock.fill",
-                        color: subscriptionViewModel.upcomingSubscriptions.count > 0 ? .orange : .green
-                    )
+                    // Due Soon card with tap functionality
+                    Button(action: {
+                        HapticManager.shared.impact(style: .light)
+                        if subscriptionViewModel.activeFilter == .dueSoon {
+                            subscriptionViewModel.clearFilter()
+                        } else {
+                            subscriptionViewModel.setFilter(.dueSoon)
+                        }
+                    }) {
+                        StatMiniCard(
+                            title: "Due Soon",
+                            value: "\(subscriptionViewModel.upcomingSubscriptions.count)",
+                            icon: "clock.fill",
+                            color: subscriptionViewModel.upcomingSubscriptions.count > 0 ? .orange : .green,
+                            isSelected: subscriptionViewModel.activeFilter == .dueSoon
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
                     
-                    StatMiniCard(
-                        title: "Active",
-                        value: "\(subscriptionViewModel.activeSubscriptionsCount)",
-                        icon: "checkmark.circle.fill",
-                        color: .green
-                    )
+                    // Active subscriptions card - also make tappable
+                    Button(action: {
+                        HapticManager.shared.impact(style: .light)
+                        if subscriptionViewModel.activeFilter == .active {
+                            subscriptionViewModel.clearFilter()
+                        } else {
+                            subscriptionViewModel.setFilter(.active)
+                        }
+                    }) {
+                        StatMiniCard(
+                            title: "Active",
+                            value: "\(subscriptionViewModel.activeSubscriptionsCount)",
+                            icon: "checkmark.circle.fill",
+                            color: .green,
+                            isSelected: subscriptionViewModel.activeFilter == .active
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
                     
-                    StatMiniCard(
-                        title: "Total",
-                        value: "\(subscriptionViewModel.subscriptions.count)",
-                        icon: "creditcard.and.123",
-                        color: .blue
-                    )
+                    // Total card - make tappable to show all
+                    Button(action: {
+                        HapticManager.shared.impact(style: .light)
+                        subscriptionViewModel.clearFilter()
+                    }) {
+                        StatMiniCard(
+                            title: "Total",
+                            value: "\(subscriptionViewModel.subscriptions.count)",
+                            icon: "creditcard.and.123",
+                            color: .blue,
+                            isSelected: subscriptionViewModel.activeFilter == .all
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
@@ -217,9 +249,50 @@ struct SubscriptionsView: View {
     
     private var subscriptionsSection: some View {
         VStack(spacing: 0) {
+            // Filter Status Header (only show when filter is active)
+            if subscriptionViewModel.activeFilter != .all {
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: subscriptionViewModel.activeFilter.icon)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.mauve)
+                        
+                        Text("Showing: \(subscriptionViewModel.activeFilter.title)")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                        
+                        Text("(\(subscriptionViewModel.filteredSubscriptions.count))")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        HapticManager.shared.impact(style: .light)
+                        subscriptionViewModel.clearFilter()
+                    }) {
+                        HStack(spacing: 4) {
+                            Text("Clear")
+                                .font(.system(size: 14, weight: .semibold))
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundColor(.mauve)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.mauve.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            
             // Section Header
             HStack {
-                Text("Your Subscriptions")
+                Text(subscriptionViewModel.activeFilter == .all ? "Your Subscriptions" : subscriptionViewModel.activeFilter.title)
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.primary)
@@ -230,8 +303,11 @@ struct SubscriptionsView: View {
             .padding(.bottom, 20)
             
             // Subscriptions List
+            let subscriptionsToShow = subscriptionViewModel.activeFilter == .all ? 
+                subscriptionViewModel.subscriptions : subscriptionViewModel.filteredSubscriptions
+                
             LazyVStack(spacing: 16) {
-                ForEach(subscriptionViewModel.subscriptions) { subscription in
+                ForEach(subscriptionsToShow) { subscription in
                     SubscriptionRow(
                         subscription: subscription,
                         onToggle: {
@@ -248,21 +324,66 @@ struct SubscriptionsView: View {
                             Task {
                                 await subscriptionViewModel.markSubscriptionAsPaid(subscription)
                             }
-                        } : nil
+                        } : nil,
+                        onDelete: {
+                            HapticManager.shared.impact(style: .medium)
+                            subscriptionViewModel.deleteSubscription(subscription)
+                            HapticManager.shared.success()
+                        }
                     )
                 }
-                .onDelete(perform: deleteSubscriptions)
+                .onDelete(perform: { offsets in
+                    deleteSubscriptions(offsets: offsets, from: subscriptionsToShow)
+                })
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 120) // Adjusted padding for tab bar and floating button
+            
+            // Empty state for filtered results
+            if subscriptionsToShow.isEmpty && subscriptionViewModel.activeFilter != .all {
+                VStack(spacing: 16) {
+                    Spacer()
+                        .frame(height: 40)
+                    
+                    Image(systemName: subscriptionViewModel.activeFilter.icon)
+                        .font(.system(size: 36, weight: .medium))
+                        .foregroundColor(.secondary)
+                    
+                    Text("No \(subscriptionViewModel.activeFilter.title.lowercased()) subscriptions")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    Text("Try selecting a different filter or add a new subscription")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button(action: {
+                        subscriptionViewModel.clearFilter()
+                    }) {
+                        Text("Show All Subscriptions")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.mauve)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(Color.mauve.opacity(0.1))
+                            .cornerRadius(20)
+                    }
+                    
+                    Spacer()
+                        .frame(height: 60)
+                }
+                .padding(.horizontal, 32)
+            }
         }
     }
     
-    private func deleteSubscriptions(offsets: IndexSet) {
+    private func deleteSubscriptions(offsets: IndexSet, from subscriptions: [Subscription]) {
         for index in offsets {
-            let subscription = subscriptionViewModel.subscriptions[index]
+            let subscription = subscriptions[index]
             subscriptionViewModel.deleteSubscription(subscription)
         }
+        HapticManager.shared.success()
     }
 }
 
@@ -272,6 +393,15 @@ struct StatMiniCard: View {
     let value: String
     let icon: String
     let color: Color
+    let isSelected: Bool
+    
+    init(title: String, value: String, icon: String, color: Color, isSelected: Bool = false) {
+        self.title = title
+        self.value = value
+        self.icon = icon
+        self.color = color
+        self.isSelected = isSelected
+    }
     
     var body: some View {
         VStack(spacing: 6) {
@@ -296,6 +426,10 @@ struct StatMiniCard: View {
         .padding(.vertical, 10)
         .background(Color.secondarySystemBackground.opacity(0.7))
         .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.mauve : Color.clear, lineWidth: 2)
+        )
     }
 }
 

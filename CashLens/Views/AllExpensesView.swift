@@ -271,6 +271,21 @@ struct AllExpensesView: View {
                     }
                 )
                 .environmentObject(categoryViewModel)
+            } else {
+                // Fallback view when selectedExpense is nil (shouldn't happen with our fix)
+                VStack {
+                    Text("Loading...")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    ProgressView()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear {
+                    // If this appears, dismiss the sheet as something went wrong
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        showingEditSheet = false
+                    }
+                }
             }
         }
     }
@@ -493,19 +508,24 @@ struct AllExpensesView: View {
             .background(Color.systemBackground)
             .contentShape(Rectangle())
             .onTapGesture {
-                // Set the selected expense first and ensure it's fully saved before showing sheet
+                HapticManager.shared.impact(style: .light)
+                // Set the selected expense immediately without delay
                 selectedExpense = expense
-                
-                // Use a slightly longer delay to ensure data is fully prepared
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                // Load categories to ensure they're available
+                categoryViewModel.loadCustomCategories()
+                // Small delay only for sheet presentation to ensure data is ready
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     showingEditSheet = true
                 }
             }
             .contextMenu {
                 Button {
-                    // Edit expense
+                    // Set the selected expense immediately without delay
                     selectedExpense = expense
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    // Load categories to ensure they're available
+                    categoryViewModel.loadCustomCategories()
+                    // Small delay only for sheet presentation to ensure data is ready
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                         showingEditSheet = true
                     }
                 } label: {
@@ -513,6 +533,7 @@ struct AllExpensesView: View {
                 }
                 
                 Button(role: .destructive) {
+                    HapticManager.shared.impact(style: .medium)
                     deleteExpense(expense)
                 } label: {
                     Label("Delete", systemImage: "trash")
@@ -520,6 +541,7 @@ struct AllExpensesView: View {
             }
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
+                    HapticManager.shared.impact(style: .medium)
                     deleteExpense(expense)
                 } label: {
                     Label("Delete", systemImage: "trash")

@@ -13,6 +13,7 @@ class ExpenseViewModel: ObservableObject {
         didSet {
             if oldValue != selectedCurrency {
                 updateAllExpensesToCurrentCurrency()
+                updateAllSubscriptionsToCurrentCurrency()
             }
             UserDefaults.standard.set(selectedCurrency.rawValue, forKey: "selectedCurrency")
         }
@@ -92,11 +93,23 @@ class ExpenseViewModel: ObservableObject {
         return formatter
     }()
     
+    // MARK: - Summary Cards Customization
+    
+    @Published var preferredSummaryCategories: [Expense.Category] = []
+    
+    private let summaryPreferencesKey = "preferred_summary_categories"
+    
     init(context: NSManagedObjectContext = PersistenceController.shared.container.viewContext) {
         self.viewContext = context
         
-        // Load user preferences from UserDefaults
-        loadUserPreferences()
+        // Load saved preferences
+        loadSelectedCurrency()
+        loadSelectedTimeFrame()
+        loadAppearanceMode()
+        loadSummaryPreferences()
+        
+        // Load initial data
+        loadExpenses()
         
         // Auto-select currency based on locale if not set
         autoSelectCurrencyIfNeeded()
@@ -104,28 +117,40 @@ class ExpenseViewModel: ObservableObject {
         // Check if this is the first launch
         checkFirstLaunch()
         
-        // Load saved expenses from Core Data
-        loadExpenses()
-        
         // Set up filtering
         setupFiltering()
     }
     
-    // Load user preferences from UserDefaults
+    // Load individual preferences from UserDefaults
+    private func loadSelectedCurrency() {
+        if let savedCurrency = UserDefaults.standard.string(forKey: "selectedCurrency"),
+           let currency = Expense.Currency(rawValue: savedCurrency) {
+            selectedCurrency = currency
+        }
+    }
+    
+    private func loadSelectedTimeFrame() {
+        if let savedTimeFrame = UserDefaults.standard.string(forKey: "selectedTimeFrame"),
+           let timeFrame = TimeFrame(rawValue: savedTimeFrame) {
+            selectedTimeFrame = timeFrame
+        }
+    }
+    
+    private func loadAppearanceMode() {
+        if let savedAppearance = UserDefaults.standard.string(forKey: "appearanceMode"),
+           let appearance = AppearanceMode(rawValue: savedAppearance) {
+            appearanceMode = appearance
+        }
+    }
+    
+    // Legacy method kept for compatibility - now delegates to individual methods
     private func loadUserPreferences() {
         if let savedName = UserDefaults.standard.string(forKey: "userName") {
             userName = savedName
         }
         
-        if let savedCurrency = UserDefaults.standard.string(forKey: "selectedCurrency"),
-           let currency = Expense.Currency(rawValue: savedCurrency) {
-            selectedCurrency = currency
-        }
-        
-        if let savedAppearance = UserDefaults.standard.string(forKey: "appearanceMode"),
-           let appearance = AppearanceMode(rawValue: savedAppearance) {
-            appearanceMode = appearance
-        }
+        loadSelectedCurrency()
+        loadAppearanceMode()
         
         hasShownCurrencyPicker = UserDefaults.standard.bool(forKey: "hasShownCurrencyPicker")
     }
@@ -173,6 +198,9 @@ class ExpenseViewModel: ObservableObject {
         
         // Update the expenses array
         loadExpenses()
+        
+        // Track successful action for feedback request
+        FeedbackManager.shared.incrementSuccessfulAction()
     }
     
     func updateExpense(_ expense: Expense) {
@@ -415,6 +443,46 @@ class ExpenseViewModel: ObservableObject {
         }
     }
     
+    // Update all subscriptions to use the current selected currency
+    private func updateAllSubscriptionsToCurrentCurrency() {
+        let fetchRequest: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
+        
+        do {
+            let results = try viewContext.fetch(fetchRequest)
+            var updateCount = 0
+            var previousCurrencies: Set<String> = []
+            
+            for entity in results {
+                if let currentCurrency = entity.currency, currentCurrency != selectedCurrency.rawValue {
+                    previousCurrencies.insert(currentCurrency)
+                }
+                entity.currency = selectedCurrency.rawValue
+                updateCount += 1
+            }
+            
+            if updateCount > 0 {
+                saveContext()
+                let currencyList = previousCurrencies.joined(separator: ", ")
+                print("✅ Updated \(updateCount) subscription(s) from [\(currencyList)] to \(selectedCurrency.rawValue)")
+                
+                // Notify other parts of the app that subscription currencies have been updated
+                NotificationCenter.default.post(
+                    name: .subscriptionCurrencyUpdated, 
+                    object: nil,
+                    userInfo: [
+                        "updateCount": updateCount,
+                        "newCurrency": selectedCurrency.rawValue,
+                        "previousCurrencies": Array(previousCurrencies)
+                    ]
+                )
+            } else {
+                print("ℹ️ No subscriptions to update (0 subscriptions found)")
+            }
+        } catch {
+            print("❌ Error updating subscriptions currency: \(error.localizedDescription)")
+        }
+    }
+    
     // MARK: - Core Data Operations
     
     // Load expenses from Core Data
@@ -429,6 +497,18 @@ class ExpenseViewModel: ObservableObject {
             print("Error loading expenses: \(error.localizedDescription)")
             self.expenses = []
         }
+    }
+    
+    // Public method to refresh data when app becomes active
+    func refreshData() {
+        loadExpenses()
+        // Re-apply filters to ensure UI is up to date
+        updateFilteredExpenses()
+    }
+    
+    // Helper method to manually trigger filter updates
+    private func updateFilteredExpenses() {
+        filteredExpenses = filterExpenses(expenses, category: selectedCategory, timeFrame: selectedTimeFrame)
     }
     
     // Save context
@@ -463,6 +543,52 @@ class ExpenseViewModel: ObservableObject {
         dataStatus.append("Deleted Default Categories: \(deletedCategoryCount)")
         
         return dataStatus.joined(separator: ", ")
+    }
+    
+    // Helper function to check currency consistency across the app
+    func checkCurrencyConsistency() -> (isConsistent: Bool, report: String) {
+        var report: [String] = []
+        var allCurrenciesConsistent = true
+        
+        // Check expenses
+        let expenseCurrencies = Set(expenses.map { $0.currency.rawValue })
+        if expenseCurrencies.count > 1 {
+            allCurrenciesConsistent = false
+            report.append("⚠️ Expenses have mixed currencies: \(expenseCurrencies.joined(separator: ", "))")
+        } else if expenseCurrencies.count == 1 {
+            let expenseCurrency = expenseCurrencies.first!
+            if expenseCurrency != selectedCurrency.rawValue {
+                allCurrenciesConsistent = false
+                report.append("⚠️ Expenses currency (\(expenseCurrency)) doesn't match selected currency (\(selectedCurrency.rawValue))")
+            } else {
+                report.append("✅ All \(expenses.count) expenses use \(expenseCurrency)")
+            }
+        }
+        
+        // Check subscriptions
+        let subscriptions = loadSubscriptionsForExport()
+        let subscriptionCurrencies = Set(subscriptions.map { $0.currency.rawValue })
+        if subscriptionCurrencies.count > 1 {
+            allCurrenciesConsistent = false
+            report.append("⚠️ Subscriptions have mixed currencies: \(subscriptionCurrencies.joined(separator: ", "))")
+        } else if subscriptionCurrencies.count == 1 {
+            let subscriptionCurrency = subscriptionCurrencies.first!
+            if subscriptionCurrency != selectedCurrency.rawValue {
+                allCurrenciesConsistent = false
+                report.append("⚠️ Subscriptions currency (\(subscriptionCurrency)) doesn't match selected currency (\(selectedCurrency.rawValue))")
+            } else {
+                report.append("✅ All \(subscriptions.count) subscriptions use \(subscriptionCurrency)")
+            }
+        }
+        
+        // Overall status
+        if allCurrenciesConsistent {
+            report.insert("✅ All currencies are consistent with selected currency: \(selectedCurrency.rawValue)", at: 0)
+        } else {
+            report.insert("❌ Currency inconsistency detected!", at: 0)
+        }
+        
+        return (allCurrenciesConsistent, report.joined(separator: "\n"))
     }
     
     // Clear all data from the app
@@ -1086,5 +1212,58 @@ class ExpenseViewModel: ObservableObject {
         }
         
         return true
+    }
+    
+    func loadSummaryPreferences() {
+        if let data = UserDefaults.standard.data(forKey: summaryPreferencesKey),
+           let categories = try? JSONDecoder().decode([String].self, from: data) {
+            preferredSummaryCategories = categories.compactMap { Expense.Category(rawValue: $0) }
+        } else {
+            // Set default categories if none are saved
+            preferredSummaryCategories = getDefaultSummaryCategories()
+            saveSummaryPreferences()
+        }
+    }
+    
+    func saveSummaryPreferences() {
+        let categoryStrings = preferredSummaryCategories.map { $0.rawValue }
+        if let data = try? JSONEncoder().encode(categoryStrings) {
+            UserDefaults.standard.set(data, forKey: summaryPreferencesKey)
+        }
+    }
+    
+    func updateSummaryCategories(_ categories: [Expense.Category]) {
+        preferredSummaryCategories = categories
+        saveSummaryPreferences()
+    }
+    
+    func getDefaultSummaryCategories() -> [Expense.Category] {
+        return [.food, .shopping, .transportation, .entertainment]
+    }
+    
+    func getSummaryCardsData() -> [(category: Expense.Category?, title: String, amount: Double, icon: String, color: Color)] {
+        var cardsData: [(category: Expense.Category?, title: String, amount: Double, icon: String, color: Color)] = []
+        
+        // Always include total expenses as first card
+        cardsData.append((
+            category: nil,
+            title: "Total Expenses",
+            amount: totalExpenses(),
+            icon: "creditcard.fill",
+            color: .appPrimary
+        ))
+        
+        // Add user-selected categories (limit to 3 more to keep 4 total)
+        for category in preferredSummaryCategories.prefix(3) {
+            cardsData.append((
+                category: category,
+                title: category.displayName,
+                amount: totalExpenses(for: category),
+                icon: category.icon,
+                color: Color.forCategory(category.color)
+            ))
+        }
+        
+        return cardsData
     }
 } 

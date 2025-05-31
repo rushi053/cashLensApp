@@ -218,6 +218,22 @@ struct Expense: Identifiable, Codable {
         var color: String {
             return Category.colors[self] ?? "appPrimary"
         }
+        
+        var displayName: String {
+            switch self {
+            case .groceries: return "Groceries"
+            case .food: return "Food & Drinks"
+            case .transportation: return "Transportation"
+            case .entertainment: return "Entertainment"
+            case .shopping: return "Shopping"
+            case .utilities: return "Utilities"
+            case .health: return "Health"
+            case .education: return "Education"
+            case .travel: return "Travel"
+            case .custom: return "Custom"
+            case .other: return "Other"
+            }
+        }
     }
 }
 

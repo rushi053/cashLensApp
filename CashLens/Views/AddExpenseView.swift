@@ -1,7 +1,30 @@
 import SwiftUI
 
+// MARK: - Draft Data Model
+
+private struct ExpenseDraft: Codable {
+    let title: String
+    let amount: String
+    let date: Date
+    let selectedCategory: Expense.Category
+    let selectedCustomCategoryId: UUID?
+    let notes: String
+    let timestamp: Date
+    
+    init(title: String, amount: String, date: Date, selectedCategory: Expense.Category, selectedCustomCategoryId: UUID?, notes: String) {
+        self.title = title
+        self.amount = amount
+        self.date = date
+        self.selectedCategory = selectedCategory
+        self.selectedCustomCategoryId = selectedCustomCategoryId
+        self.notes = notes
+        self.timestamp = Date()
+    }
+}
+
 struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     
@@ -27,6 +50,10 @@ struct AddExpenseView: View {
     var onSave: ((String, Double, Date, Expense.Category, UUID?, String?) -> Void)?
     var expenseId: UUID?
     @State private var showingDeleteConfirmation = false
+    @State private var showingDraftRestored = false
+    
+    // Draft state key
+    private let draftKey = "expense_draft"
     
     // Date formatter
     private let dateFormatter: DateFormatter = {
@@ -41,13 +68,17 @@ struct AddExpenseView: View {
         self.isEditing = false
         self.onSave = nil
         
+        // Try to restore draft state for new expenses
+        let draftData = UserDefaults.standard.data(forKey: "expense_draft")
+        let draft = draftData.flatMap { try? JSONDecoder().decode(ExpenseDraft.self, from: $0) }
+        
         // Initialize state
-        _title = State(initialValue: "")
-        _amount = State(initialValue: "")
-        _date = State(initialValue: Date())
-        _selectedCategory = State(initialValue: .food)
-        _selectedCustomCategoryId = State(initialValue: nil)
-        _notes = State(initialValue: "")
+        _title = State(initialValue: draft?.title ?? "")
+        _amount = State(initialValue: draft?.amount ?? "")
+        _date = State(initialValue: draft?.date ?? Date())
+        _selectedCategory = State(initialValue: draft?.selectedCategory ?? .food)
+        _selectedCustomCategoryId = State(initialValue: draft?.selectedCustomCategoryId)
+        _notes = State(initialValue: draft?.notes ?? "")
         _showingKeyboard = State(initialValue: false)
         _showingManageCategories = State(initialValue: false)
         _showingDatePicker = State(initialValue: false)
@@ -55,6 +86,7 @@ struct AddExpenseView: View {
         _showForm = State(initialValue: false)
         _animateButton = State(initialValue: false)
         _isSaving = State(initialValue: false)
+        _showingDraftRestored = State(initialValue: draft != nil && (!draft!.title.isEmpty || !draft!.amount.isEmpty || !draft!.notes.isEmpty))
     }
     
     // Initialize for editing existing expense
@@ -94,50 +126,92 @@ struct AddExpenseView: View {
     
     var body: some View {
         ZStack {
-            // Background
-            Color.systemBackground.edgesIgnoringSafeArea(.all)
+            // Background - modernized
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 20))
-                            .foregroundColor(.primary)
-                    }
-                    .padding()
-                    
-                    Spacer()
-                    
-                    Text(isEditing ? "Edit Expense" : "Add Expense")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                    
-                    Spacer()
-                    
-                    // Delete button (only shown in edit mode)
-                    if isEditing {
+                // Header - modernized
+                VStack(spacing: 16) {
+                    // Navigation bar
+                    HStack {
                         Button(action: {
-                            showingDeleteConfirmation = true
+                            // Clear draft if it's a new expense being dismissed
+                            if !isEditing {
+                                clearDraft()
+                            }
+                            dismiss()
                         }) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 20))
-                                .foregroundColor(.red)
+                            Image(systemName: "xmark")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.systemGray6))
+                                .clipShape(Circle())
                         }
-                        .padding()
-                    } else {
-                        // Empty view for balance when not in edit mode
-                        Color.clear
-                            .frame(width: 20, height: 20)
-                            .padding()
+                        
+                        Spacer()
+                        
+                        // Delete button (only shown in edit mode)
+                        if isEditing {
+                            Button(action: {
+                                showingDeleteConfirmation = true
+                            }) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(.red)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.red.opacity(0.1))
+                                    .clipShape(Circle())
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 20)
+                    
+                    // Title
+                    VStack(spacing: 8) {
+                        Text(isEditing ? "Edit Expense" : "Add Expense")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                        
+                        Text(isEditing ? "Update your expense details" : "Track a new expense")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
                 }
-                
+                .padding(.bottom, 8)
+
                 // Form
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 30) {
+                    VStack(spacing: 28) {
+                        // Draft restored notification
+                        if showingDraftRestored && !isEditing {
+                            HStack {
+                                Image(systemName: "doc.text.fill")
+                                    .foregroundColor(.appPrimary)
+                                
+                                Text("Previous draft restored")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                Button("Dismiss") {
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        showingDraftRestored = false
+                                    }
+                                }
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.appPrimary)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Color.appPrimary.opacity(0.1))
+                            .cornerRadius(12)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+
                         // Amount field first
                         amountField
                         
@@ -153,7 +227,7 @@ struct AddExpenseView: View {
                         // Notes field last
                         notesField
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 24)
                     .padding(.top, 10)
                     .padding(.bottom, 40)
                     .onAppear {
@@ -164,7 +238,7 @@ struct AddExpenseView: View {
                     }
                 }
                 
-                // Save button
+                // Save button - modernized
                 saveButton
             }
         }
@@ -200,21 +274,62 @@ struct AddExpenseView: View {
                 secondaryButton: .cancel()
             )
         }
+        // Auto-save draft functionality for new expenses
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background && !isEditing {
+                saveDraft()
+            }
+        }
+        .onChange(of: title) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: amount) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: selectedCategory) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: selectedCustomCategoryId) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: notes) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: date) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
     }
     
     // MARK: - View Components
     
     private var titleField: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Title")
-                .font(.headline)
-                .foregroundColor(.primary)
+            HStack {
+                Text("Title")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                Spacer()
+            }
             
             TextField("Expense title", text: $title)
+                .font(.system(size: 17, weight: .medium))
+                .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .padding(.horizontal, 16)
-                .background(Color.secondarySystemBackground)
+                .background(Color(.secondarySystemBackground))
                 .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                 .onTapGesture {
                     showingKeyboard = true
                 }
@@ -225,58 +340,77 @@ struct AddExpenseView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Amount")
-                    .font(.headline)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
-                
                 Spacer()
-                
-                Text(viewModel.selectedCurrency.symbol)
-                    .font(.headline)
-                    .foregroundColor(.appPrimary)
             }
             
-            TextField("0.00", text: $amount)
-                .font(.system(size: 32, weight: .medium))
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.center)
-                .foregroundColor(Color(.systemGray))
-                .padding(.vertical, 16)
-                .background(Color.secondarySystemBackground)
-                .cornerRadius(16)
-                .onTapGesture {
-                    showingKeyboard = true
-                }
+            HStack(spacing: 16) {
+                Text(viewModel.selectedCurrency.symbol)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(.appPrimary)
+                
+                TextField("0.00", text: $amount)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .keyboardType(.decimalPad)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+            .onTapGesture {
+                showingKeyboard = true
+            }
         }
     }
     
     private var datePickerField: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Date")
-                .font(.headline)
-                .foregroundColor(.primary)
-            
             HStack {
-                Image(systemName: "calendar")
-                    .foregroundColor(.appPrimary)
-                    .padding(.leading, 8)
-                
-                Text(dateFormatter.string(from: date))
+                Text("Date")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
-                
                 Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-                    .padding(.trailing, 8)
             }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 8)
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(16)
-            .onTapGesture {
+            
+            Button(action: {
                 showingDatePicker = true
+            }) {
+                HStack(spacing: 16) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.appPrimary.opacity(0.15))
+                            .frame(width: 48, height: 48)
+                        
+                        Image(systemName: "calendar")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundColor(.appPrimary)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Selected Date")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
+                        
+                        Text(dateFormatter.string(from: date))
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.primary)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
+            .buttonStyle(PlainButtonStyle())
         }
         .sheet(isPresented: $showingDatePicker) {
             VStack {
@@ -288,19 +422,19 @@ struct AddExpenseView: View {
                 Button("Done") {
                     showingDatePicker = false
                 }
-                .font(.headline)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(.appPrimary)
                 .padding()
             }
-            .presentationBackground(Color.secondarySystemBackground)
+            .presentationBackground(Color(.systemGroupedBackground))
         }
     }
     
     private var categoryPickerField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Category")
-                    .font(.headline)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                 
                 Spacer()
@@ -317,6 +451,7 @@ struct AddExpenseView: View {
                             .foregroundColor(.appPrimary)
                     }
                 }
+                .font(.system(size: 15, weight: .semibold))
             }
             
             ScrollView(.horizontal, showsIndicators: false) {
@@ -332,48 +467,41 @@ struct AddExpenseView: View {
                     }
                 }
                 .padding(.vertical, 8)
+                .padding(.horizontal, 4)
             }
         }
-        .sheet(isPresented: $showingManageCategories, onDismiss: {
-            // Reload custom categories when returning from manage categories
-            categoryViewModel.loadCustomCategories()
-        }) {
+        .sheet(isPresented: $showingManageCategories) {
             ManageCategoriesView()
                 .environmentObject(categoryViewModel)
                 .environmentObject(viewModel)
-        }
-        .onAppear {
-            // Make sure we have the latest custom categories
-            categoryViewModel.loadCustomCategories()
         }
     }
     
     private var notesField: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Notes (Optional)")
-                .font(.headline)
-                .foregroundColor(.primary)
-            
-            ZStack(alignment: .topLeading) {
-                if notes.isEmpty {
-                    Text("Add details here...")
-                        .foregroundColor(.secondary)
-                        .padding(.top, 16)
-                        .padding(.leading, 16)
-                }
+            HStack {
+                Text("Notes")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
                 
-                TextEditor(text: $notes)
-                    .frame(height: 120)
-                    .padding(.top, 8)
-                    .padding(.horizontal, 8)
-                    .background(Color.clear)
-                    .scrollContentBackground(.hidden)
-                    .onTapGesture {
-                        showingKeyboard = true
-                    }
+                Text("(Optional)")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary)
+                
+                Spacer()
             }
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(16)
+            
+            TextField("Add details about this expense...", text: $notes, axis: .vertical)
+                .font(.system(size: 16, weight: .medium))
+                .lineLimit(3, reservesSpace: true)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                .onTapGesture {
+                    showingKeyboard = true
+                }
         }
     }
     
@@ -393,79 +521,81 @@ struct AddExpenseView: View {
     }
     
     private var saveButton: some View {
-        Button(action: {
-            guard let amountValue = viewModel.parseAmount(amount) else { return }
+        VStack(spacing: 0) {
+            // Gradient overlay to fade content
+            LinearGradient(
+                colors: [Color.clear, Color(.systemGroupedBackground)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 20)
             
-            // Start saving animation
-            isSaving = true
-            
-            if let onSave = onSave {
-                // Enhanced haptic feedback for edit operation
-                HapticManager.shared.mediumTap()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    HapticManager.shared.success()
-                }
+            // Save button
+            Button(action: {
+                guard let amountValue = viewModel.parseAmount(amount) else { return }
                 
-                onSave(
-                    title,
-                    amountValue,
-                    date,
-                    selectedCategory,
-                    selectedCategory == .custom ? selectedCustomCategoryId : nil,
-                    notes.isEmpty ? nil : notes
+                // Start saving animation
+                isSaving = true
+                
+                if let onSave = onSave {
+                    // Enhanced haptic feedback for edit operation
+                    HapticManager.shared.mediumTap()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        HapticManager.shared.success()
+                    }
+                    
+                    onSave(
+                        title,
+                        amountValue,
+                        date,
+                        selectedCategory,
+                        selectedCategory == .custom ? selectedCustomCategoryId : nil,
+                        notes.isEmpty ? nil : notes
+                    )
+                    
+                    // Slight delay to show success state before dismissing
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
+                } else {
+                    addExpense()
+                }
+            }) {
+                HStack {
+                    if isSaving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.9)
+                    } else {
+                        Text(isEditing ? "Update Expense" : "Add Expense")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                    }
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(
+                    LinearGradient(
+                        colors: isFormValid ? 
+                            [Color.appPrimary, Color.appPrimary.opacity(0.8)] : 
+                            [Color.gray, Color.gray.opacity(0.8)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
                 )
-                
-                // Slight delay to show success state before dismissing
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    dismiss()
-                }
-            } else {
-                addExpense()
+                .cornerRadius(16)
+                .shadow(
+                    color: isFormValid ? Color.appPrimary.opacity(0.4) : Color.gray.opacity(0.2),
+                    radius: 12,
+                    x: 0,
+                    y: 6
+                )
             }
-        }) {
-            if isSaving {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(30)
-                    .shadow(color: Color.appPrimary.opacity(0.3), radius: 4, x: 0, y: 2)
-            } else {
-                Text(isEditing ? "Update Expense" : "Add Expense")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(
-                        isFormValid ?
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ) :
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.gray.opacity(0.6), Color.gray.opacity(0.4)]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(30)
-                    .shadow(
-                        color: isFormValid ? Color.appPrimary.opacity(0.3) : Color.clear,
-                        radius: 4, x: 0, y: 2
-                    )
-            }
+            .disabled(!isFormValid || isSaving)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 40)
+            .background(Color(.systemGroupedBackground))
         }
-        .disabled(!isFormValid)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 20)
     }
     
     // MARK: - Helper Views
@@ -566,8 +696,52 @@ struct AddExpenseView: View {
         // Add to view model
         viewModel.addExpense(newExpense)
         
+        // Clear draft when expense is successfully added
+        clearDraft()
+        
         // Dismiss the view
         dismiss()
+    }
+    
+    // MARK: - Draft Management
+    
+    @State private var draftSaveTimer: Timer?
+    
+    private func saveDraftWithDelay() {
+        // Debounce the save operation to avoid excessive UserDefaults writes
+        draftSaveTimer?.invalidate()
+        draftSaveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+            saveDraft()
+        }
+    }
+    
+    private func saveDraft() {
+        // Only save draft if there's meaningful content and it's a new expense
+        guard !isEditing && (!title.isEmpty || !amount.isEmpty || !notes.isEmpty) else {
+            return
+        }
+        
+        let draft = ExpenseDraft(
+            title: title,
+            amount: amount,
+            date: date,
+            selectedCategory: selectedCategory,
+            selectedCustomCategoryId: selectedCustomCategoryId,
+            notes: notes
+        )
+        
+        if let encoded = try? JSONEncoder().encode(draft) {
+            UserDefaults.standard.set(encoded, forKey: draftKey)
+        }
+    }
+    
+    private func clearDraft() {
+        UserDefaults.standard.removeObject(forKey: draftKey)
+        draftSaveTimer?.invalidate()
+    }
+    
+    private func hasDraft() -> Bool {
+        return UserDefaults.standard.data(forKey: draftKey) != nil
     }
     
     // MARK: - Delete Expense

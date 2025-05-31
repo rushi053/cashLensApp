@@ -30,6 +30,8 @@ struct ImportDataView: View {
                             .font(.body)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal)
                     }
                     .padding(.top, 40)

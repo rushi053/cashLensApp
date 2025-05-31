@@ -14,6 +14,8 @@ struct ProfileView: View {
     @State private var showingExportSheet = false
     @State private var showingDonationSheet = false
     @State private var showingImportSheet = false
+    @State private var versionTapCount = 0
+    @State private var showingDebugSection = false
     
     // Get version and build from Info.plist
     private var versionString: String {
@@ -37,6 +39,11 @@ struct ProfileView: View {
                     
                     // Data Management Section
                     dataManagementSection
+                    
+                    // Debug Section (hidden by default)
+                    if showingDebugSection {
+                        debugSection
+                    }
                 }
                 .padding()
             }
@@ -328,7 +335,7 @@ struct ProfileView: View {
                 .fontWeight(.bold)
                 .padding(.bottom, 4)
             
-            // Version Info
+            // Version Info (tappable for debug mode)
             HStack {
                 Image(systemName: "info.circle.fill")
                     .font(.system(size: 22))
@@ -346,6 +353,10 @@ struct ProfileView: View {
             .padding()
             .background(Color.secondarySystemBackground)
             .cornerRadius(10)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                handleVersionTap()
+            }
             
             // About
             HStack {
@@ -421,7 +432,7 @@ struct ProfileView: View {
             HStack {
                 Image(systemName: "square.and.arrow.down.fill")
                     .font(.system(size: 22))
-                    .foregroundColor(.appSecondary)
+                    .foregroundColor(.appPrimary)
                     .frame(width: 30)
                 
                 Text("Import Data")
@@ -472,10 +483,85 @@ struct ProfileView: View {
         .cornerRadius(20)
     }
     
+    // MARK: - Debug Section (Hidden)
+    private var debugSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Debug Tools")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(.orange)
+                .padding(.bottom, 4)
+            
+            // Feedback Testing
+            VStack(spacing: 12) {
+                Text("Feedback System Testing")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                HStack(spacing: 12) {
+                    Button("Trigger Feedback") {
+                        hapticFeedback(style: .medium)
+                        FeedbackManager.shared.shouldShowFeedbackRequest = true
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button("Reset State") {
+                        hapticFeedback(style: .light)
+                        FeedbackManager.shared.resetFeedbackState()
+                    }
+                    .buttonStyle(.bordered)
+                }
+                
+                // Show current state
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("State:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text("Requested: \(FeedbackManager.shared.hasRequestedFeedback ? "Yes" : "No")")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    Text("Count: \(UserDefaults.standard.integer(forKey: "successfulActionsCount"))/3")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(8)
+                .background(Color.tertiarySystemBackground)
+                .cornerRadius(6)
+            }
+            .padding()
+            .background(Color.secondarySystemBackground)
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.orange.opacity(0.5), lineWidth: 1)
+            )
+        }
+        .padding()
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(20)
+        .transition(.scale.combined(with: .opacity))
+    }
+    
     // MARK: - Haptic Feedback
     private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {
         let generator = UIImpactFeedbackGenerator(style: style)
         generator.impactOccurred()
+    }
+    
+    private func handleVersionTap() {
+        versionTapCount += 1
+        hapticFeedback(style: .light)
+        
+        if versionTapCount >= 7 {
+            withAnimation(.spring()) {
+                showingDebugSection = true
+            }
+            hapticFeedback(style: .heavy)
+            versionTapCount = 0 // Reset counter
+        }
     }
 }
 

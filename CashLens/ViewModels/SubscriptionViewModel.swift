@@ -8,6 +8,33 @@ import UserNotifications
 class SubscriptionViewModel: ObservableObject {
     @Published var subscriptions: [Subscription] = []
     @Published var dueSubscriptions: [Subscription] = []
+    @Published var filteredSubscriptions: [Subscription] = []
+    @Published var activeFilter: SubscriptionFilter = .all
+    
+    enum SubscriptionFilter: CaseIterable {
+        case all
+        case dueSoon
+        case active
+        case paused
+        
+        var title: String {
+            switch self {
+            case .all: return "All Subscriptions"
+            case .dueSoon: return "Due Soon"
+            case .active: return "Active"
+            case .paused: return "Paused"
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .all: return "list.bullet"
+            case .dueSoon: return "clock.fill"
+            case .active: return "checkmark.circle.fill"
+            case .paused: return "pause.circle.fill"
+            }
+        }
+    }
     
     private var cancellables = Set<AnyCancellable>()
     private let viewContext: NSManagedObjectContext
@@ -19,6 +46,8 @@ class SubscriptionViewModel: ObservableObject {
         
         loadSubscriptions()
         setupDueSubscriptionsFiltering()
+        setupSubscriptionFiltering()
+        setupCurrencyUpdateListener()
     }
     
     // MARK: - Core Data Operations
@@ -49,6 +78,9 @@ class SubscriptionViewModel: ObservableObject {
         saveContext()
         loadSubscriptions()
         scheduleNotificationForSubscription(subscription)
+        
+        // Track successful action for feedback request
+        FeedbackManager.shared.incrementSuccessfulAction()
     }
     
     func updateSubscription(_ subscription: Subscription) async {
@@ -290,5 +322,62 @@ class SubscriptionViewModel: ObservableObject {
         await updateSubscription(updatedSubscription)
         
         print("Marked subscription as paid: \(subscription.name) - Next due: \(updatedSubscription.formattedNextDueDate)")
+    }
+    
+    // Setup listener for currency updates
+    private func setupCurrencyUpdateListener() {
+        NotificationCenter.default
+            .publisher(for: .subscriptionCurrencyUpdated)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                if let userInfo = notification.userInfo,
+                   let updateCount = userInfo["updateCount"] as? Int,
+                   let newCurrency = userInfo["newCurrency"] as? String {
+                    print("🔄 Currency update: \(updateCount) subscription(s) updated to \(newCurrency)")
+                } else {
+                    print("🔄 Received subscription currency update notification")
+                }
+                self?.loadSubscriptions()
+            }
+            .store(in: &cancellables)
+    }
+    
+    // MARK: - Filtering
+    
+    func setFilter(_ filter: SubscriptionFilter) {
+        activeFilter = filter
+        applyCurrentFilter()
+    }
+    
+    private func setupSubscriptionFiltering() {
+        // Set up filtering that responds to changes in subscriptions or active filter
+        Publishers.CombineLatest($subscriptions, $activeFilter)
+            .map { [weak self] subscriptions, filter in
+                self?.filterSubscriptions(subscriptions, by: filter) ?? []
+            }
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.filteredSubscriptions, on: self)
+            .store(in: &cancellables)
+    }
+    
+    private func filterSubscriptions(_ subscriptions: [Subscription], by filter: SubscriptionFilter) -> [Subscription] {
+        switch filter {
+        case .all:
+            return subscriptions
+        case .dueSoon:
+            return subscriptions.filter { $0.isActive && $0.daysUntilNext <= 7 }
+        case .active:
+            return subscriptions.filter { $0.isActive }
+        case .paused:
+            return subscriptions.filter { !$0.isActive }
+        }
+    }
+    
+    private func applyCurrentFilter() {
+        filteredSubscriptions = filterSubscriptions(subscriptions, by: activeFilter)
+    }
+    
+    func clearFilter() {
+        activeFilter = .all
     }
 } 

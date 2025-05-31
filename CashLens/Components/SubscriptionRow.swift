@@ -5,6 +5,7 @@ struct SubscriptionRow: View {
     let onToggle: () -> Void
     let onEdit: () -> Void
     let onMarkPaid: (() -> Void)?
+    let onDelete: (() -> Void)?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -185,7 +186,8 @@ struct SubscriptionRow: View {
             }
             
             Button(role: .destructive, action: {
-                // This would need to be handled by parent view
+                HapticManager.shared.impact(style: .medium)
+                onDelete?()
             }) {
                 Label("Delete", systemImage: "trash")
             }
@@ -200,7 +202,8 @@ struct SubscriptionRow_Previews: PreviewProvider {
                 subscription: Subscription.sampleData[0],
                 onToggle: {},
                 onEdit: {},
-                onMarkPaid: nil
+                onMarkPaid: nil,
+                onDelete: nil
             )
             
             SubscriptionRow(
@@ -211,7 +214,8 @@ struct SubscriptionRow_Previews: PreviewProvider {
                 }(),
                 onToggle: {},
                 onEdit: {},
-                onMarkPaid: nil
+                onMarkPaid: nil,
+                onDelete: nil
             )
             
             SubscriptionRow(
@@ -223,7 +227,8 @@ struct SubscriptionRow_Previews: PreviewProvider {
                 }(),
                 onToggle: {},
                 onEdit: {},
-                onMarkPaid: nil
+                onMarkPaid: nil,
+                onDelete: nil
             )
         }
         .padding(24)

@@ -9,6 +9,7 @@ struct HomeView: View {
     @State private var animateCards = false
     @State private var selectedExpense: Expense?
     @State private var showingEditSheet = false
+    @State private var showingCustomizeSummary = false
     
     private var isIPad: Bool {
         return UIDevice.current.userInterfaceIdiom == .pad
@@ -70,7 +71,15 @@ struct HomeView: View {
                     }
                 )
                 .environmentObject(categoryViewModel)
+            } else {
+                // Fallback view in case selectedExpense is nil
+                Text("Error loading expense")
+                    .foregroundColor(.secondary)
             }
+        }
+        .sheet(isPresented: $showingCustomizeSummary) {
+            SummaryCustomizationView()
+                .environmentObject(viewModel)
         }
     }
     
@@ -371,68 +380,48 @@ struct HomeView: View {
     // MARK: - Summary Cards View
     private var summaryCardsView: some View {
         VStack(spacing: 16) {
-            Text("Summary")
-                .font(.title3)
-                .fontWeight(.bold)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Text("Summary")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                
+                Spacer()
+                
+                Button(action: {
+                    HapticManager.shared.lightTap()
+                    showingCustomizeSummary = true
+                }) {
+                    HStack(spacing: 4) {
+                        Text("Customize")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.appPrimary)
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
             
             // Adaptive grid for different screen sizes
             AdaptiveGrid {
-                SummaryCard(
-                    title: "Total Expenses",
-                    amount: viewModel.totalExpenses(),
-                    icon: "creditcard.fill",
-                    color: .mauve,
-                    action: {
-                        HapticManager.shared.lightTap()
-                        // Show all expenses
-                        viewModel.selectedCategory = nil
-                    }
-                )
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1), value: animateCards)
-                
-                SummaryCard(
-                    title: "Food & Drinks",
-                    amount: viewModel.totalExpenses(for: .food),
-                    icon: "fork.knife",
-                    color: .champagnePink,
-                    action: {
-                        HapticManager.shared.lightTap()
-                        // Filter by food category
-                        viewModel.selectedCategory = .food
-                    }
-                )
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
-                
-                SummaryCard(
-                    title: "Shopping",
-                    amount: viewModel.totalExpenses(for: .shopping),
-                    icon: "bag.fill",
-                    color: .teaRose,
-                    action: {
-                        HapticManager.shared.lightTap()
-                        // Filter by shopping category
-                        viewModel.selectedCategory = .shopping
-                    }
-                )
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.3), value: animateCards)
-                
-                SummaryCard(
-                    title: "Transportation",
-                    amount: viewModel.totalExpenses(for: .transportation),
-                    icon: "car.fill",
-                    color: .nonPhotoBlue,
-                    action: {
-                        HapticManager.shared.lightTap()
-                        // Filter by transportation category
-                        viewModel.selectedCategory = .transportation
-                    }
-                )
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.4), value: animateCards)
+                ForEach(Array(viewModel.getSummaryCardsData().enumerated()), id: \.offset) { index, cardData in
+                    SummaryCard(
+                        title: cardData.title,
+                        amount: cardData.amount,
+                        icon: cardData.icon,
+                        color: cardData.color,
+                        action: {
+                            HapticManager.shared.lightTap()
+                            // Set category filter or clear for total
+                            viewModel.selectedCategory = cardData.category
+                            viewModel.selectedCustomCategoryId = nil
+                        }
+                    )
+                    .transition(.scale.combined(with: .opacity))
+                    .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index + 1)), value: animateCards)
+                }
             }
         }
     }
@@ -640,10 +629,12 @@ struct HomeView: View {
                             .transition(.slide)
                             .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index)), value: animateCards)
                             .onTapGesture {
-                                // First set the selected expense
+                                HapticManager.shared.impact(style: .light)
+                                // Set the selected expense immediately without delay
                                 selectedExpense = expense
-                                // No need to explicitly reload categories here - they're already loaded
-                                // Then show the sheet after a very slight delay
+                                // Load categories to ensure they're available
+                                categoryViewModel.loadCustomCategories()
+                                // Small delay only for sheet presentation to ensure data is ready
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                     showingEditSheet = true
                                 }
@@ -718,61 +709,22 @@ struct HomeView: View {
     private var summaryCardsContent: some View {
         // Adaptive grid for different screen sizes
         AdaptiveGrid {
-            SummaryCard(
-                title: "Total Expenses",
-                amount: viewModel.totalExpenses(),
-                icon: "creditcard.fill",
-                color: .mauve,
-                action: {
-                    HapticManager.shared.lightTap()
-                    // Show all expenses
-                    viewModel.selectedCategory = nil
-                }
-            )
-            .transition(.scale.combined(with: .opacity))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1), value: animateCards)
-            
-            SummaryCard(
-                title: "Food & Drinks",
-                amount: viewModel.totalExpenses(for: .food),
-                icon: "fork.knife",
-                color: .champagnePink,
-                action: {
-                    HapticManager.shared.lightTap()
-                    // Filter by food category
-                    viewModel.selectedCategory = .food
-                }
-            )
-            .transition(.scale.combined(with: .opacity))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
-            
-            SummaryCard(
-                title: "Shopping",
-                amount: viewModel.totalExpenses(for: .shopping),
-                icon: "bag.fill",
-                color: .teaRose,
-                action: {
-                    HapticManager.shared.lightTap()
-                    // Filter by shopping category
-                    viewModel.selectedCategory = .shopping
-                }
-            )
-            .transition(.scale.combined(with: .opacity))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.3), value: animateCards)
-            
-            SummaryCard(
-                title: "Transportation",
-                amount: viewModel.totalExpenses(for: .transportation),
-                icon: "car.fill",
-                color: .nonPhotoBlue,
-                action: {
-                    HapticManager.shared.lightTap()
-                    // Filter by transportation category
-                    viewModel.selectedCategory = .transportation
-                }
-            )
-            .transition(.scale.combined(with: .opacity))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.4), value: animateCards)
+            ForEach(Array(viewModel.getSummaryCardsData().enumerated()), id: \.offset) { index, cardData in
+                SummaryCard(
+                    title: cardData.title,
+                    amount: cardData.amount,
+                    icon: cardData.icon,
+                    color: cardData.color,
+                    action: {
+                        HapticManager.shared.lightTap()
+                        // Set category filter or clear for total
+                        viewModel.selectedCategory = cardData.category
+                        viewModel.selectedCustomCategoryId = nil
+                    }
+                )
+                .transition(.scale.combined(with: .opacity))
+                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index + 1)), value: animateCards)
+            }
         }
     }
     
@@ -803,9 +755,12 @@ struct HomeView: View {
                             .transition(.slide)
                             .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index)), value: animateCards)
                             .onTapGesture {
-                                // First set the selected expense
+                                HapticManager.shared.impact(style: .light)
+                                // Set the selected expense immediately without delay
                                 selectedExpense = expense
-                                // Then show the sheet after a very slight delay
+                                // Load categories to ensure they're available
+                                categoryViewModel.loadCustomCategories()
+                                // Small delay only for sheet presentation to ensure data is ready
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                                     showingEditSheet = true
                                 }

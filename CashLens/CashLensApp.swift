@@ -13,7 +13,6 @@ struct CashLensApp: App {
     @StateObject private var viewModel: ExpenseViewModel
     @StateObject private var categoryViewModel = CategoryViewModel()
     @Environment(\.scenePhase) private var scenePhase
-    @State private var forceUpdate = false
     @State private var showOnboarding = false
     @State private var showSplash = true
 
@@ -29,18 +28,17 @@ struct CashLensApp: App {
         WindowGroup {
             ZStack {
                 MainTabView(viewModel: viewModel)
-                    .id(forceUpdate ? 1 : 0) // Force view refresh when appearance changes
                     .environment(\.managedObjectContext, persistenceController.container.viewContext)
                     .environmentObject(categoryViewModel)
                     .preferredColorScheme(viewModel.appearanceMode.colorScheme)
                     .onReceive(NotificationCenter.default.publisher(for: .appearanceDidChange)) { _ in
-                        // Toggle the force update state to trigger a view refresh
-                        forceUpdate.toggle()
+                        // Note: Removed forceUpdate to prevent view recreation which dismisses sheets
+                        // The preferredColorScheme binding should handle appearance changes automatically
                     }
                     .onChange(of: scenePhase) { _, newPhase in
                         if newPhase == .active {
-                            // Refresh UI when app becomes active
-                            forceUpdate.toggle()
+                            // Only refresh data if needed, don't recreate the entire UI
+                            viewModel.refreshData()
                         }
                     }
                 

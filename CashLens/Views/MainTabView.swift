@@ -2,9 +2,11 @@ import SwiftUI
 
 struct MainTabView: View {
     @StateObject var viewModel: ExpenseViewModel
+    @StateObject private var feedbackManager = FeedbackManager.shared
     @State private var selectedTab: Tab = .home
     @State private var showingAddExpense = false
     @State private var showingCurrencyPicker = false
+    @State private var showingFeedbackRequest = false
     
     // Tab bar configuration
     private let tabBarHeight: CGFloat = 60
@@ -148,6 +150,16 @@ struct MainTabView: View {
                         }
                         )
                 }
+                
+                // Feedback Request Modal
+                if showingFeedbackRequest {
+                    FeedbackRequestView()
+                        .transition(.asymmetric(
+                            insertion: .scale.combined(with: .opacity),
+                            removal: .scale.combined(with: .opacity)
+                        ))
+                        .zIndex(100) // Ensure it appears above everything
+                }
             }
             .ignoresSafeArea(.all, edges: .bottom)
             .sheet(isPresented: $showingAddExpense) {
@@ -158,6 +170,9 @@ struct MainTabView: View {
             }
             .onAppear {
                 checkAndShowCurrencyPicker()
+            }
+            .onReceive(feedbackManager.$shouldShowFeedbackRequest) { shouldShow in
+                showingFeedbackRequest = shouldShow
             }
         }
     }

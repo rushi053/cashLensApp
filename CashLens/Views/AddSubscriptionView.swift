@@ -183,9 +183,9 @@ struct AddSubscriptionView: View {
                     .font(.system(size: 17, weight: .medium))
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
-                    .background(Color(.systemBackground))
+                    .background(Color(.secondarySystemBackground))
                     .cornerRadius(16)
-                    .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
             
             // Amount field
@@ -200,7 +200,7 @@ struct AddSubscriptionView: View {
                 HStack(spacing: 16) {
                     Text(expenseViewModel.currencySymbol)
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(.mauve)
+                        .foregroundColor(.appPrimary)
                     
                     TextField("0.00", text: $amount)
                         .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -208,9 +208,9 @@ struct AddSubscriptionView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .background(Color(.systemBackground))
+                .background(Color(.secondarySystemBackground))
                 .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
         }
     }
@@ -377,12 +377,12 @@ struct AddSubscriptionView: View {
                 HStack(spacing: 16) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.mauve.opacity(0.15))
+                            .fill(Color.appPrimary.opacity(0.15))
                             .frame(width: 48, height: 48)
                         
                         Image(systemName: "calendar")
                             .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.mauve)
+                            .foregroundColor(.appPrimary)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
@@ -403,9 +403,9 @@ struct AddSubscriptionView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .background(Color(.systemBackground))
+                .background(Color(.secondarySystemBackground))
                 .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
             .sheet(isPresented: $showingDatePicker) {
                 NavigationView {
@@ -479,9 +479,9 @@ struct AddSubscriptionView: View {
                 }
             }
             .padding(20)
-            .background(Color(.systemBackground))
+            .background(Color(.secondarySystemBackground))
             .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
         }
     }
     
@@ -504,9 +504,9 @@ struct AddSubscriptionView: View {
                 .lineLimit(3, reservesSpace: true)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .background(Color(.systemBackground))
+                .background(Color(.secondarySystemBackground))
                 .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
         }
     }
     
@@ -538,7 +538,7 @@ struct AddSubscriptionView: View {
                 .background(
                     LinearGradient(
                         colors: isFormValid ? 
-                            [Color.mauve, Color.mauve.opacity(0.8)] : 
+                            [Color.appPrimary, Color.appPrimary.opacity(0.8)] : 
                             [Color.gray, Color.gray.opacity(0.8)],
                         startPoint: .leading,
                         endPoint: .trailing
@@ -546,7 +546,7 @@ struct AddSubscriptionView: View {
                 )
                 .cornerRadius(16)
                 .shadow(
-                    color: isFormValid ? Color.mauve.opacity(0.4) : Color.gray.opacity(0.2),
+                    color: isFormValid ? Color.appPrimary.opacity(0.4) : Color.gray.opacity(0.2),
                     radius: 12,
                     x: 0,
                     y: 6
@@ -612,7 +612,9 @@ struct AddSubscriptionView: View {
     
     private func deleteSubscription() {
         guard let subscription = editingSubscription else { return }
+        HapticManager.shared.impact(style: .medium)
         subscriptionViewModel.deleteSubscription(subscription)
+        HapticManager.shared.success()
         dismiss()
     }
 }
@@ -630,7 +632,7 @@ struct ModernFrequencyButton: View {
                     Circle()
                         .fill(
                             isSelected ? 
-                                LinearGradient(colors: [Color.mauve, Color.mauve.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing) :
+                                LinearGradient(colors: [Color.appPrimary, Color.appPrimary.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing) :
                                 LinearGradient(colors: [Color(.systemGray6), Color(.systemGray5)], startPoint: .topLeading, endPoint: .bottomTrailing)
                         )
                         .frame(width: 48, height: 48)
@@ -642,7 +644,7 @@ struct ModernFrequencyButton: View {
                 
                 Text(frequency.rawValue)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(isSelected ? .mauve : .secondary)
+                    .foregroundColor(isSelected ? .appPrimary : .secondary)
             }
             .frame(width: 80)
         }
