@@ -37,6 +37,9 @@ struct ProfileView: View {
                     // App Info Section
                     appInfoSection
                     
+                    // Community Section
+                    communitySection
+                    
                     // Data Management Section
                     dataManagementSection
                     
@@ -389,6 +392,161 @@ struct ProfileView: View {
         .padding()
         .background(Color.secondarySystemBackground.opacity(0.5))
         .cornerRadius(20)
+    }
+    
+    // MARK: - Community Section
+    private var communitySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Community")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                
+                Text("Join our community for tips, feedback, and updates!")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.bottom, 4)
+            
+            // Social Media Buttons
+            VStack(spacing: 12) {
+                // Instagram
+                Button(action: {
+                    hapticFeedback(style: .light)
+                    openSocialMedia(.instagram)
+                }) {
+                    HStack {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.white)
+                            .frame(width: 30)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Instagram")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            
+                            Text("Daily tips & app updates")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .padding()
+                    .background(
+                        LinearGradient(
+                            colors: [Color.pink, Color.purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .cornerRadius(12)
+                }
+                .buttonStyle(ScaleButtonStyle())
+                
+                // X (Twitter)
+                Button(action: {
+                    hapticFeedback(style: .light)
+                    openSocialMedia(.twitter)
+                }) {
+                    HStack {
+                        Image(systemName: "bird.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.white)
+                            .frame(width: 30)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("X (Twitter)")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            
+                            Text("Quick updates & announcements")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .padding()
+                    .background(Color.black)
+                    .cornerRadius(12)
+                }
+                .buttonStyle(ScaleButtonStyle())
+                
+                // Reddit
+                Button(action: {
+                    hapticFeedback(style: .light)
+                    openSocialMedia(.reddit)
+                }) {
+                    HStack {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.white)
+                            .frame(width: 30)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Reddit")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            
+                            Text("Community discussions & support")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 16))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .padding()
+                    .background(
+                        LinearGradient(
+                            colors: [Color.orange, Color.red],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .cornerRadius(12)
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
+        }
+        .padding()
+        .background(Color.secondarySystemBackground.opacity(0.5))
+        .cornerRadius(20)
+    }
+    
+    // MARK: - Social Media Handling
+    enum SocialPlatform {
+        case instagram, twitter, reddit
+    }
+    
+    private func openSocialMedia(_ platform: SocialPlatform) {
+        let urlString: String
+        
+        switch platform {
+        case .instagram:
+            urlString = "https://instagram.com/cashlensapp"
+        case .twitter:
+            urlString = "https://x.com/cashlensapp"
+        case .reddit:
+            urlString = "https://www.reddit.com/r/cashlens/s/Z36oUPfZ3j"
+        }
+        
+        if let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
     }
     
     // MARK: - Data Management Section

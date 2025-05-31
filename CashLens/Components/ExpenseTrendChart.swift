@@ -184,96 +184,31 @@ struct ExpenseTrendChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if hasData {
-                // Summary indicators at the top - with adaptive sizing for iPad
-                HStack(spacing: isIPad ? 36 : 24) {
-                    // Total expenses indicator
-                    VStack(alignment: .leading) {
-                        Text("Total")
-                            .font(isIPad ? .subheadline : .caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text(formatCurrency(dataPoints.reduce(0, +)))
-                            .font(isIPad ? .headline : .subheadline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
-                    }
-                    
-                    // Average indicator
-                    VStack(alignment: .leading) {
-                        Text("Avg")
-                            .font(isIPad ? .subheadline : .caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text(formatCurrency(average))
-                            .font(isIPad ? .headline : .subheadline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
-                    }
-                    
-                    // Max indicator
-                    VStack(alignment: .leading) {
-                        Text("Max")
-                            .font(isIPad ? .subheadline : .caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text(formatCurrency(maxValue))
-                            .font(isIPad ? .headline : .subheadline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
-                    }
-                    
-                    Spacer()
-                    
-                    // Trend indicator - larger on iPad
-                    HStack(spacing: 6) {
-                        Image(systemName: trend.icon)
-                            .font(.system(size: isIPad ? 12 : 10, weight: .semibold))
-                            .foregroundColor(.white)
-                        
-                        Text(trend.description)
-                            .font(.system(size: isIPad ? 12 : 10, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .fixedSize()
-                    }
-                    .padding(.horizontal, isIPad ? 12 : 8)
-                    .padding(.vertical, isIPad ? 6 : 4)
-                    .background(trend.color)
-                    .cornerRadius(isIPad ? 8 : 6)
-                }
-                .padding(.horizontal, isIPad ? 16 : 8)
-                
                 // Chart
                 GeometryReader { geometry in
                     ZStack(alignment: .bottom) {
                         // Background grid
                         VStack(spacing: 0) {
-                            ForEach(0..<4) { i in
+                            ForEach(0..<3) { i in
                                 Divider()
                                     .background(Color.secondary.opacity(0.2))
                                 
-                                // Y-axis labels (right side)
+                                // Y-axis labels (only show 3 instead of 4 to reduce clutter)
                                 if maxValue > 0 {
                                     HStack {
-                                        // Add left-side labels for wider screens
-                                        if isIPad {
-                                            Text(formatCurrency(maxValue * Double(4 - i) / 4))
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.secondary.opacity(0.8))
-                                                .padding(.leading, 4)
-                                                .frame(width: 80, alignment: .leading)
-                                        }
-                                        
                                         Spacer()
                                         
-                                        Text(formatCurrency(maxValue * Double(4 - i) / 4))
-                                            .font(.system(size: isIPad ? 10 : 8))
-                                            .foregroundColor(.secondary.opacity(0.8))
+                                        Text(formatCurrency(maxValue * Double(3 - i) / 3))
+                                            .font(.system(size: isIPad ? 9 : 7))
+                                            .foregroundColor(.secondary.opacity(0.7))
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.8)
                                     }
+                                    .padding(.trailing, 4)
                                 }
                                 
                                 Spacer()
-                                    .frame(height: geometry.size.height / 4)
+                                    .frame(height: geometry.size.height / 3)
                             }
                             Divider()
                                 .background(Color.secondary.opacity(0.2))
@@ -360,19 +295,33 @@ struct ExpenseTrendChart: View {
                             let x = stepWidth * CGFloat(index)
                             let y = height - (CGFloat(point) / CGFloat(maxValue) * height)
                             
-                            // Limit tooltip density on iPad - show fewer tooltips
-                            let shouldShowTooltip = isIPad ? 
-                                // On iPad, only show every other significant point to avoid overlap
-                                (index % 2 == 0 || point == maxValue) : 
-                                // On iPhone, use the original logic
-                                true
+                            // Limit tooltip density to prevent overlap
+                            let shouldShowTooltip: Bool = {
+                                if isIPad {
+                                    // On iPad, show fewer tooltips - only max, min, and every 3rd significant point
+                                    return (point == maxValue || 
+                                           (point > 0 && index == dataPoints.count - 1) || 
+                                           index % 3 == 0) && point > average * 0.8
+                                } else {
+                                    // On iPhone, be even more restrictive
+                                    let dataPointCount = dataPoints.count
+                                    if dataPointCount <= 7 {
+                                        // For small datasets, show max and last non-zero
+                                        return point == maxValue || (point > 0 && index == dataPoints.count - 1)
+                                    } else {
+                                        // For larger datasets, only show max value and a few key points
+                                        return point == maxValue || 
+                                               (index == dataPoints.count - 1 && point > 0) ||
+                                               (index % (dataPointCount / 3) == 0 && point > average * 1.5)
+                                    }
+                                }
+                            }()
                             
-                            // Only show tooltip for points above average or max/min
+                            // Only show tooltip for significant points that meet spacing requirements
                             let isSignificant = maxValue > 0 && (
-                                point > average * 1.2 || 
-                                point == maxValue ||
+                                point == maxValue || 
                                 (point > 0 && index == dataPoints.count - 1) || // Last non-zero point
-                                (index > 0 && point > dataPoints[index-1] * 1.5) // Significant jump
+                                point > average * 1.5 // Only very high points
                             )
                             
                             ZStack {
