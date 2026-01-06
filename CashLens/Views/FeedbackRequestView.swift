@@ -10,7 +10,7 @@ struct FeedbackRequestView: View {
             Color.black.opacity(0.4)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    dismissModal()
+                    dismissModalPermanently()
                 }
             
             // Main modal content
@@ -114,7 +114,7 @@ struct FeedbackRequestView: View {
                     // Not now button
                     Button(action: {
                         HapticManager.shared.impact(style: .light)
-                        dismissModal()
+                        dismissModalPermanently()
                     }) {
                         Text("Not Now")
                             .font(.system(size: 15, weight: .medium))
@@ -146,8 +146,9 @@ struct FeedbackRequestView: View {
         }
     }
     
-    private func dismissModal() {
-        FeedbackManager.shared.shouldShowFeedbackRequest = false
+    private func dismissModalPermanently() {
+        // Mark feedback as requested so it never shows again
+        FeedbackManager.shared.markFeedbackRequested()
     }
     
     private func rateApp() {
@@ -170,8 +171,6 @@ struct FeedbackRequestView: View {
                 }
             }
         }
-        
-        dismissModal()
     }
     
     private func shareApp() {
@@ -193,8 +192,6 @@ struct FeedbackRequestView: View {
             activityController.popoverPresentationController?.sourceView = rootViewController.view
             rootViewController.present(activityController, animated: true)
         }
-        
-        dismissModal()
     }
 }
 
@@ -204,7 +201,9 @@ class FeedbackManager: ObservableObject {
     
     private let hasRequestedFeedbackKey = "hasRequestedFeedback"
     private let successfulActionsCountKey = "successfulActionsCount"
+    private let lastFeedbackAttemptKey = "lastFeedbackAttempt"
     private let feedbackTriggerThreshold = 3 // Show after 3 successful actions
+    private let minimumHoursBetweenAttempts: Double = 24 // Minimum 24 hours between attempts
     
     @Published var shouldShowFeedbackRequest = false
     
@@ -214,15 +213,47 @@ class FeedbackManager: ObservableObject {
         UserDefaults.standard.bool(forKey: hasRequestedFeedbackKey)
     }
     
+    private var lastFeedbackAttempt: Date? {
+        let timestamp = UserDefaults.standard.double(forKey: lastFeedbackAttemptKey)
+        return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
+    }
+    
+    private func setLastFeedbackAttempt() {
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastFeedbackAttemptKey)
+    }
+    
+    private var canShowFeedbackRequest: Bool {
+        // Check if we've already requested feedback
+        guard !hasRequestedFeedback else { return false }
+        
+        // Check if enough time has passed since last attempt
+        if let lastAttempt = lastFeedbackAttempt {
+            let hoursSinceLastAttempt = Date().timeIntervalSince(lastAttempt) / 3600
+            return hoursSinceLastAttempt >= minimumHoursBetweenAttempts
+        }
+        
+        return true
+    }
+    
     func markFeedbackRequested() {
         UserDefaults.standard.set(true, forKey: hasRequestedFeedbackKey)
         shouldShowFeedbackRequest = false
-        print("✅ Feedback request marked as completed")
+        setLastFeedbackAttempt()
+        print("✅ Feedback request marked as completed - will never show again")
     }
     
     func incrementSuccessfulAction() {
         // Don't track if already requested feedback
-        guard !hasRequestedFeedback else { return }
+        guard hasRequestedFeedback == false else { 
+            print("🚫 Feedback already requested - not tracking actions")
+            return 
+        }
+        
+        // Don't trigger if not enough time has passed
+        guard canShowFeedbackRequest else {
+            print("🚫 Too soon since last feedback attempt - not showing")
+            return
+        }
         
         let currentCount = UserDefaults.standard.integer(forKey: successfulActionsCountKey)
         let newCount = currentCount + 1
@@ -232,6 +263,7 @@ class FeedbackManager: ObservableObject {
         
         // Check if we should show feedback request
         if newCount >= feedbackTriggerThreshold {
+            setLastFeedbackAttempt() // Record this attempt
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.shouldShowFeedbackRequest = true
                 print("🎉 Triggering feedback request after \(newCount) successful actions")
@@ -239,10 +271,11 @@ class FeedbackManager: ObservableObject {
         }
     }
     
-    // For testing purposes
+    // For testing purposes only
     func resetFeedbackState() {
         UserDefaults.standard.removeObject(forKey: hasRequestedFeedbackKey)
         UserDefaults.standard.removeObject(forKey: successfulActionsCountKey)
+        UserDefaults.standard.removeObject(forKey: lastFeedbackAttemptKey)
         shouldShowFeedbackRequest = false
         print("🔄 Feedback state reset for testing")
     }

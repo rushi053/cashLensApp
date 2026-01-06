@@ -134,10 +134,10 @@ struct SubscriptionsView: View {
                             subscriptionViewModel.setFilter(.dueSoon)
                         }
                     }) {
-                        StatMiniCard(
-                            title: "Due Soon",
-                            value: "\(subscriptionViewModel.upcomingSubscriptions.count)",
-                            icon: "clock.fill",
+                    StatMiniCard(
+                        title: "Due Soon",
+                        value: "\(subscriptionViewModel.upcomingSubscriptions.count)",
+                        icon: "clock.fill",
                             color: subscriptionViewModel.upcomingSubscriptions.count > 0 ? .orange : .green,
                             isSelected: subscriptionViewModel.activeFilter == .dueSoon
                         )
@@ -153,13 +153,13 @@ struct SubscriptionsView: View {
                             subscriptionViewModel.setFilter(.active)
                         }
                     }) {
-                        StatMiniCard(
-                            title: "Active",
-                            value: "\(subscriptionViewModel.activeSubscriptionsCount)",
-                            icon: "checkmark.circle.fill",
+                    StatMiniCard(
+                        title: "Active",
+                        value: "\(subscriptionViewModel.activeSubscriptionsCount)",
+                        icon: "checkmark.circle.fill",
                             color: .green,
                             isSelected: subscriptionViewModel.activeFilter == .active
-                        )
+                    )
                     }
                     .buttonStyle(PlainButtonStyle())
                     
@@ -168,13 +168,13 @@ struct SubscriptionsView: View {
                         HapticManager.shared.impact(style: .light)
                         subscriptionViewModel.clearFilter()
                     }) {
-                        StatMiniCard(
-                            title: "Total",
-                            value: "\(subscriptionViewModel.subscriptions.count)",
-                            icon: "creditcard.and.123",
+                    StatMiniCard(
+                        title: "Total",
+                        value: "\(subscriptionViewModel.subscriptions.count)",
+                        icon: "creditcard.and.123",
                             color: .blue,
                             isSelected: subscriptionViewModel.activeFilter == .all
-                        )
+                    )
                     }
                     .buttonStyle(PlainButtonStyle())
                 }

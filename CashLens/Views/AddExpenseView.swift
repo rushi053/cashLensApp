@@ -134,38 +134,38 @@ struct AddExpenseView: View {
                 // Header - modernized
                 VStack(spacing: 16) {
                     // Navigation bar
-                    HStack {
-                        Button(action: {
+                HStack {
+                    Button(action: {
                             // Clear draft if it's a new expense being dismissed
                             if !isEditing {
                                 clearDraft()
                             }
-                            dismiss()
-                        }) {
-                            Image(systemName: "xmark")
+                        dismiss()
+                    }) {
+                        Image(systemName: "xmark")
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(.secondary)
                                 .frame(width: 32, height: 32)
                                 .background(Color(.systemGray6))
                                 .clipShape(Circle())
                         }
-                        
-                        Spacer()
-                        
-                        // Delete button (only shown in edit mode)
-                        if isEditing {
-                            Button(action: {
-                                showingDeleteConfirmation = true
-                            }) {
-                                Image(systemName: "trash")
+                    
+                    Spacer()
+                    
+                    // Delete button (only shown in edit mode)
+                    if isEditing {
+                        Button(action: {
+                            showingDeleteConfirmation = true
+                        }) {
+                            Image(systemName: "trash")
                                     .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(.red)
+                                .foregroundColor(.red)
                                     .frame(width: 32, height: 32)
                                     .background(Color.red.opacity(0.1))
                                     .clipShape(Circle())
                             }
                         }
-                    }
+                        }
                     .padding(.horizontal, 24)
                     .padding(.top, 20)
                     
@@ -181,7 +181,7 @@ struct AddExpenseView: View {
                     }
                 }
                 .padding(.bottom, 8)
-
+                
                 // Form
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 28) {
@@ -317,9 +317,9 @@ struct AddExpenseView: View {
     private var titleField: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Title")
+            Text("Title")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
+                .foregroundColor(.primary)
                 Spacer()
             }
             
@@ -344,33 +344,33 @@ struct AddExpenseView: View {
                     .foregroundColor(.primary)
                 Spacer()
             }
-            
+                
             HStack(spacing: 16) {
                 Text(viewModel.selectedCurrency.symbol)
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundColor(.appPrimary)
-                
-                TextField("0.00", text: $amount)
+            
+            TextField("0.00", text: $amount)
                     .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .keyboardType(.decimalPad)
+                .keyboardType(.decimalPad)
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+                .padding(.vertical, 16)
             .background(Color(.secondarySystemBackground))
-            .cornerRadius(16)
+                .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-            .onTapGesture {
-                showingKeyboard = true
-            }
+                .onTapGesture {
+                    showingKeyboard = true
+                }
         }
     }
     
     private var datePickerField: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Date")
+            Text("Date")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
+                .foregroundColor(.primary)
                 Spacer()
             }
             
@@ -383,31 +383,31 @@ struct AddExpenseView: View {
                             .fill(Color.appPrimary.opacity(0.15))
                             .frame(width: 48, height: 48)
                         
-                        Image(systemName: "calendar")
+                Image(systemName: "calendar")
                             .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.appPrimary)
+                    .foregroundColor(.appPrimary)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Selected Date")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.secondary)
-                        
-                        Text(dateFormatter.string(from: date))
+                
+                Text(dateFormatter.string(from: date))
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.primary)
+                    .foregroundColor(.primary)
                     }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "chevron.right")
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.secondary)
-                }
+                    .foregroundColor(.secondary)
+            }
                 .padding(.horizontal, 20)
-                .padding(.vertical, 16)
+            .padding(.vertical, 16)
                 .background(Color(.secondarySystemBackground))
-                .cornerRadius(16)
+            .cornerRadius(16)
                 .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
             .buttonStyle(PlainButtonStyle())
@@ -482,15 +482,15 @@ struct AddExpenseView: View {
             HStack {
                 Text("Notes")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                
+                .foregroundColor(.primary)
+            
                 Text("(Optional)")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.secondary)
+                        .foregroundColor(.secondary)
                 
                 Spacer()
-            }
-            
+                }
+                
             TextField("Add details about this expense...", text: $notes, axis: .vertical)
                 .font(.system(size: 16, weight: .medium))
                 .lineLimit(3, reservesSpace: true)
@@ -499,9 +499,9 @@ struct AddExpenseView: View {
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(16)
                 .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-                .onTapGesture {
-                    showingKeyboard = true
-                }
+                    .onTapGesture {
+                        showingKeyboard = true
+                    }
         }
     }
     
@@ -531,66 +531,66 @@ struct AddExpenseView: View {
             .frame(height: 20)
             
             // Save button
-            Button(action: {
-                guard let amountValue = viewModel.parseAmount(amount) else { return }
-                
-                // Start saving animation
-                isSaving = true
-                
-                if let onSave = onSave {
-                    // Enhanced haptic feedback for edit operation
-                    HapticManager.shared.mediumTap()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        HapticManager.shared.success()
-                    }
-                    
-                    onSave(
-                        title,
-                        amountValue,
-                        date,
-                        selectedCategory,
-                        selectedCategory == .custom ? selectedCustomCategoryId : nil,
-                        notes.isEmpty ? nil : notes
-                    )
-                    
-                    // Slight delay to show success state before dismissing
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        dismiss()
-                    }
-                } else {
-                    addExpense()
+        Button(action: {
+            guard let amountValue = viewModel.parseAmount(amount) else { return }
+            
+            // Start saving animation
+            isSaving = true
+            
+            if let onSave = onSave {
+                // Enhanced haptic feedback for edit operation
+                HapticManager.shared.mediumTap()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    HapticManager.shared.success()
                 }
-            }) {
+                
+                onSave(
+                    title,
+                    amountValue,
+                    date,
+                    selectedCategory,
+                    selectedCategory == .custom ? selectedCustomCategoryId : nil,
+                    notes.isEmpty ? nil : notes
+                )
+                
+                // Slight delay to show success state before dismissing
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    dismiss()
+                }
+            } else {
+                addExpense()
+            }
+        }) {
                 HStack {
-                    if isSaving {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            if isSaving {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(0.9)
-                    } else {
-                        Text(isEditing ? "Update Expense" : "Add Expense")
+            } else {
+                Text(isEditing ? "Update Expense" : "Add Expense")
                             .font(.system(size: 18, weight: .bold, design: .rounded))
                     }
                 }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(
-                    LinearGradient(
+                    .background(
+                        LinearGradient(
                         colors: isFormValid ? 
                             [Color.appPrimary, Color.appPrimary.opacity(0.8)] : 
                             [Color.gray, Color.gray.opacity(0.8)],
-                        startPoint: .leading,
-                        endPoint: .trailing
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
                     )
-                )
                 .cornerRadius(16)
-                .shadow(
+                    .shadow(
                     color: isFormValid ? Color.appPrimary.opacity(0.4) : Color.gray.opacity(0.2),
                     radius: 12,
                     x: 0,
                     y: 6
-                )
-            }
+                    )
+        }
             .disabled(!isFormValid || isSaving)
             .padding(.horizontal, 24)
             .padding(.bottom, 40)

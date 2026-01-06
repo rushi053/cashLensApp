@@ -43,23 +43,54 @@ struct AboutView: View {
                             .font(.title2)
                             .fontWeight(.bold)
                         
-                        Text("CashLens is a personal finance app designed to help you track your expenses effectively.")
+                        Text("CashLens is a comprehensive personal finance app designed to help you track expenses, manage subscriptions, and gain insights into your spending habits with beautiful visualizations.")
                             .font(.body)
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.leading)
                         
-                        Text("With CashLens, you can:")
+                        Text("Key Features:")
                             .font(.headline)
                             .padding(.top, 8)
                         
-                        VStack(alignment: .leading, spacing: 8) {
-                            featureRow(icon: "plus.circle.fill", text: "Add and categorize expenses")
-                            featureRow(icon: "chart.pie.fill", text: "View spending statistics and trends")
-                            featureRow(icon: "dollarsign.circle.fill", text: "Support for multiple currencies")
-                            featureRow(icon: "calendar", text: "Filter expenses by time period")
-                            featureRow(icon: "square.and.arrow.up", text: "Export your financial data")
+                        VStack(alignment: .leading, spacing: 10) {
+                            featureRow(icon: "plus.circle.fill", text: "Track expenses with smart categorization")
+                            featureRow(icon: "arrow.clockwise.circle.fill", text: "Manage recurring subscriptions with notifications")
+                            featureRow(icon: "chart.pie.fill", text: "Beautiful spending statistics and insights")
+                            featureRow(icon: "tag.fill", text: "Create custom categories with personalized icons")
+                            featureRow(icon: "dollarsign.circle.fill", text: "Support for 150+ global currencies")
+                            featureRow(icon: "calendar", text: "Filter data by flexible time periods")
+                            featureRow(icon: "square.and.arrow.up", text: "Export data in CSV and JSON formats")
+                            featureRow(icon: "square.and.arrow.down", text: "Import data to restore complete financial history")
+                            featureRow(icon: "paintbrush.fill", text: "Customizable appearance with dark/light modes")
+                            featureRow(icon: "bell.fill", text: "Smart notifications for subscription renewals")
+                            featureRow(icon: "shield.fill", text: "Local data storage - your privacy protected")
                         }
                         .padding(.leading, 8)
+                    }
+                    .padding()
+                    .background(Color.secondarySystemBackground)
+                    .cornerRadius(16)
+                    
+                    // What's New Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("What's New in v1.0.4")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        VStack(alignment: .leading, spacing: 10) {
+                            featureRow(icon: "arrow.clockwise.circle.fill", text: "Subscription Management - Track recurring payments")
+                            featureRow(icon: "square.and.arrow.down.fill", text: "Data Import - Restore from exported files")
+                            featureRow(icon: "tag.circle.fill", text: "Custom Categories - Create personalized expense types")
+                            featureRow(icon: "dollarsign.arrow.circlepath", text: "Currency Sync - Automatic updates across all data")
+                            featureRow(icon: "tray.fill", text: "Draft Persistence - Never lose work when switching apps")
+                            featureRow(icon: "checkmark.circle.fill", text: "Enhanced Stability - Improved performance and bug fixes")
+                        }
+                        .padding(.leading, 8)
+                        
+                        Text("All new features are designed to give you complete control over your financial tracking while maintaining the app's signature simplicity.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 8)
                     }
                     .padding()
                     .background(Color.secondarySystemBackground)
@@ -111,7 +142,7 @@ struct AboutView: View {
                             .font(.title2)
                             .fontWeight(.bold)
                         
-                        Text("CashLens was developed by Rushiraj Jadeja as a demonstration of SwiftUI capabilities for expense tracking applications.")
+                        Text("CashLens was developed by Rushiraj Jadeja with a focus on creating an intuitive, powerful, and privacy-first personal finance experience.")
                             .font(.body)
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.leading)
@@ -127,11 +158,11 @@ struct AboutView: View {
                     
                     // Privacy Policy
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Privacy")
+                        Text("Privacy & Security")
                             .font(.title2)
                             .fontWeight(.bold)
                         
-                        Text("CashLens respects your privacy. All your financial data is stored locally on your device and is not shared with any third parties.")
+                        Text("CashLens respects your privacy. All your financial data is stored locally on your device and is never shared with third parties. Your subscription data, custom categories, and expense history remain completely private and under your control.")
                             .font(.body)
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.leading)
