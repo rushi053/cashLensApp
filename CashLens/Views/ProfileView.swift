@@ -14,7 +14,6 @@ struct ProfileView: View {
     @State private var showingExportSheet = false
     @State private var showingDonationSheet = false
     @State private var showingImportSheet = false
-    @State private var showingAutomationSettings = false
     
     // Get version and build from Info.plist
     private var versionString: String {
@@ -240,31 +239,6 @@ struct ProfileView: View {
                 showingAppearancePicker.toggle()
             }
             
-            // Automation Settings
-            HStack {
-                Image(systemName: "gearshape.2.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.orange)
-                    .frame(width: 30)
-                
-                Text("Automation Settings")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .light)
-                showingAutomationSettings = true
-            }
-            
             // Donation Entry
             HStack {
                 Image(systemName: "heart.fill")
@@ -346,9 +320,6 @@ struct ProfileView: View {
             NavigationView {
                 DonationView()
             }
-        }
-        .sheet(isPresented: $showingAutomationSettings) {
-            AutomationSettingsView()
         }
     }
     

@@ -2,12 +2,10 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
-    @EnvironmentObject var automationManager: TransactionAutomationManager
     @StateObject private var categoryViewModel = CategoryViewModel()
     @State private var showingAddExpense = false
     @State private var showingProfile = false
     @State private var showingAllExpenses = false
-    @State private var showingAutomation = false
     @State private var animateCards = false
     @State private var selectedExpense: Expense?
     @State private var showingEditSheet = false
@@ -41,10 +39,6 @@ struct HomeView: View {
         .sheet(isPresented: $showingAllExpenses) {
             AllExpensesView()
                 .environmentObject(viewModel)
-        }
-        .sheet(isPresented: $showingAutomation) {
-            TransactionAutomationView(viewModel: viewModel)
-                .environmentObject(categoryViewModel)
         }
         .sheet(isPresented: $showingEditSheet, onDismiss: {
             // Reset selected expense when sheet is dismissed
@@ -95,13 +89,6 @@ struct HomeView: View {
             VStack(spacing: 24) {
                 // Header
                 headerView
-                
-                // Automation Banner (if pending transactions exist)
-                if !automationManager.pendingTransactions.isEmpty {
-                    automationBanner
-                        .opacity(animateCards ? 1 : 0)
-                        .offset(y: animateCards ? 0 : 20)
-                }
                 
                 if viewModel.expenses.isEmpty {
                     // Empty state
@@ -348,35 +335,6 @@ struct HomeView: View {
             }
             
             Spacer()
-            
-            // Pending Transactions Button (only show if there are pending transactions)
-            if !automationManager.pendingTransactions.isEmpty {
-                Button(action: {
-                    HapticManager.shared.lightTap()
-                    showingAutomation = true
-                }) {
-                    ZStack {
-                        Image(systemName: "clock.badge.exclamationmark.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(Color.orange)
-                            .shadow(color: Color.orange.opacity(0.3), radius: 4, x: 0, y: 2)
-                        
-                        // Badge for pending transactions count
-                        Text("\(automationManager.pendingTransactions.count)")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                            .frame(minWidth: 16, minHeight: 16)
-                            .background(Color.red)
-                            .clipShape(Circle())
-                            .offset(x: 12, y: -12)
-                    }
-                }
-                .opacity(animateCards ? 1 : 0)
-                .scaleEffect(animateCards ? 1 : 0.5)
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
-                .padding(.trailing, 8)
-            }
             
             // Theme Toggle Button
             Button(action: {
@@ -814,49 +772,7 @@ struct HomeView: View {
     }
     
     // MARK: - Automation Banner
-    private var automationBanner: some View {
-        Button(action: {
-            HapticManager.shared.lightTap()
-            showingAutomation = true
-        }) {
-            HStack {
-                Image(systemName: "bolt.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.orange)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Pending Transactions")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Text("\(automationManager.pendingTransactions.count) transaction\(automationManager.pendingTransactions.count == 1 ? "" : "s") awaiting review")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(viewModel.selectedCurrency.symbol + String(format: "%.2f", automationManager.totalPendingAmount))
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding()
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
+    // (Automation banner removed in core-only build)
     
     // MARK: - Haptic Feedback (Deprecated - Using HapticManager instead)
     private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {

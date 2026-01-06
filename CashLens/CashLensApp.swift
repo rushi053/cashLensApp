@@ -6,14 +6,12 @@
 //
 
 import SwiftUI
-import AppIntents
 
 @main
 struct CashLensApp: App {
     let persistenceController = PersistenceController.shared
     @StateObject private var viewModel: ExpenseViewModel
     @StateObject private var categoryViewModel = CategoryViewModel()
-    @StateObject private var automationManager = TransactionAutomationManager.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var showOnboarding = false
     @State private var showSplash = true
@@ -32,7 +30,6 @@ struct CashLensApp: App {
                 MainTabView(viewModel: viewModel)
                     .environment(\.managedObjectContext, persistenceController.container.viewContext)
                     .environmentObject(categoryViewModel)
-                    .environmentObject(automationManager)
                     .preferredColorScheme(viewModel.appearanceMode.colorScheme)
                     .onReceive(NotificationCenter.default.publisher(for: .appearanceDidChange)) { _ in
                         // Note: Removed forceUpdate to prevent view recreation which dismisses sheets
