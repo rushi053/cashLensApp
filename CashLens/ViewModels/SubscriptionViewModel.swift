@@ -5,7 +5,7 @@ import CoreData
 import UserNotifications
 
 @MainActor
-class SubscriptionViewModel: ObservableObject {
+class SubscriptionViewModel: NSObject, ObservableObject {
     @Published var subscriptions: [Subscription] = []
     @Published var dueSubscriptions: [Subscription] = []
     @Published var filteredSubscriptions: [Subscription] = []
@@ -39,12 +39,13 @@ class SubscriptionViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let viewContext: NSManagedObjectContext
     private weak var expenseViewModel: ExpenseViewModel?
+    private var fetchedResultsController: NSFetchedResultsController<SubscriptionEntity>?
     
     init(context: NSManagedObjectContext = PersistenceController.shared.container.viewContext, expenseViewModel: ExpenseViewModel? = nil) {
         self.viewContext = context
         self.expenseViewModel = expenseViewModel
-        
-        loadSubscriptions()
+        super.init()
+        setupFetchedResultsController()
         setupDueSubscriptionsFiltering()
         setupSubscriptionFiltering()
         setupCurrencyUpdateListener()
@@ -53,15 +54,9 @@ class SubscriptionViewModel: ObservableObject {
     // MARK: - Core Data Operations
     
     func loadSubscriptions() {
-        let fetchRequest: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
-        fetchRequest.sortDescriptors = [
-            NSSortDescriptor(keyPath: \SubscriptionEntity.isActive, ascending: false),
-            NSSortDescriptor(keyPath: \SubscriptionEntity.nextDueDate, ascending: true)
-        ]
-        
         do {
-            let entities = try viewContext.fetch(fetchRequest)
-            subscriptions = entities.map { $0.toSubscription() }
+            try fetchedResultsController?.performFetch()
+            updateFromFetchedResults()
         } catch {
             print("Error loading subscriptions: \(error.localizedDescription)")
             subscriptions = []
@@ -74,10 +69,11 @@ class SubscriptionViewModel: ObservableObject {
             await requestNotificationPermissionIfNeeded()
         }
         
-        _ = SubscriptionEntity.fromSubscription(subscription, context: viewContext)
-        saveContext()
-        loadSubscriptions()
-        scheduleNotificationForSubscription(subscription)
+        viewContext.performAndWait {
+            _ = SubscriptionEntity.fromSubscription(subscription, context: viewContext)
+            saveContext()
+        }
+        syncNotification(for: subscription)
         
         // Track successful action for feedback request
         FeedbackManager.shared.incrementSuccessfulAction()
@@ -97,34 +93,36 @@ class SubscriptionViewModel: ObservableObject {
         let fetchRequest: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id == %@", subscription.id as CVarArg)
         
-        do {
-            let results = try viewContext.fetch(fetchRequest)
-            if let entity = results.first {
-                entity.updateFromSubscription(subscription)
-                saveContext()
-                loadSubscriptions()
-                scheduleNotificationForSubscription(subscription)
+        viewContext.performAndWait {
+            do {
+                let results = try viewContext.fetch(fetchRequest)
+                if let entity = results.first {
+                    entity.updateFromSubscription(subscription)
+                    saveContext()
+                }
+            } catch {
+                print("Error updating subscription: \(error.localizedDescription)")
             }
-        } catch {
-            print("Error updating subscription: \(error.localizedDescription)")
         }
+        syncNotification(for: subscription)
     }
     
     func deleteSubscription(_ subscription: Subscription) {
         let fetchRequest: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id == %@", subscription.id as CVarArg)
         
-        do {
-            let results = try viewContext.fetch(fetchRequest)
-            for entity in results {
-                viewContext.delete(entity)
+        viewContext.performAndWait {
+            do {
+                let results = try viewContext.fetch(fetchRequest)
+                for entity in results {
+                    viewContext.delete(entity)
+                }
+                saveContext()
+            } catch {
+                print("Error deleting subscription: \(error.localizedDescription)")
             }
-            saveContext()
-            loadSubscriptions()
-            cancelNotificationForSubscription(subscription)
-        } catch {
-            print("Error deleting subscription: \(error.localizedDescription)")
         }
+        cancelNotificationForSubscription(subscription)
     }
     
     func toggleSubscriptionStatus(_ subscription: Subscription) async {
@@ -135,9 +133,85 @@ class SubscriptionViewModel: ObservableObject {
     
     private func saveContext() {
         do {
-            try viewContext.save()
+            if viewContext.hasChanges {
+                try viewContext.save()
+            }
         } catch {
             print("Error saving subscription context: \(error.localizedDescription)")
+        }
+    }
+    
+    // MARK: - Auto-sync via NSFetchedResultsController
+    
+    private func setupFetchedResultsController() {
+        let fetchRequest: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
+        fetchRequest.sortDescriptors = [
+            NSSortDescriptor(keyPath: \SubscriptionEntity.isActive, ascending: false),
+            NSSortDescriptor(keyPath: \SubscriptionEntity.nextDueDate, ascending: true)
+        ]
+        
+        let controller = NSFetchedResultsController(
+            fetchRequest: fetchRequest,
+            managedObjectContext: viewContext,
+            sectionNameKeyPath: nil,
+            cacheName: nil
+        )
+        controller.delegate = self
+        fetchedResultsController = controller
+        
+        do {
+            try controller.performFetch()
+            updateFromFetchedResults()
+        } catch {
+            print("Error setting up subscription fetched results controller: \(error.localizedDescription)")
+            subscriptions = []
+        }
+    }
+    
+    private func updateFromFetchedResults() {
+        let entities = fetchedResultsController?.fetchedObjects ?? []
+        
+        // Repair legacy/bad data: some older records may have a missing UUID id.
+        // Without a stable id, edits won't persist (update fetch can't find the entity),
+        // and notification identifiers become unstable.
+        var repairedMissingIDs = false
+        viewContext.performAndWait {
+            for entity in entities where entity.id == nil {
+                entity.id = UUID()
+                repairedMissingIDs = true
+            }
+            if repairedMissingIDs {
+                saveContext()
+            }
+        }
+        
+        subscriptions = entities.map { $0.toSubscription() }
+        
+        if repairedMissingIDs {
+            resyncAllSubscriptionNotifications()
+        }
+    }
+
+    /// Cleans up any stale pending subscription reminder notifications and re-schedules
+    /// reminders for the current in-memory subscriptions list.
+    private func resyncAllSubscriptionNotifications() {
+        UNUserNotificationCenter.current().getPendingNotificationRequests { [weak self] requests in
+            guard let self else { return }
+            
+            let staleIDs = requests
+                .map(\.identifier)
+                .filter { $0.hasPrefix("subscription_") }
+            
+            if !staleIDs.isEmpty {
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: staleIDs)
+            }
+            
+            Task { @MainActor in
+                // Re-schedule reminders based on latest subscription state
+                for subscription in self.subscriptions where subscription.isActive && subscription.reminderEnabled {
+                    self.scheduleNotificationForSubscription(subscription)
+                }
+            }
         }
     }
     
@@ -178,18 +252,31 @@ class SubscriptionViewModel: ObservableObject {
     
     // MARK: - Statistics
     
+    func monthlyEquivalentAmount(for subscription: Subscription) -> Double {
+        switch subscription.frequency {
+        case .daily: return subscription.amount * 30 // Approximate
+        case .weekly: return subscription.amount * 4.33 // Approximate
+        case .monthly: return subscription.amount
+        case .quarterly: return subscription.amount / 3
+        case .yearly: return subscription.amount / 12
+        }
+    }
+    
     var totalMonthlyAmount: Double {
         subscriptions
             .filter { $0.isActive }
             .reduce(0) { total, subscription in
-                switch subscription.frequency {
-                case .daily: return total + (subscription.amount * 30) // Approximate
-                case .weekly: return total + (subscription.amount * 4.33) // Approximate
-                case .monthly: return total + subscription.amount
-                case .quarterly: return total + (subscription.amount / 3)
-                case .yearly: return total + (subscription.amount / 12)
-                }
+                total + monthlyEquivalentAmount(for: subscription)
             }
+    }
+    
+    func formattedMonthlyEquivalent(for subscription: Subscription) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
+        let formatted = formatter.string(from: NSNumber(value: monthlyEquivalentAmount(for: subscription))) ?? "0.00"
+        return "\(subscription.currency.symbol)\(formatted)/mo"
     }
     
     var activeSubscriptionsCount: Int {
@@ -283,6 +370,18 @@ class SubscriptionViewModel: ObservableObject {
         UNUserNotificationCenter.current().removePendingNotificationRequests(
             withIdentifiers: ["subscription_\(subscription.id.uuidString)"]
         )
+    }
+    
+    /// Ensure the correct reminder is scheduled for the given subscription.
+    /// - If reminders are disabled or subscription is inactive: cancel any pending reminder.
+    /// - If enabled and active: replace existing reminder with an updated one.
+    private func syncNotification(for subscription: Subscription) {
+        // Always cancel first to avoid stale reminders when toggling settings
+        cancelNotificationForSubscription(subscription)
+        
+        // Then schedule only if the subscription should have an active reminder
+        guard subscription.isActive && subscription.reminderEnabled else { return }
+        scheduleNotificationForSubscription(subscription)
     }
     
     // MARK: - Helper Methods
@@ -381,3 +480,11 @@ class SubscriptionViewModel: ObservableObject {
         activeFilter = .all
     }
 } 
+
+extension SubscriptionViewModel: NSFetchedResultsControllerDelegate {
+    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+        Task { @MainActor in
+            self.updateFromFetchedResults()
+        }
+    }
+}

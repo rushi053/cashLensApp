@@ -1,10 +1,16 @@
 import SwiftUI
 
 struct SubscriptionsView: View {
-    @EnvironmentObject var expenseViewModel: ExpenseViewModel
-    @StateObject private var subscriptionViewModel = SubscriptionViewModel()
+    @ObservedObject var expenseViewModel: ExpenseViewModel
+    @StateObject private var subscriptionViewModel: SubscriptionViewModel
     @State private var showingAddSubscription = false
     @State private var selectedSubscription: Subscription?
+    @State private var showingMonthlyBreakdown = false
+    
+    init(expenseViewModel: ExpenseViewModel) {
+        self.expenseViewModel = expenseViewModel
+        _subscriptionViewModel = StateObject(wrappedValue: SubscriptionViewModel(expenseViewModel: expenseViewModel))
+    }
     
     var body: some View {
         NavigationView {
@@ -26,8 +32,7 @@ struct SubscriptionsView: View {
             }
             .background(Color(.systemBackground))
             .onAppear {
-                subscriptionViewModel.setExpenseViewModel(expenseViewModel)
-                subscriptionViewModel.loadSubscriptions()
+                // SubscriptionViewModel auto-syncs via fetched results controller
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
@@ -100,14 +105,31 @@ struct SubscriptionsView: View {
             VStack(spacing: 16) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Monthly Spending")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                        HStack(spacing: 6) {
+                            Text("Monthly Spending")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            
+                            Button {
+                                HapticManager.shared.lightTap()
+                                showingMonthlyBreakdown = true
+                            } label: {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel("Monthly spending breakdown")
+                        }
                         
                         Text(subscriptionViewModel.formattedTotalMonthlyAmount(currency: expenseViewModel.selectedCurrency))
                             .font(.title)
                             .fontWeight(.bold)
                             .foregroundColor(.primary)
+                        
+                        Text("Estimated monthly equivalent")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                     
                     Spacer()
@@ -182,6 +204,89 @@ struct SubscriptionsView: View {
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 16)
+        .sheet(isPresented: $showingMonthlyBreakdown) {
+            MonthlySpendingBreakdownSheet(
+                subscriptions: subscriptionViewModel.subscriptions.filter { $0.isActive },
+                currency: expenseViewModel.selectedCurrency,
+                formattedTotal: subscriptionViewModel.formattedTotalMonthlyAmount(currency: expenseViewModel.selectedCurrency)
+            )
+        }
+    }
+
+    private struct MonthlySpendingBreakdownSheet: View {
+        @Environment(\.dismiss) private var dismiss
+        let subscriptions: [Subscription]
+        let currency: Expense.Currency
+        let formattedTotal: String
+        
+        private func monthlyEquivalent(for subscription: Subscription) -> (value: Double, formula: String) {
+            switch subscription.frequency {
+            case .daily:
+                return (subscription.amount * 30, "\(currency.symbol)\(format(subscription.amount)) × 30")
+            case .weekly:
+                return (subscription.amount * 4.33, "\(currency.symbol)\(format(subscription.amount)) × 4.33")
+            case .monthly:
+                return (subscription.amount, "\(currency.symbol)\(format(subscription.amount))")
+            case .quarterly:
+                return (subscription.amount / 3, "\(currency.symbol)\(format(subscription.amount)) ÷ 3")
+            case .yearly:
+                return (subscription.amount / 12, "\(currency.symbol)\(format(subscription.amount)) ÷ 12")
+            }
+        }
+        
+        private func format(_ value: Double) -> String {
+            let nf = NumberFormatter()
+            nf.numberStyle = .decimal
+            nf.minimumFractionDigits = 2
+            nf.maximumFractionDigits = 2
+            return nf.string(from: NSNumber(value: value)) ?? "0.00"
+        }
+        
+        var body: some View {
+            NavigationView {
+                List {
+                    Section {
+                        HStack {
+                            Text("Estimated Monthly Total")
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(formattedTotal)
+                                .fontWeight(.bold)
+                        }
+                    }
+                    
+                    Section(header: Text("Breakdown")) {
+                        ForEach(subscriptions) { sub in
+                            let eq = monthlyEquivalent(for: sub)
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text(sub.name)
+                                        .fontWeight(.semibold)
+                                    Spacer()
+                                    Text("\(currency.symbol)\(format(eq.value))")
+                                        .fontWeight(.semibold)
+                                }
+                                Text("\(sub.frequency.rawValue) • \(eq.formula)")
+                                    .font(.footnote)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    
+                    Section(footer: Text("Monthly Spending is an estimate that normalizes billing frequencies (e.g., weekly × 4.33, yearly ÷ 12).")) {
+                        EmptyView()
+                    }
+                }
+                .navigationTitle("Monthly Spending")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+            }
+        }
     }
     
     private var emptyStateView: some View {
@@ -306,35 +411,27 @@ struct SubscriptionsView: View {
             let subscriptionsToShow = subscriptionViewModel.activeFilter == .all ? 
                 subscriptionViewModel.subscriptions : subscriptionViewModel.filteredSubscriptions
                 
+            let dueSoon = subscriptionsToShow.filter { $0.isActive && $0.daysUntilNext <= 7 }
+            let later = subscriptionsToShow.filter { $0.isActive && $0.daysUntilNext > 7 }
+            let paused = subscriptionsToShow.filter { !$0.isActive }
+            
             LazyVStack(spacing: 16) {
-                ForEach(subscriptionsToShow) { subscription in
-                    SubscriptionRow(
-                        subscription: subscription,
-                        onToggle: {
-                            HapticManager.shared.impact(style: .light)
-                            Task {
-                                await subscriptionViewModel.toggleSubscriptionStatus(subscription)
-                            }
-                        },
-                        onEdit: {
-                            selectedSubscription = subscription
-                        },
-                        onMarkPaid: subscription.isActive && subscription.daysUntilNext <= 0 ? {
-                            // Mark subscription as paid - create expense and update next due date
-                            Task {
-                                await subscriptionViewModel.markSubscriptionAsPaid(subscription)
-                            }
-                        } : nil,
-                        onDelete: {
-                            HapticManager.shared.impact(style: .medium)
-                            subscriptionViewModel.deleteSubscription(subscription)
-                            HapticManager.shared.success()
-                        }
-                    )
+                if subscriptionViewModel.activeFilter == .all {
+                    if !dueSoon.isEmpty {
+                        sectionHeader("Due Soon")
+                        rows(for: dueSoon)
+                    }
+                    if !later.isEmpty {
+                        sectionHeader("Later")
+                        rows(for: later)
+                    }
+                    if !paused.isEmpty {
+                        sectionHeader("Paused")
+                        rows(for: paused)
+                    }
+                } else {
+                    rows(for: subscriptionsToShow)
                 }
-                .onDelete(perform: { offsets in
-                    deleteSubscriptions(offsets: offsets, from: subscriptionsToShow)
-                })
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 120) // Adjusted padding for tab bar and floating button
@@ -384,6 +481,45 @@ struct SubscriptionsView: View {
             subscriptionViewModel.deleteSubscription(subscription)
         }
         HapticManager.shared.success()
+    }
+    
+    private func sectionHeader(_ title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(.primary)
+            Spacer()
+        }
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+    
+    private func rows(for subs: [Subscription]) -> some View {
+        ForEach(subs) { subscription in
+            SubscriptionRow(
+                subscription: subscription,
+                monthlyEquivalentText: subscriptionViewModel.formattedMonthlyEquivalent(for: subscription),
+                onToggle: {
+                    HapticManager.shared.impact(style: .light)
+                    Task {
+                        await subscriptionViewModel.toggleSubscriptionStatus(subscription)
+                    }
+                },
+                onEdit: {
+                    selectedSubscription = subscription
+                },
+                onMarkPaid: subscription.isActive && subscription.daysUntilNext <= 0 ? {
+                    Task {
+                        await subscriptionViewModel.markSubscriptionAsPaid(subscription)
+                    }
+                } : nil,
+                onDelete: {
+                    HapticManager.shared.impact(style: .medium)
+                    subscriptionViewModel.deleteSubscription(subscription)
+                    HapticManager.shared.success()
+                }
+            )
+        }
     }
 }
 
@@ -435,7 +571,7 @@ struct StatMiniCard: View {
 
 struct SubscriptionsView_Previews: PreviewProvider {
     static var previews: some View {
-        SubscriptionsView()
-            .environmentObject(ExpenseViewModel())
+        SubscriptionsView(expenseViewModel: ExpenseViewModel())
+            .environmentObject(CategoryViewModel())
     }
 } 

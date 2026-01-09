@@ -3,11 +3,29 @@ import SwiftUI
 struct SummaryCustomizationView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
     
-    @State private var selectedCategories: [Expense.Category] = []
-    @State private var availableCategories: [Expense.Category] = []
+    @State private var selectedTokens: [String] = []
+    @State private var availableItems: [SummaryCategoryItem] = []
     
     private let maxSelections = 3 // Total will be 4 with "Total Expenses" always included
+    
+    private struct SummaryCategoryItem: Identifiable, Hashable {
+        let token: String
+        let title: String
+        let icon: String
+        let color: Color
+        
+        var id: String { token }
+    }
+    
+    private var itemsByToken: [String: SummaryCategoryItem] {
+        Dictionary(uniqueKeysWithValues: availableItems.map { ($0.token, $0) })
+    }
+    
+    private var selectedItems: [SummaryCategoryItem] {
+        selectedTokens.compactMap { itemsByToken[$0] }
+    }
     
     var body: some View {
         NavigationView {
@@ -120,11 +138,11 @@ struct SummaryCustomizationView: View {
                         color: .appPrimary
                     )
                     
-                    if selectedCategories.count >= 1 {
+                    if selectedItems.count >= 1 {
                         PreviewSummaryCard(
-                            title: selectedCategories[0].displayName,
-                            icon: selectedCategories[0].icon,
-                            color: Color.forCategory(selectedCategories[0].color)
+                            title: selectedItems[0].title,
+                            icon: selectedItems[0].icon,
+                            color: selectedItems[0].color
                         )
                     } else {
                         PreviewSummaryCard(
@@ -138,11 +156,11 @@ struct SummaryCustomizationView: View {
                 
                 // Second row: Two more categories
                 HStack(spacing: 12) {
-                    if selectedCategories.count >= 2 {
+                    if selectedItems.count >= 2 {
                         PreviewSummaryCard(
-                            title: selectedCategories[1].displayName,
-                            icon: selectedCategories[1].icon,
-                            color: Color.forCategory(selectedCategories[1].color)
+                            title: selectedItems[1].title,
+                            icon: selectedItems[1].icon,
+                            color: selectedItems[1].color
                         )
                     } else {
                         PreviewSummaryCard(
@@ -153,11 +171,11 @@ struct SummaryCustomizationView: View {
                         )
                     }
                     
-                    if selectedCategories.count >= 3 {
+                    if selectedItems.count >= 3 {
                         PreviewSummaryCard(
-                            title: selectedCategories[2].displayName,
-                            icon: selectedCategories[2].icon,
-                            color: Color.forCategory(selectedCategories[2].color)
+                            title: selectedItems[2].title,
+                            icon: selectedItems[2].icon,
+                            color: selectedItems[2].color
                         )
                     } else {
                         PreviewSummaryCard(
@@ -196,9 +214,9 @@ struct SummaryCustomizationView: View {
                 
                 // Selection counter
                 HStack(spacing: 6) {
-                    Text("\(selectedCategories.count)")
+                    Text("\(selectedTokens.count)")
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(selectedCategories.count == maxSelections ? .white : .appPrimary)
+                        .foregroundColor(selectedTokens.count == maxSelections ? .white : .appPrimary)
                     
                     Text("/")
                         .font(.system(size: 14, weight: .medium))
@@ -212,14 +230,14 @@ struct SummaryCustomizationView: View {
                 .padding(.vertical, 6)
                 .background(
                     Capsule()
-                        .fill(selectedCategories.count == maxSelections ? 
+                        .fill(selectedTokens.count == maxSelections ? 
                               LinearGradient(colors: [.appPrimary, .appSecondary], startPoint: .leading, endPoint: .trailing) :
                               LinearGradient(colors: [Color(.systemGray6), Color(.systemGray5)], startPoint: .leading, endPoint: .trailing)
                         )
                 )
                 .overlay(
                     Capsule()
-                        .stroke(selectedCategories.count == maxSelections ? Color.appPrimary : Color.clear, lineWidth: 1)
+                        .stroke(selectedTokens.count == maxSelections ? Color.appPrimary : Color.clear, lineWidth: 1)
                 )
             }
             
@@ -227,13 +245,15 @@ struct SummaryCustomizationView: View {
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: 16) {
-                ForEach(availableCategories, id: \.self) { category in
+                ForEach(availableItems) { item in
                     CategorySelectionCard(
-                        category: category,
-                        isSelected: selectedCategories.contains(category),
-                        isDisabled: !selectedCategories.contains(category) && selectedCategories.count >= maxSelections,
+                        title: item.title,
+                        icon: item.icon,
+                        color: item.color,
+                        isSelected: selectedTokens.contains(item.token),
+                        isDisabled: !selectedTokens.contains(item.token) && selectedTokens.count >= maxSelections,
                         onTap: {
-                            toggleCategory(category)
+                            toggleToken(item.token)
                         }
                     )
                 }
@@ -299,26 +319,52 @@ struct SummaryCustomizationView: View {
     }
     
     private func setupInitialState() {
-        // Get available categories (excluding custom and other for summary)
-        availableCategories = Expense.Category.allCases.filter { $0 != .custom && $0 != .other }
+        // Default categories (respect deleted defaults)
+        let defaultItems: [SummaryCategoryItem] = viewModel
+            .getAvailableDefaultCategories()
+            .filter { $0 != .custom && $0 != .other }
+            .map { category in
+                SummaryCategoryItem(
+                    token: category.rawValue,
+                    title: category.displayName,
+                    icon: category.icon,
+                    color: Color.forCategory(category.color)
+                )
+            }
+        
+        // Custom categories (use cached list from CategoryViewModel; avoids repeated Core Data fetches)
+        let customItems: [SummaryCategoryItem] = categoryViewModel
+            .customCategories
+            .map { custom in
+                SummaryCategoryItem(
+                    token: "custom:\(custom.id.uuidString)",
+                    title: custom.name,
+                    icon: custom.icon,
+                    color: Color.forCategory(custom.colorName)
+                )
+            }
+        
+        availableItems = defaultItems + customItems
         
         // Load current preferences
-        selectedCategories = Array(viewModel.preferredSummaryCategories.prefix(3))
+        selectedTokens = Array(viewModel.preferredSummaryCategoryTokens.prefix(3))
+        // Drop any tokens that no longer map to an available category (e.g., deleted custom category)
+        selectedTokens = selectedTokens.filter { itemsByToken[$0] != nil }
         
         // If no preferences set, use defaults
-        if selectedCategories.isEmpty {
-            selectedCategories = Array(viewModel.getDefaultSummaryCategories().prefix(3))
+        if selectedTokens.isEmpty {
+            selectedTokens = Array(viewModel.getDefaultSummaryCategories().prefix(3)).map { $0.rawValue }
         }
     }
     
-    private func toggleCategory(_ category: Expense.Category) {
+    private func toggleToken(_ token: String) {
         HapticManager.shared.impact(style: .light)
         
         withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-            if selectedCategories.contains(category) {
-                selectedCategories.removeAll { $0 == category }
-            } else if selectedCategories.count < maxSelections {
-                selectedCategories.append(category)
+            if selectedTokens.contains(token) {
+                selectedTokens.removeAll { $0 == token }
+            } else if selectedTokens.count < maxSelections {
+                selectedTokens.append(token)
             }
         }
     }
@@ -326,13 +372,13 @@ struct SummaryCustomizationView: View {
     private func resetToDefaults() {
         HapticManager.shared.impact(style: .medium)
         withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-            selectedCategories = Array(viewModel.getDefaultSummaryCategories().prefix(3))
+            selectedTokens = Array(viewModel.getDefaultSummaryCategories().prefix(3)).map { $0.rawValue }
         }
     }
     
     private func saveAndDismiss() {
         HapticManager.shared.impact(style: .medium)
-        viewModel.updateSummaryCategories(selectedCategories)
+        viewModel.updateSummaryCategoryTokens(selectedTokens)
         dismiss()
     }
 }
@@ -340,7 +386,9 @@ struct SummaryCustomizationView: View {
 // MARK: - Supporting Views
 
 struct CategorySelectionCard: View {
-    let category: Expense.Category
+    let title: String
+    let icon: String
+    let color: Color
     let isSelected: Bool
     let isDisabled: Bool
     let onTap: () -> Void
@@ -352,27 +400,27 @@ struct CategorySelectionCard: View {
                     Circle()
                         .fill(
                             isSelected ?
-                                LinearGradient(colors: [Color.forCategory(category.color), Color.forCategory(category.color).opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing) :
+                                LinearGradient(colors: [color, color.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing) :
                                 LinearGradient(colors: [Color(.systemGray6), Color(.systemGray5)], startPoint: .topLeading, endPoint: .bottomTrailing)
                         )
                         .frame(width: 64, height: 64)
                         .overlay(
                             Circle()
                                 .stroke(
-                                    isSelected ? Color.forCategory(category.color) : Color.clear,
+                                    isSelected ? color : Color.clear,
                                     lineWidth: 3
                                 )
                         )
-                        .shadow(color: isSelected ? Color.forCategory(category.color).opacity(0.3) : Color.black.opacity(0.1), radius: isSelected ? 8 : 4, x: 0, y: isSelected ? 4 : 2)
+                        .shadow(color: isSelected ? color.opacity(0.3) : Color.black.opacity(0.1), radius: isSelected ? 8 : 4, x: 0, y: isSelected ? 4 : 2)
                     
-                    Image(systemName: category.icon)
+                    Image(systemName: icon)
                         .font(.system(size: 26, weight: .semibold))
                         .foregroundColor(isSelected ? .white : .secondary)
                 }
                 
-                Text(category.displayName)
+                Text(title)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(isSelected ? Color.forCategory(category.color) : .primary)
+                    .foregroundColor(isSelected ? color : .primary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
             }
@@ -386,7 +434,7 @@ struct CategorySelectionCard: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
                     .stroke(
-                        isSelected ? Color.forCategory(category.color).opacity(0.5) : Color.clear,
+                        isSelected ? color.opacity(0.5) : Color.clear,
                         lineWidth: 2
                     )
             )

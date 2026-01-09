@@ -155,7 +155,7 @@ struct ManageCategoriesView: View {
             )
             .onAppear {
                 // Load categories when view appears
-                categoryViewModel.loadCustomCategories()
+                // CategoryViewModel auto-syncs via fetched results controller
                 
                 // Create default categories if needed
                 categoryViewModel.createDefaultCategoriesIfNeeded()
@@ -164,8 +164,7 @@ struct ManageCategoriesView: View {
                 loadDeletedDefaultCategories()
             }
             .sheet(isPresented: $showingAddCategory, onDismiss: {
-                // Reload categories when returning from the category form
-                categoryViewModel.loadCustomCategories()
+                // No manual reload needed; CategoryViewModel auto-syncs
             }) {
                 CustomCategoryForm(editingCategory: editingCategory)
                     .environmentObject(categoryViewModel)
@@ -196,13 +195,13 @@ struct ManageCategoriesView: View {
     // MARK: - Helper Functions
     
     private func loadDeletedDefaultCategories() {
-        if let deleted = UserDefaults.standard.array(forKey: "deletedDefaultCategories") as? [String] {
+        if let deleted = UserDefaults.standard.array(forKey: UserDefaultsKeys.deletedDefaultCategories) as? [String] {
             deletedDefaultCategories = Set(deleted)
         }
     }
     
     private func saveDeletedDefaultCategories() {
-        UserDefaults.standard.set(Array(deletedDefaultCategories), forKey: "deletedDefaultCategories")
+        UserDefaults.standard.set(Array(deletedDefaultCategories), forKey: UserDefaultsKeys.deletedDefaultCategories)
     }
     
     private func deleteDefaultCategory(_ category: Expense.Category) {

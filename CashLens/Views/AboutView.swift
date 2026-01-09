@@ -10,6 +10,11 @@ struct AboutView: View {
         return "Version \(version) (\(build))"
     }
     
+    private var whatsNewTitle: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
+        return "What’s New in v\(version)"
+    }
+    
     var body: some View {
         NavigationView {
             ScrollView {
@@ -57,12 +62,13 @@ struct AboutView: View {
                             featureRow(icon: "arrow.clockwise.circle.fill", text: "Manage recurring subscriptions with notifications")
                             featureRow(icon: "chart.pie.fill", text: "Beautiful spending statistics and insights")
                             featureRow(icon: "tag.fill", text: "Create custom categories with personalized icons")
+                            featureRow(icon: "slider.horizontal.3", text: "Customize your Home summary cards (including custom categories)")
                             featureRow(icon: "dollarsign.circle.fill", text: "Support for 150+ global currencies")
                             featureRow(icon: "calendar", text: "Filter data by flexible time periods")
                             featureRow(icon: "square.and.arrow.up", text: "Export data in CSV and JSON formats")
                             featureRow(icon: "square.and.arrow.down", text: "Import data to restore complete financial history")
                             featureRow(icon: "paintbrush.fill", text: "Customizable appearance with dark/light modes")
-                            featureRow(icon: "bell.fill", text: "Smart notifications for subscription renewals")
+                            featureRow(icon: "bell.fill", text: "Smart notifications: renewals, digests, and backup reminders (all opt‑in)")
                             featureRow(icon: "shield.fill", text: "Local data storage - your privacy protected")
                         }
                         .padding(.leading, 8)
@@ -73,21 +79,22 @@ struct AboutView: View {
                     
                     // What's New Section
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("What's New in v1.0.4")
+                        Text(whatsNewTitle)
                             .font(.title2)
                             .fontWeight(.bold)
                         
                         VStack(alignment: .leading, spacing: 10) {
-                            featureRow(icon: "arrow.clockwise.circle.fill", text: "Subscription Management - Track recurring payments")
-                            featureRow(icon: "square.and.arrow.down.fill", text: "Data Import - Restore from exported files")
-                            featureRow(icon: "tag.circle.fill", text: "Custom Categories - Create personalized expense types")
-                            featureRow(icon: "dollarsign.arrow.circlepath", text: "Currency Sync - Automatic updates across all data")
-                            featureRow(icon: "tray.fill", text: "Draft Persistence - Never lose work when switching apps")
-                            featureRow(icon: "checkmark.circle.fill", text: "Enhanced Stability - Improved performance and bug fixes")
+                            featureRow(icon: "bell.badge.fill", text: "Weekly & monthly digests (opt‑in) with deep links into your expenses")
+                            featureRow(icon: "externaldrive.fill.badge.timemachine", text: "Backup reminders (opt‑in) and one‑tap export to Files")
+                            featureRow(icon: "chart.pie.fill", text: "More visual statistics: category share + spending heatmap + cleaner trend chart")
+                            featureRow(icon: "calendar", text: "Date range filtering across Statistics & All Expenses")
+                            featureRow(icon: "tag.fill", text: "Custom categories everywhere: filters and Summary customization")
+                            featureRow(icon: "slider.horizontal.3", text: "More personalization: default Home time frame + improved UI polish")
+                            featureRow(icon: "checkmark.circle.fill", text: "Stability fixes and better data sync for subscriptions & categories")
                         }
                         .padding(.leading, 8)
                         
-                        Text("All new features are designed to give you complete control over your financial tracking while maintaining the app's signature simplicity.")
+                        Text("These updates focus on clarity, consistency, and helpful reminders—while keeping CashLens fast, private, and simple.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                             .padding(.top, 8)

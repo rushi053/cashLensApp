@@ -20,8 +20,27 @@ struct CustomCategory: Identifiable, Codable, Hashable {
         "pill.fill", "gym.bag.fill", "graduationcap.fill", "desktopcomputer", 
         "pawprint.fill", "leaf.fill", "bicycle", "bus.fill", "airplane.departure", 
         "cart.fill.badge.plus", "folder.fill", "tray.full.fill", "doc.text.fill", 
-        "bell.fill", "hammer.fill", "paintbrush.fill", "scissors", "pencil", 
-        "printer.fill", "envelope.fill", "calendar", "map.fill"
+        "bell.fill", "hammer.fill", "paintbrush.fill", "scissors", "pencil",
+        "printer.fill", "envelope.fill", "calendar", "map.fill",
+        
+        // More common categories / utilities
+        "fork.knife", "cup.and.saucer.fill", "takeoutbag.and.cup.and.straw.fill",
+        "cart.fill", "bag.fill", "tshirt.fill",
+        "banknote.fill", "building.columns.fill", "creditcard.circle.fill",
+        "car.fill", "fuelpump.fill", "bolt.car.fill",
+        "tram.fill", "ferry.fill", "bicycle.circle.fill",
+        "bed.double.fill", "washer.fill", "lightbulb.fill", "wifi",
+        "tv.fill", "headphones", "music.note", "film.fill", "ticket.fill",
+        "camera.fill", "photo.fill.on.rectangle.fill",
+        "phone.fill", "message.fill", "paperplane.fill",
+        "book.fill", "bookmark.fill", "newspaper.fill",
+        "shippingbox.fill", "shippingbox.circle.fill",
+        "sparkles", "star.fill", "moon.stars.fill", "sun.max.fill",
+        "shield.fill", "lock.fill",
+        "stethoscope", "cross.case.fill", "bandage.fill",
+        "heart.fill", "bolt.fill", "flame.fill", "drop.fill",
+        "figure.run", "figure.walk", "dumbbell.fill", "sportscourt.fill",
+        "globe", "location.fill", "building.2.fill", "person.2.fill"
     ]
     
     // Default colors to choose from (using the app's existing color names)

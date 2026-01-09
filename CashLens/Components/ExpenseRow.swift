@@ -3,18 +3,36 @@ import SwiftUI
 struct ExpenseRow: View {
     let expense: Expense
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
+    
+    private var customCategory: CustomCategory? {
+        guard expense.category == .custom, let id = expense.customCategoryId else { return nil }
+        return categoryViewModel.customCategories.first(where: { $0.id == id })
+    }
+    
+    private var categoryName: String {
+        customCategory?.name ?? expense.category.rawValue
+    }
+    
+    private var categoryIcon: String {
+        customCategory?.icon ?? expense.category.icon
+    }
+    
+    private var categoryColorName: String {
+        customCategory?.colorName ?? expense.category.color
+    }
     
     var body: some View {
         HStack(spacing: 16) {
             // Category icon with proper handling for custom categories
             ZStack {
                 Circle()
-                    .fill(Color.forCategory(viewModel.categoryColor(for: expense)).opacity(0.3))
+                    .fill(Color.forCategory(categoryColorName).opacity(0.3))
                     .frame(width: 40, height: 40)
                 
-                Image(systemName: viewModel.categoryIcon(for: expense))
+                Image(systemName: categoryIcon)
                     .font(.system(size: 16))
-                    .foregroundColor(Color.forCategory(viewModel.categoryColor(for: expense)))
+                    .foregroundColor(Color.forCategory(categoryColorName))
             }
             
             // Expense details
@@ -24,7 +42,7 @@ struct ExpenseRow: View {
                     .fontWeight(.medium)
                 
                 // Use proper category display name
-                Text(viewModel.categoryDisplayName(for: expense))
+                Text(categoryName)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -60,6 +78,7 @@ struct ExpenseRow_Previews: PreviewProvider {
     static var previews: some View {
         ExpenseRow(expense: Expense.sampleData[0])
             .environmentObject(ExpenseViewModel())
+            .environmentObject(CategoryViewModel())
             .padding()
             .previewLayout(.sizeThatFits)
     }

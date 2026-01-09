@@ -11,6 +11,8 @@ struct ImportDataView: View {
     @State private var isImporting = false
     @State private var importProgress: Double = 0.0
     @State private var importStatus = ""
+    @State private var importCountsText: String? = nil
+    @State private var fakeProgressTask: Task<Void, Never>? = nil
     
     var body: some View {
         NavigationView {
@@ -118,25 +120,56 @@ struct ImportDataView: View {
                 
                 // Loading overlay
                 if isImporting {
-                    VStack(spacing: 16) {
-                        ProgressView(value: importProgress.isFinite ? importProgress : 0.0, total: 1.0)
-                            .progressViewStyle(LinearProgressViewStyle(tint: .appPrimary))
-                            .scaleEffect(1.2)
+                    ZStack {
+                        Color.black.opacity(0.25)
+                            .ignoresSafeArea()
                         
-                        VStack(spacing: 8) {
-                            Text("Importing Data...")
-                                .font(.headline)
-                                .foregroundColor(.primary)
+                        VStack(spacing: 16) {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                    .tint(.appPrimary)
+                                    .scaleEffect(1.15)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Importing…")
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                    
+                                    Text(importStatus.isEmpty ? "Working…" : importStatus)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(2)
+                                }
+                                
+                                Spacer(minLength: 0)
+                                
+                                Text("\(Int((max(0, min(1, importProgress)) * 100).rounded()))%")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+                            }
                             
-                            Text(importStatus)
-                                .font(.caption)
+                            ProgressView(value: importProgress.isFinite ? max(0, min(1, importProgress)) : 0.0, total: 1.0)
+                                .progressViewStyle(LinearProgressViewStyle(tint: .appPrimary))
+                            
+                            if let importCountsText {
+                                Text(importCountsText)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            
+                            Text("Please keep CashLens open. Large imports can take a minute.")
+                                .font(.caption2)
                                 .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .padding(18)
+                        .background(Color.secondarySystemBackground.opacity(0.98))
+                        .cornerRadius(16)
+                        .shadow(radius: 12)
+                        .padding(.horizontal, 28)
                     }
-                    .padding(30)
-                    .background(Color.secondarySystemBackground.opacity(0.95))
-                    .cornerRadius(16)
-                    .shadow(radius: 10)
                 }
             }
             .navigationBarTitle("Import Data", displayMode: .inline)
@@ -213,7 +246,9 @@ struct ImportDataView: View {
     private func importDataFromFile(_ url: URL) {
         isImporting = true
         importProgress = 0.0
-        importStatus = "Reading file..."
+        importStatus = "Reading file…"
+        importCountsText = nil
+        startFakeProgress()
         
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -231,8 +266,10 @@ struct ImportDataView: View {
                 let fileData = try Data(contentsOf: url)
                 
                 DispatchQueue.main.async {
-                    self.importProgress = min(max(0.3, 0.0), 1.0)
-                    self.importStatus = "Parsing data..."
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        self.importProgress = max(self.importProgress, 0.25)
+                    }
+                    self.importStatus = "Parsing data…"
                 }
                 
                 var result: ImportResult
@@ -246,11 +283,18 @@ struct ImportDataView: View {
                 }
                 
                 DispatchQueue.main.async {
-                    self.importProgress = min(max(0.7, 0.0), 1.0)
-                    self.importStatus = "Importing to database..."
+                    self.importCountsText = "\(result.expenses.count) expenses • \(result.subscriptions.count) subscriptions • \(result.customCategories.count) custom categories"
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        self.importProgress = max(self.importProgress, 0.65)
+                    }
+                    self.importStatus = "Saving to database…"
                     
                     self.importDataToDatabase(result) { success, message in
                         DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                self.importProgress = 1.0
+                            }
+                            self.stopFakeProgress()
                             self.isImporting = false
                             
                             if success {
@@ -274,10 +318,39 @@ struct ImportDataView: View {
     }
     
     private func showImportError(_ message: String) {
+        stopFakeProgress()
         isImporting = false
         alertTitle = "Import Error"
         alertMessage = message
         showingAlert = true
+    }
+    
+    private func startFakeProgress() {
+        stopFakeProgress()
+        fakeProgressTask = Task { @MainActor in
+            if importProgress < 0.05 {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    importProgress = 0.05
+                }
+            }
+            while isImporting {
+                try? await Task.sleep(nanoseconds: 180_000_000)
+                guard isImporting else { break }
+                let ceiling = 0.95
+                if importProgress < ceiling {
+                    let remaining = max(0.0001, ceiling - importProgress)
+                    let step = min(0.02, remaining * 0.10)
+                    withAnimation(.linear(duration: 0.18)) {
+                        importProgress = min(ceiling, importProgress + step)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func stopFakeProgress() {
+        fakeProgressTask?.cancel()
+        fakeProgressTask = nil
     }
     
     private func importDataToDatabase(_ result: ImportResult, completion: @escaping (Bool, String) -> Void) {

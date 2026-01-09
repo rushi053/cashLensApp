@@ -2,17 +2,22 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
-    @StateObject private var categoryViewModel = CategoryViewModel()
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
     @State private var showingAddExpense = false
     @State private var showingProfile = false
     @State private var showingAllExpenses = false
     @State private var animateCards = false
     @State private var selectedExpense: Expense?
-    @State private var showingEditSheet = false
     @State private var showingCustomizeSummary = false
+    @State private var showingManageCategories = false
+    @State private var showOnlySubscriptionsOnHome = false
     
     private var isIPad: Bool {
         return UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    private var isCompactPhone: Bool {
+        UIDevice.current.userInterfaceIdiom != .pad && UIScreen.main.bounds.height < 760
     }
     
     var body: some View {
@@ -39,46 +44,40 @@ struct HomeView: View {
         .sheet(isPresented: $showingAllExpenses) {
             AllExpensesView()
                 .environmentObject(viewModel)
-        }
-        .sheet(isPresented: $showingEditSheet, onDismiss: {
-            // Reset selected expense when sheet is dismissed
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                selectedExpense = nil
-            }
-        }) {
-            if let expense = selectedExpense {
-                AddExpenseView(
-                    viewModel: viewModel,
-                    title: expense.title,
-                    amount: viewModel.formattedAmount(expense.amount),
-                    date: expense.date,
-                    selectedCategory: expense.category,
-                    selectedCustomCategoryId: expense.customCategoryId,
-                    notes: expense.notes ?? "",
-                    isEditing: true,
-                    expenseId: expense.id,
-                    onSave: { title, amount, date, category, customCategoryId, notes in
-                        // Update expense
-                        var updatedExpense = expense
-                        updatedExpense.title = title
-                        updatedExpense.amount = amount
-                        updatedExpense.date = date
-                        updatedExpense.category = category
-                        updatedExpense.customCategoryId = customCategoryId
-                        updatedExpense.notes = notes
-                        
-                        viewModel.updateExpense(updatedExpense)
-                    }
-                )
                 .environmentObject(categoryViewModel)
-            } else {
-                // Fallback view in case selectedExpense is nil
-                Text("Error loading expense")
-                    .foregroundColor(.secondary)
-            }
+        }
+        .sheet(item: $selectedExpense) { expense in
+            AddExpenseView(
+                viewModel: viewModel,
+                title: expense.title,
+                amount: viewModel.formattedAmount(expense.amount),
+                date: expense.date,
+                selectedCategory: expense.category,
+                selectedCustomCategoryId: expense.customCategoryId,
+                notes: expense.notes ?? "",
+                isEditing: true,
+                expenseId: expense.id,
+                onSave: { title, amount, date, category, customCategoryId, notes in
+                    var updatedExpense = expense
+                    updatedExpense.title = title
+                    updatedExpense.amount = amount
+                    updatedExpense.date = date
+                    updatedExpense.category = category
+                    updatedExpense.customCategoryId = customCategoryId
+                    updatedExpense.notes = notes
+                    viewModel.updateExpense(updatedExpense)
+                }
+            )
+            .environmentObject(categoryViewModel)
         }
         .sheet(isPresented: $showingCustomizeSummary) {
             SummaryCustomizationView()
+                .environmentObject(viewModel)
+                .environmentObject(categoryViewModel)
+        }
+        .sheet(isPresented: $showingManageCategories) {
+            ManageCategoriesView()
+                .environmentObject(categoryViewModel)
                 .environmentObject(viewModel)
         }
     }
@@ -86,7 +85,7 @@ struct HomeView: View {
     // MARK: - iPhone Layout
     private var iPhoneLayout: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: isCompactPhone ? 18 : 24) {
                 // Header
                 headerView
                 
@@ -118,7 +117,7 @@ struct HomeView: View {
                 }
             }
             .padding()
-            .padding(.bottom, 120) // Increased padding for the tab bar and add button
+            .padding(.bottom, isCompactPhone ? 104 : 120) // Slightly tighter on smaller phones
         }
     }
     
@@ -198,10 +197,7 @@ struct HomeView: View {
                                     
                                     Button(action: {
                                         HapticManager.shared.lightTap()
-                                        withAnimation(.spring()) {
-                                            viewModel.selectedCategory = nil
-                                            viewModel.selectedCustomCategoryId = nil
-                                        }
+                                        showingManageCategories = true
                                     }) {
                                         HStack(spacing: 4) {
                                             Text("See All")
@@ -238,8 +234,7 @@ struct HomeView: View {
                                         }
                                         
                                         // Custom categories
-                                        let customCategories = viewModel.getCustomCategories()
-                                        ForEach(customCategories) { category in
+                                        ForEach(categoryViewModel.customCategories) { category in
                                             CustomCategoryItem(
                                                 category: category,
                                                 isSelected: viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id,
@@ -332,6 +327,11 @@ struct HomeView: View {
                     .opacity(animateCards ? 1 : 0)
                     .offset(x: animateCards ? 0 : -20)
                     .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
+                
+                Text(homeRangeLabel())
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
             
             Spacer()
@@ -365,6 +365,25 @@ struct HomeView: View {
             .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.3), value: animateCards)
         }
         .padding(.top, 8)
+    }
+
+    private func homeRangeLabel() -> String {
+        let tf = viewModel.selectedTimeFrame
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        
+        if tf == .all {
+            return "All time"
+        }
+        
+        let range = tf.dateRange(referenceDate: Date())
+        let start = formatter.string(from: range.start)
+        // end is exclusive; show inclusive label
+        let endInclusive = Calendar.current.date(byAdding: .day, value: -1, to: range.end) ?? range.end
+        let end = formatter.string(from: endInclusive)
+        
+        if start == end { return start }
+        return "\(start) – \(end)"
     }
     
     // Toggle between light and dark mode
@@ -416,7 +435,7 @@ struct HomeView: View {
                         HapticManager.shared.lightTap()
                             // Set category filter or clear for total
                             viewModel.selectedCategory = cardData.category
-                            viewModel.selectedCustomCategoryId = nil
+                            viewModel.selectedCustomCategoryId = cardData.customCategoryId
                     }
                 )
                 .transition(.scale.combined(with: .opacity))
@@ -510,10 +529,7 @@ struct HomeView: View {
                 
                 Button(action: {
                     HapticManager.shared.lightTap()
-                    withAnimation(.spring()) {
-                        viewModel.selectedCategory = nil
-                        viewModel.selectedCustomCategoryId = nil
-                    }
+                    showingManageCategories = true
                 }) {
                     HStack(spacing: 4) {
                         Text("See All")
@@ -550,8 +566,7 @@ struct HomeView: View {
                     }
                     
                     // Custom categories
-                    let customCategories = viewModel.getCustomCategories()
-                    ForEach(customCategories) { category in
+                    ForEach(categoryViewModel.customCategories) { category in
                         CustomCategoryItem(
                             category: category,
                             isSelected: viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id,
@@ -603,8 +618,77 @@ struct HomeView: View {
                 }
                 .buttonStyle(ScaleButtonStyle())
             }
+
+            // Quick filter (composes with existing time frame + category filters)
+            HStack(spacing: 10) {
+                Button {
+                    HapticManager.shared.selectionChanged()
+                    withAnimation(.spring()) {
+                        showOnlySubscriptionsOnHome = false
+                    }
+                } label: {
+                    Text("All")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(showOnlySubscriptionsOnHome ? .primary : .white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Group {
+                                if showOnlySubscriptionsOnHome {
+                                    Color.secondarySystemBackground
+                                } else {
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                }
+                            }
+                        )
+                        .cornerRadius(14)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Button {
+                    HapticManager.shared.selectionChanged()
+                    withAnimation(.spring()) {
+                        showOnlySubscriptionsOnHome = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Subscriptions")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(showOnlySubscriptionsOnHome ? .white : .primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Group {
+                            if showOnlySubscriptionsOnHome {
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            } else {
+                                Color.secondarySystemBackground
+                            }
+                        }
+                    )
+                    .cornerRadius(14)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Spacer()
+            }
             
-            if viewModel.filteredExpenses.isEmpty {
+            let list = showOnlySubscriptionsOnHome ? viewModel.filteredExpenses.filter { $0.isFromSubscription } : viewModel.filteredExpenses
+            
+            if list.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.system(size: 48))
@@ -614,7 +698,7 @@ struct HomeView: View {
                         .font(.headline)
                         .foregroundColor(.secondary)
                     
-                    Text("Add your first expense by tapping the + button")
+                    Text(showOnlySubscriptionsOnHome ? "No subscription expenses in this period" : "Add your first expense by tapping the + button")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -623,21 +707,15 @@ struct HomeView: View {
                 .padding(.vertical, 32)
             } else {
                 LazyVStack(spacing: 16) {
-                    ForEach(Array(viewModel.filteredExpenses.prefix(5).enumerated()), id: \.element.id) { index, expense in
+                    ForEach(Array(list.prefix(5).enumerated()), id: \.element.id) { index, expense in
                         ExpenseCard(expense: expense)
                             .environmentObject(viewModel)
+                            .environmentObject(categoryViewModel)
                             .transition(.slide)
                             .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index)), value: animateCards)
                             .onTapGesture {
                                 HapticManager.shared.impact(style: .light)
-                                // Set the selected expense immediately without delay
                                 selectedExpense = expense
-                                // Load categories to ensure they're available
-                                categoryViewModel.loadCustomCategories()
-                                // Small delay only for sheet presentation to ensure data is ready
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                    showingEditSheet = true
-                                }
                             }
                     }
                 }
@@ -709,7 +787,7 @@ struct HomeView: View {
     private var summaryCardsContent: some View {
         // Adaptive grid for different screen sizes
         AdaptiveGrid {
-            ForEach(Array(viewModel.getSummaryCardsData().enumerated()), id: \.offset) { index, cardData in
+            ForEach(Array(viewModel.getSummaryCardsData(customCategories: categoryViewModel.customCategories).enumerated()), id: \.offset) { index, cardData in
             SummaryCard(
                     title: cardData.title,
                     amount: cardData.amount,
@@ -719,7 +797,7 @@ struct HomeView: View {
                     HapticManager.shared.lightTap()
                         // Set category filter or clear for total
                         viewModel.selectedCategory = cardData.category
-                        viewModel.selectedCustomCategoryId = nil
+                        viewModel.selectedCustomCategoryId = cardData.customCategoryId
                 }
             )
             .transition(.scale.combined(with: .opacity))
@@ -752,18 +830,12 @@ struct HomeView: View {
                     ForEach(Array(viewModel.filteredExpenses.prefix(5).enumerated()), id: \.element.id) { index, expense in
                         ExpenseCard(expense: expense)
                             .environmentObject(viewModel)
+                            .environmentObject(categoryViewModel)
                             .transition(.slide)
                             .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index)), value: animateCards)
                             .onTapGesture {
                                 HapticManager.shared.impact(style: .light)
-                                // Set the selected expense immediately without delay
                                 selectedExpense = expense
-                                // Load categories to ensure they're available
-                                categoryViewModel.loadCustomCategories()
-                                // Small delay only for sheet presentation to ensure data is ready
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                    showingEditSheet = true
-                                }
                             }
                     }
                 }
@@ -784,5 +856,6 @@ struct HomeView_Previews: PreviewProvider {
     static var previews: some View {
         HomeView()
             .environmentObject(ExpenseViewModel())
+            .environmentObject(CategoryViewModel())
     }
 }

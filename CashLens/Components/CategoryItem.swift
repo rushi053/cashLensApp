@@ -24,10 +24,11 @@ struct CategoryItem: View {
                                Color.clear, 
                                lineWidth: 3)
                 )
-                .shadow(color: isSelected ? 
-                       Color.forCategory(category.color).opacity(0.3) : 
-                       Color.clear, 
-                       radius: 4, x: 0, y: 0)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                .shadow(color: isSelected ?
+                       Color.forCategory(category.color).opacity(0.25) :
+                       Color.clear,
+                       radius: 6, x: 0, y: 0)
                 
                 Text(category.rawValue.capitalized)
                     .font(.caption)

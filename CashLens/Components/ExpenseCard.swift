@@ -3,18 +3,36 @@ import SwiftUI
 struct ExpenseCard: View {
     let expense: Expense
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
+    
+    private var customCategory: CustomCategory? {
+        guard expense.category == .custom, let id = expense.customCategoryId else { return nil }
+        return categoryViewModel.customCategories.first(where: { $0.id == id })
+    }
+    
+    private var categoryName: String {
+        customCategory?.name ?? expense.category.rawValue
+    }
+    
+    private var categoryIcon: String {
+        customCategory?.icon ?? expense.category.icon
+    }
+    
+    private var categoryColorName: String {
+        customCategory?.colorName ?? expense.category.color
+    }
     
     var body: some View {
         HStack(spacing: 16) {
             // Category Icon
             ZStack {
                 Circle()
-                    .fill(Color.forCategory(viewModel.categoryColor(for: expense)).opacity(0.3))
+                    .fill(Color.forCategory(categoryColorName).opacity(0.3))
                     .frame(width: 50, height: 50)
                 
-                Image(systemName: viewModel.categoryIcon(for: expense))
+                Image(systemName: categoryIcon)
                     .font(.system(size: 20))
-                    .foregroundColor(Color.forCategory(viewModel.categoryColor(for: expense)))
+                    .foregroundColor(Color.forCategory(categoryColorName))
             }
             
             // Expense Details
@@ -23,7 +41,7 @@ struct ExpenseCard: View {
                     .font(.headline)
                     .foregroundColor(.primary)
                 
-                Text(viewModel.categoryDisplayName(for: expense))
+                Text(categoryName)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
@@ -60,6 +78,7 @@ struct ExpenseCard_Previews: PreviewProvider {
     static var previews: some View {
         ExpenseCard(expense: Expense.sampleData[0])
             .environmentObject(ExpenseViewModel())
+            .environmentObject(CategoryViewModel())
             .previewLayout(.sizeThatFits)
             .padding()
     }

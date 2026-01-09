@@ -193,42 +193,11 @@ struct ExpenseTrendChart: View {
                                 Divider()
                                     .background(Color.secondary.opacity(0.2))
                                 
-                                // Y-axis labels (only show 3 instead of 4 to reduce clutter)
-                                if maxValue > 0 {
-                                    HStack {
-                                        Spacer()
-                                        
-                                        Text(formatCurrency(maxValue * Double(3 - i) / 3))
-                                            .font(.system(size: isIPad ? 9 : 7))
-                                            .foregroundColor(.secondary.opacity(0.7))
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.8)
-                                    }
-                                    .padding(.trailing, 4)
-                                }
-                                
                                 Spacer()
                                     .frame(height: geometry.size.height / 3)
                             }
                             Divider()
                                 .background(Color.secondary.opacity(0.2))
-                        }
-                        
-                        // Average line - enhanced for iPad
-                        if average > 0 {
-                            Rectangle()
-                                .fill(Color.orange.opacity(0.6))
-                                .frame(height: isIPad ? 1.5 : 1)
-                                .offset(y: -CGFloat(average) / CGFloat(maxValue) * geometry.size.height)
-                                .overlay(
-                                    Text("Average")
-                                        .font(.system(size: isIPad ? 11 : 8, weight: .medium))
-                                        .foregroundColor(.orange)
-                                        .padding(.horizontal, 4)
-                                        .background(Color.white.opacity(0.7))
-                                        .cornerRadius(2)
-                                        .offset(x: -geometry.size.width / 2 + (isIPad ? 40 : 12), y: isIPad ? -14 : -10)
-                                )
                         }
                         
                         // Fill area under the curve
@@ -352,9 +321,6 @@ struct ExpenseTrendChart: View {
                         }
                     }
                 }
-                .frame(height: 200)
-                .padding(.top, 20)
-                .padding(.bottom, 10)
                 .frame(height: isIPad ? 300 : 200)
                 
                 // X-axis labels with adaptive spacing for different screen sizes

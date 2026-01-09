@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @StateObject var viewModel: ExpenseViewModel
+    @EnvironmentObject private var categoryViewModel: CategoryViewModel
     @StateObject private var feedbackManager = FeedbackManager.shared
     @State private var selectedTab: Tab = .home
     @State private var showingAddExpense = false
@@ -62,8 +63,7 @@ struct MainTabView: View {
                         .environmentObject(viewModel)
                         .tag(Tab.home)
                     
-                    SubscriptionsView()
-                        .environmentObject(viewModel)
+                    SubscriptionsView(expenseViewModel: viewModel)
                         .tag(Tab.subscriptions)
                     
                     StatisticsView()
@@ -164,6 +164,7 @@ struct MainTabView: View {
             .ignoresSafeArea(.all, edges: .bottom)
             .sheet(isPresented: $showingAddExpense) {
                 AddExpenseView(viewModel: viewModel)
+                    .environmentObject(categoryViewModel)
             }
             .sheet(isPresented: $showingCurrencyPicker) {
                 CurrencyPickerView(viewModel: viewModel)
@@ -179,12 +180,12 @@ struct MainTabView: View {
     
     private func checkAndShowCurrencyPicker() {
         // Only show currency picker if onboarding has been completed
-        let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+        let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
         
         if !viewModel.hasShownCurrencyPicker && hasCompletedOnboarding {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 showingCurrencyPicker = true
-                UserDefaults.standard.set(true, forKey: "hasShownCurrencyPicker")
+                UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasShownCurrencyPicker)
                 viewModel.hasShownCurrencyPicker = true
             }
         }

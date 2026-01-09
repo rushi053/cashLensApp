@@ -3,17 +3,17 @@ import SwiftUI
 import CoreData
 import Combine
 
-class CategoryViewModel: ObservableObject {
+@MainActor
+class CategoryViewModel: NSObject, ObservableObject {
     @Published var customCategories: [CustomCategory] = []
-    private var hasLoadedInitialData = false
-    
     private let viewContext: NSManagedObjectContext
+    private var fetchedResultsController: NSFetchedResultsController<CustomCategoryEntity>?
     
     init(context: NSManagedObjectContext = PersistenceController.shared.container.viewContext) {
         self.viewContext = context
-        
-        // Load custom categories on init
-        loadCustomCategories()
+        super.init()
+        // Keep categories in sync automatically
+        setupFetchedResultsController()
     }
     
     // Create default custom categories if none exist
@@ -31,18 +31,11 @@ class CategoryViewModel: ObservableObject {
         }
     }
     
-    // Load custom categories from CoreData
+    // Load custom categories from CoreData (manual refresh; usually not needed because of FRC)
     func loadCustomCategories() {
-        // Skip repeated loads if data is already loaded
-        // But allow reloading if necessary by specific calls
-        let fetchRequest: NSFetchRequest<CustomCategoryEntity> = CustomCategoryEntity.fetchRequest()
-        fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \CustomCategoryEntity.name, ascending: true)]
-        
         do {
-            let results = try viewContext.fetch(fetchRequest)
-            self.customCategories = results.toCustomCategories()
-            self.hasLoadedInitialData = true
-            // Removed noisy print statement
+            try fetchedResultsController?.performFetch()
+            updateFromFetchedResults()
         } catch {
             print("Error loading custom categories: \(error.localizedDescription)")
             self.customCategories = []
@@ -51,12 +44,8 @@ class CategoryViewModel: ObservableObject {
     
     // Add a new custom category
     func addCustomCategory(_ category: CustomCategory) {
-        // Save to CoreData
         _ = CustomCategoryEntity.fromCustomCategory(category, context: viewContext)
         saveContext()
-        
-        // Update the categories array
-        loadCustomCategories()
     }
     
     // Get a custom category by ID
@@ -80,9 +69,6 @@ class CategoryViewModel: ObservableObject {
         } catch {
             print("Error updating custom category: \(error.localizedDescription)")
         }
-        
-        // Update the categories array
-        loadCustomCategories()
     }
     
     // Delete a custom category
@@ -99,9 +85,6 @@ class CategoryViewModel: ObservableObject {
         } catch {
             print("Error deleting custom category: \(error.localizedDescription)")
         }
-        
-        // Update the categories array
-        loadCustomCategories()
     }
     
     // Check if a category name already exists
@@ -122,6 +105,42 @@ class CategoryViewModel: ObservableObject {
             } catch {
                 print("Error saving context: \(error.localizedDescription)")
             }
+        }
+    }
+    
+    private func setupFetchedResultsController() {
+        let fetchRequest: NSFetchRequest<CustomCategoryEntity> = CustomCategoryEntity.fetchRequest()
+        fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \CustomCategoryEntity.name, ascending: true)]
+        
+        let controller = NSFetchedResultsController(
+            fetchRequest: fetchRequest,
+            managedObjectContext: viewContext,
+            sectionNameKeyPath: nil,
+            cacheName: nil
+        )
+        controller.delegate = self
+        fetchedResultsController = controller
+        
+        do {
+            try controller.performFetch()
+            updateFromFetchedResults()
+        } catch {
+            print("Error setting up category fetched results controller: \(error.localizedDescription)")
+            customCategories = []
+        }
+    }
+    
+    private func updateFromFetchedResults() {
+        let entities = fetchedResultsController?.fetchedObjects ?? []
+        customCategories = entities.toCustomCategories()
+    }
+} 
+
+extension CategoryViewModel: NSFetchedResultsControllerDelegate {
+    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+        // FRC delegate callbacks may arrive on the context queue; hop back to the main actor for @Published updates.
+        Task { @MainActor in
+            self.updateFromFetchedResults()
         }
     }
 } 

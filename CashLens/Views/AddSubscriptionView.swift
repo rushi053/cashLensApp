@@ -106,7 +106,7 @@ struct AddSubscriptionView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            categoryViewModel.loadCustomCategories()
+            // CategoryViewModel auto-syncs via fetched results controller
         }
         .alert(isPresented: $showingDeleteConfirmation) {
             Alert(
@@ -595,6 +595,9 @@ struct AddSubscriptionView: View {
             do {
                 if let editingSubscription = editingSubscription {
                     finalSubscription.id = editingSubscription.id
+                    // Preserve fields that should not be reset by editing the form.
+                    finalSubscription.isActive = editingSubscription.isActive
+                    finalSubscription.nextDueDate = editingSubscription.nextDueDate
                     await subscriptionViewModel.updateSubscription(finalSubscription)
                 } else {
                     await subscriptionViewModel.addSubscription(finalSubscription)

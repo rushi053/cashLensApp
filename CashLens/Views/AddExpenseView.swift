@@ -1,27 +1,5 @@
 import SwiftUI
 
-// MARK: - Draft Data Model
-
-private struct ExpenseDraft: Codable {
-    let title: String
-    let amount: String
-    let date: Date
-    let selectedCategory: Expense.Category
-    let selectedCustomCategoryId: UUID?
-    let notes: String
-    let timestamp: Date
-    
-    init(title: String, amount: String, date: Date, selectedCategory: Expense.Category, selectedCustomCategoryId: UUID?, notes: String) {
-        self.title = title
-        self.amount = amount
-        self.date = date
-        self.selectedCategory = selectedCategory
-        self.selectedCustomCategoryId = selectedCustomCategoryId
-        self.notes = notes
-        self.timestamp = Date()
-    }
-}
-
 struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -39,6 +17,13 @@ struct AddExpenseView: View {
     @State private var showingManageCategories: Bool
     @State private var showingDatePicker: Bool
     
+    @FocusState private var focusedField: Field?
+    private enum Field: Hashable {
+        case amount
+        case title
+        case notes
+    }
+    
     // Animation states
     @State private var animateCircle: Bool
     @State private var showForm: Bool
@@ -51,9 +36,11 @@ struct AddExpenseView: View {
     var expenseId: UUID?
     @State private var showingDeleteConfirmation = false
     @State private var showingDraftRestored = false
+    @State private var showingDuplicateConfirmation = false
+    @State private var pendingAmountValue: Double = 0
     
     // Draft state key
-    private let draftKey = "expense_draft"
+    private let draftKey = UserDefaultsKeys.expenseDraft
     
     // Date formatter
     private let dateFormatter: DateFormatter = {
@@ -69,7 +56,7 @@ struct AddExpenseView: View {
         self.onSave = nil
         
         // Try to restore draft state for new expenses
-        let draftData = UserDefaults.standard.data(forKey: "expense_draft")
+        let draftData = UserDefaults.standard.data(forKey: UserDefaultsKeys.expenseDraft)
         let draft = draftData.flatMap { try? JSONDecoder().decode(ExpenseDraft.self, from: $0) }
         
         // Initialize state
@@ -244,9 +231,6 @@ struct AddExpenseView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            // Load categories immediately when view appears
-            categoryViewModel.loadCustomCategories()
-            
             // Skip animation delay when editing to avoid blank form
             if isEditing {
                 // Instantly show the form when editing
@@ -261,6 +245,18 @@ struct AddExpenseView: View {
                     animateButton = true
                 }
             }
+        }
+        .confirmationDialog("Possible duplicate", isPresented: $showingDuplicateConfirmation, titleVisibility: .visible) {
+            Button("Save anyway", role: .destructive) {
+                HapticManager.shared.warning()
+                isSaving = true
+                addExpense()
+            }
+            Button("Review", role: .cancel) {
+                isSaving = false
+            }
+        } message: {
+            Text("A similar expense (same title + amount) was added around the same time. Do you want to save anyway?")
         }
         // Delete confirmation alert
         .alert(isPresented: $showingDeleteConfirmation) {
@@ -325,6 +321,7 @@ struct AddExpenseView: View {
             
             TextField("Expense title", text: $title)
                 .font(.system(size: 17, weight: .medium))
+                .focused($focusedField, equals: .title)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
                 .background(Color(.secondarySystemBackground))
@@ -332,7 +329,54 @@ struct AddExpenseView: View {
                 .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                 .onTapGesture {
                     showingKeyboard = true
+                    focusedField = .title
                 }
+            
+            if !isEditing {
+                // Only show suggestions while typing in the title field (avoid taking space by default)
+                if focusedField == .title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    titleSuggestions
+                }
+            }
+        }
+    }
+
+    private var titleSuggestions: some View {
+        let suggestions = filteredTitleSuggestions()
+        
+        return VStack(alignment: .leading, spacing: 8) {
+            if !suggestions.isEmpty {
+                Text("Suggestions")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                VStack(spacing: 8) {
+                    ForEach(suggestions, id: \.self) { suggestion in
+                        Button {
+                            HapticManager.shared.selectionChanged()
+                            title = suggestion
+                            showingKeyboard = false
+                            focusedField = nil
+                        } label: {
+                            HStack {
+                                Text(suggestion)
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Image(systemName: "arrow.up.left")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+            }
         }
     }
     
@@ -353,6 +397,7 @@ struct AddExpenseView: View {
             TextField("0.00", text: $amount)
                     .font(.system(size: 24, weight: .bold, design: .rounded))
                 .keyboardType(.decimalPad)
+                .focused($focusedField, equals: .amount)
             }
             .padding(.horizontal, 20)
                 .padding(.vertical, 16)
@@ -361,6 +406,7 @@ struct AddExpenseView: View {
             .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                 .onTapGesture {
                     showingKeyboard = true
+                    focusedField = .amount
                 }
         }
     }
@@ -375,6 +421,7 @@ struct AddExpenseView: View {
             }
             
             Button(action: {
+                focusedField = nil
                 showingDatePicker = true
             }) {
                 HStack(spacing: 16) {
@@ -411,6 +458,21 @@ struct AddExpenseView: View {
                 .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
             }
             .buttonStyle(PlainButtonStyle())
+            
+            // Quick date shortcuts (safe, optional)
+            HStack(spacing: 10) {
+                quickDateChip(title: "Today") {
+                    HapticManager.shared.selectionChanged()
+                    date = Date()
+                }
+                
+                quickDateChip(title: "Yesterday") {
+                    HapticManager.shared.selectionChanged()
+                    date = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+                }
+                
+                Spacer()
+            }
         }
         .sheet(isPresented: $showingDatePicker) {
             VStack {
@@ -428,6 +490,20 @@ struct AddExpenseView: View {
             }
             .presentationBackground(Color(.systemGroupedBackground))
         }
+    }
+    
+    private func quickDateChip(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.appPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.appPrimary.opacity(0.12))
+                .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
     
     private var categoryPickerField: some View {
@@ -493,6 +569,7 @@ struct AddExpenseView: View {
                 
             TextField("Add details about this expense...", text: $notes, axis: .vertical)
                 .font(.system(size: 16, weight: .medium))
+                .focused($focusedField, equals: .notes)
                 .lineLimit(3, reservesSpace: true)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
@@ -501,6 +578,7 @@ struct AddExpenseView: View {
                 .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                     .onTapGesture {
                         showingKeyboard = true
+                        focusedField = .notes
                     }
         }
     }
@@ -533,11 +611,11 @@ struct AddExpenseView: View {
             // Save button
         Button(action: {
             guard let amountValue = viewModel.parseAmount(amount) else { return }
-            
-            // Start saving animation
-            isSaving = true
+            pendingAmountValue = amountValue
             
             if let onSave = onSave {
+                // Start saving animation
+                isSaving = true
                 // Enhanced haptic feedback for edit operation
                 HapticManager.shared.mediumTap()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -558,7 +636,13 @@ struct AddExpenseView: View {
                     dismiss()
                 }
             } else {
-                addExpense()
+                // Duplicate guard for new expenses (safe, confirm-only)
+                if isPotentialDuplicate(amountValue: amountValue) {
+                    showingDuplicateConfirmation = true
+                } else {
+                    isSaving = true
+                    addExpense()
+                }
             }
         }) {
                 HStack {
@@ -701,6 +785,52 @@ struct AddExpenseView: View {
         
         // Dismiss the view
         dismiss()
+    }
+    
+    private func isPotentialDuplicate(amountValue: Double) -> Bool {
+        // Only for new expenses; edits should not be blocked.
+        guard !isEditing else { return false }
+        
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return false }
+        
+        let window: TimeInterval = 5 * 60
+        let targetDate = date
+        
+        return viewModel.expenses.contains { existing in
+            let existingTitle = existing.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard existingTitle.caseInsensitiveCompare(trimmedTitle) == .orderedSame else { return false }
+            guard abs(existing.amount - amountValue) < 0.0001 else { return false }
+            return abs(existing.date.timeIntervalSince(targetDate)) <= window
+        }
+    }
+    
+    private func recentTitles(limit: Int = 12) -> [String] {
+        let titles = viewModel.expenses
+            .sorted { $0.date > $1.date }
+            .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        
+        var seen = Set<String>()
+        var result: [String] = []
+        for t in titles {
+            let key = t.lowercased()
+            if !seen.contains(key) {
+                seen.insert(key)
+                result.append(t)
+            }
+            if result.count >= limit { break }
+        }
+        return result
+    }
+    
+    private func filteredTitleSuggestions() -> [String] {
+        let input = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let all = recentTitles()
+        guard !input.isEmpty else { return [] }
+        
+        let lower = input.lowercased()
+        return Array(all.filter { $0.lowercased().contains(lower) }.prefix(5))
     }
     
     // MARK: - Draft Management

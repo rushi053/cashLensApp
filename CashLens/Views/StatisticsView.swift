@@ -2,146 +2,48 @@ import SwiftUI
 
 struct StatisticsView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
     @State private var selectedTimeFrame: ExpenseViewModel.TimeFrame = .month
+    @State private var rangeStartDate = Date()
+    @State private var rangeEndDate = Date()
     @State private var showingAddExpense = false
     @State private var selectedCategory: Expense.Category? = nil
+    @State private var selectedCustomCategoryId: UUID? = nil
     @State private var animateCards = false
+    @State private var showingDateRangePicker = false
+    
+    // Performance: cache computed stats so tab switching & UI updates stay smooth with large datasets.
+    @State private var cachedFilteredExpenses: [Expense] = []
+    @State private var cachedPreviousPeriodExpenses: [Expense] = []
+    @State private var cachedInsights: [StatInsight] = []
+    @State private var cachedTotalSpent: Double = 0
+    @State private var cachedPreviousTotalSpent: Double = 0
+    @State private var cachedMaxExpense: Double = 0
+    @State private var cachedTotalsByCategory: [Expense.Category: Double] = [:]
+    @State private var cachedCountsByCategory: [Expense.Category: Int] = [:]
+    @State private var cachedTotalsByCustomId: [UUID: Double] = [:]
+    @State private var cachedCountsByCustomId: [UUID: Int] = [:]
+    @State private var statsRecomputeTask: Task<Void, Never>?
+    @State private var didInitializeRange = false
+    
+    // Date range sheet uses temporary values to avoid recomputing while scrolling the picker.
+    @State private var tempRangeStartDate = Date()
+    @State private var tempRangeEndDate = Date()
+    
+    // Donut selection is highlight-only (keeps animation smooth without triggering full stats recompute).
+    @State private var donutSelectedId: String? = nil
     
     // MARK: - Computed Properties
     private var filteredExpenses: [Expense] {
-        var filtered = viewModel.expenses
-        
-        let calendar = Calendar.current
-        let now = Date()
-        
-        switch selectedTimeFrame {
-        case .day:
-            filtered = filtered.filter { calendar.isDateInToday($0.date) }
-        case .week:
-            let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
-            filtered = filtered.filter { $0.date >= startOfWeek }
-        case .month:
-            let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
-            filtered = filtered.filter { $0.date >= startOfMonth }
-        case .year:
-            let startOfYear = calendar.date(from: calendar.dateComponents([.year], from: now))!
-            filtered = filtered.filter { $0.date >= startOfYear }
-        case .all:
-            break
-        }
-        
-        if let category = selectedCategory {
-            if category == .custom {
-                if let selectedCustomCategoryId = viewModel.selectedCustomCategoryId {
-                    filtered = filtered.filter { 
-                        $0.category == .custom && $0.customCategoryId == selectedCustomCategoryId 
-                    }
-                } else {
-                    filtered = filtered.filter { $0.category == .custom }
-                }
-            } else {
-                filtered = filtered.filter { $0.category == category }
-            }
-        }
-        
-        return filtered.sorted { $0.date > $1.date }
+        cachedFilteredExpenses
     }
     
     private var previousPeriodExpenses: [Expense] {
-        let calendar = Calendar.current
-        let now = Date()
-        var startDate: Date
-        var endDate: Date
-        
-        switch selectedTimeFrame {
-        case .day:
-            let yesterday = calendar.date(byAdding: .day, value: -1, to: now)!
-            startDate = calendar.startOfDay(for: yesterday)
-            endDate = calendar.date(byAdding: .day, value: 1, to: startDate)!
-        case .week:
-            let currentWeekStart = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now))!
-            endDate = currentWeekStart
-            startDate = calendar.date(byAdding: .weekOfYear, value: -1, to: currentWeekStart)!
-        case .month:
-            let currentMonthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now))!
-            endDate = currentMonthStart
-            startDate = calendar.date(byAdding: .month, value: -1, to: currentMonthStart)!
-        case .year:
-            let currentYearStart = calendar.date(from: calendar.dateComponents([.year], from: now))!
-            endDate = currentYearStart
-            startDate = calendar.date(byAdding: .year, value: -1, to: currentYearStart)!
-        case .all:
-            return []
-        }
-        
-        return viewModel.expenses.filter { expense in
-            expense.date >= startDate && expense.date < endDate
-        }
+        cachedPreviousPeriodExpenses
     }
     
     private var insights: [StatInsight] {
-        var insights: [StatInsight] = []
-        
-        let totalCurrent = filteredExpenses.reduce(0) { $0 + $1.amount }
-        let totalPrevious = previousPeriodExpenses.reduce(0) { $0 + $1.amount }
-        let expenseCount = filteredExpenses.count
-        let avgExpense = expenseCount > 0 ? totalCurrent / Double(expenseCount) : 0
-        
-        // Spending comparison
-        if totalPrevious > 0 {
-            let changePercent = ((totalCurrent - totalPrevious) / totalPrevious) * 100
-            if abs(changePercent) > 5 {
-                let trend = changePercent > 0 ? "increased" : "decreased"
-                let icon = changePercent > 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
-                let color = changePercent > 0 ? Color.red : Color.green
-                insights.append(StatInsight(
-                    title: "Spending Trend",
-                    description: "Your spending has \(trend) by \(String(format: "%.1f", abs(changePercent)))% vs. previous \(selectedTimeFrame.rawValue.lowercased())",
-                    icon: icon,
-                    color: color
-                ))
-            }
-        }
-        
-        // Top category insight
-        if !filteredExpenses.isEmpty {
-            let categorySpending = Dictionary(grouping: filteredExpenses) { expense in
-                expense.category == .custom ? "Custom" : expense.category.rawValue
-            }.mapValues { $0.reduce(0) { $0 + $1.amount } }
-            
-            if let topCategory = categorySpending.max(by: { $0.value < $1.value }) {
-                let percentage = (topCategory.value / totalCurrent) * 100
-                if percentage > 30 {
-                    insights.append(StatInsight(
-                        title: "Top Category",
-                        description: "\(topCategory.key) accounts for \(String(format: "%.0f", percentage))% of your spending",
-                        icon: "chart.pie.fill",
-                        color: .orange
-                    ))
-                }
-            }
-        }
-        
-        // High spending days
-        if selectedTimeFrame == .month || selectedTimeFrame == .week {
-            let dailySpending = Dictionary(grouping: filteredExpenses) { expense in
-                Calendar.current.startOfDay(for: expense.date)
-            }.mapValues { $0.reduce(0) { $0 + $1.amount } }
-            
-            if let maxDay = dailySpending.max(by: { $0.value < $1.value }),
-               maxDay.value > avgExpense * 2 {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "MMM d"
-                insights.append(StatInsight(
-                    title: "High Spending Day",
-                    description: "You spent \(viewModel.formattedAmount(maxDay.value)) on \(formatter.string(from: maxDay.key))",
-                    icon: "calendar.badge.exclamationmark",
-                    color: .red
-                ))
-            }
-        }
-        
-        return insights
+        cachedInsights
     }
     
     private var isIPad: Bool {
@@ -177,6 +79,11 @@ struct StatisticsView: View {
                 withAnimation(.easeOut(duration: 0.6).delay(0.1)) {
                     animateCards = true
                 }
+                if !didInitializeRange {
+                    didInitializeRange = true
+                    applyPresetTimeFrame(selectedTimeFrame)
+                }
+                scheduleRecomputeStats(immediate: true)
             }
         }
         .if(isIPad) { view in
@@ -184,6 +91,21 @@ struct StatisticsView: View {
         }
         .sheet(isPresented: $showingAddExpense) {
             AddExpenseView(viewModel: viewModel)
+        }
+        .onReceive(viewModel.$expenses) { _ in
+            scheduleRecomputeStats(immediate: false)
+        }
+        .onChange(of: selectedCategory) { _ in
+            scheduleRecomputeStats(immediate: false)
+        }
+        .onChange(of: selectedCustomCategoryId) { _ in
+            scheduleRecomputeStats(immediate: false)
+        }
+        .onChange(of: rangeStartDate) { _ in
+            scheduleRecomputeStats(immediate: false)
+        }
+        .onChange(of: rangeEndDate) { _ in
+            scheduleRecomputeStats(immediate: false)
         }
     }
     
@@ -234,6 +156,9 @@ struct StatisticsView: View {
                 }
             }
             
+            // Date Range (separate feature)
+            dateRangeSection
+            
             // Category Filter
             VStack(spacing: 12) {
                 HStack {
@@ -248,7 +173,7 @@ struct StatisticsView: View {
                             HapticManager.shared.selectionChanged()
                             withAnimation(.spring()) {
                                 selectedCategory = nil
-                                viewModel.selectedCustomCategoryId = nil
+                                selectedCustomCategoryId = nil
                             }
                         }
                         .font(.subheadline)
@@ -264,6 +189,187 @@ struct StatisticsView: View {
         .cornerRadius(16)
     }
     
+    private var dateRangeSection: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Date Range")
+                    .font(isIPad ? .title3 : .headline)
+                    .fontWeight(.bold)
+                Spacer()
+            }
+            
+            customRangeRow
+        }
+    }
+    
+    private var customRangeRow: some View {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        
+        return HStack(spacing: 12) {
+            Button {
+                HapticManager.shared.lightTap()
+                tempRangeStartDate = rangeStartDate
+                tempRangeEndDate = rangeEndDate
+                showingDateRangePicker = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.appPrimary)
+                    Text("\(formatter.string(from: rangeStartDate)) – \(formatter.string(from: rangeEndDate))")
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.tertiarySystemBackground)
+                .cornerRadius(12)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            Spacer()
+            
+            Button("Reset") {
+                HapticManager.shared.lightTap()
+                applyPresetTimeFrame(selectedTimeFrame)
+            }
+            .font(.subheadline)
+            .foregroundColor(.appPrimary)
+        }
+        .sheet(isPresented: $showingDateRangePicker) {
+            NavigationView {
+                Form {
+                    DatePicker("Start", selection: $tempRangeStartDate, displayedComponents: [.date])
+                    DatePicker("End", selection: $tempRangeEndDate, displayedComponents: [.date])
+                }
+                .navigationTitle("Date Range")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showingDateRangePicker = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            if tempRangeEndDate < tempRangeStartDate {
+                                // Auto-fix invalid range
+                                let tmp = tempRangeStartDate
+                                tempRangeStartDate = tempRangeEndDate
+                                tempRangeEndDate = tmp
+                            }
+                            rangeStartDate = tempRangeStartDate
+                            rangeEndDate = tempRangeEndDate
+                            showingDateRangePicker = false
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    
+    private func dateRangeSubtitle() -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        return "\(formatter.string(from: rangeStartDate)) – \(formatter.string(from: rangeEndDate))"
+    }
+    
+    // MARK: - Performance: recompute cached stats
+    
+    private func scheduleRecomputeStats(immediate: Bool) {
+        statsRecomputeTask?.cancel()
+        if immediate {
+            recomputeStatsNow()
+            return
+        }
+        statsRecomputeTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            recomputeStatsNow()
+        }
+    }
+    
+    private func recomputeStatsNow() {
+        let expensesSnapshot = viewModel.expenses
+        let start = rangeStartDate
+        let end = rangeEndDate
+        let selectedCat = selectedCategory
+        let selectedCustomId = selectedCustomCategoryId
+        let formattedAmount = viewModel.formattedAmount
+        
+        Task.detached(priority: .userInitiated) {
+            let currentFiltered = ExpenseFilter.apply(
+                expenses: expensesSnapshot,
+                category: selectedCat,
+                customCategoryId: selectedCustomId,
+                timeFrame: .all,
+                dateRangeStart: start,
+                dateRangeEnd: end
+            )
+            
+            let calendar = Calendar.current
+            let startDay = calendar.startOfDay(for: start)
+            let endExclusive = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)) ?? end
+            let length = endExclusive.timeIntervalSince(startDay)
+            let previousEnd = startDay
+            let previousStart = previousEnd.addingTimeInterval(-length)
+            let prevFiltered = expensesSnapshot.filter { $0.date >= previousStart && $0.date < previousEnd }
+            
+            var total: Double = 0
+            var maxExpense: Double = 0
+            var totalsByCategory: [Expense.Category: Double] = [:]
+            var countsByCategory: [Expense.Category: Int] = [:]
+            var totalsByCustom: [UUID: Double] = [:]
+            var countsByCustom: [UUID: Int] = [:]
+            
+            for e in currentFiltered {
+                total += e.amount
+                if e.amount > maxExpense { maxExpense = e.amount }
+                
+                countsByCategory[e.category, default: 0] += 1
+                totalsByCategory[e.category, default: 0] += e.amount
+                
+                if e.category == .custom, let id = e.customCategoryId {
+                    countsByCustom[id, default: 0] += 1
+                    totalsByCustom[id, default: 0] += e.amount
+                }
+            }
+            
+            let previousTotal = prevFiltered.reduce(0) { $0 + $1.amount }
+            
+            let dayCount = calendar.dateComponents([.day], from: startDay, to: endExclusive).day ?? 0
+            let includeHighDay = dayCount > 0 && dayCount <= 31
+            let computedInsights = StatisticsCalculator.insights(
+                filteredExpenses: currentFiltered,
+                previousPeriodExpenses: prevFiltered,
+                periodLabel: "period",
+                includeHighSpendingDay: includeHighDay,
+                formattedAmount: formattedAmount
+            )
+            
+            await MainActor.run {
+                self.cachedFilteredExpenses = currentFiltered
+                self.cachedPreviousPeriodExpenses = prevFiltered
+                self.cachedInsights = computedInsights
+                self.cachedTotalSpent = total
+                self.cachedPreviousTotalSpent = previousTotal
+                self.cachedMaxExpense = maxExpense
+                self.cachedTotalsByCategory = totalsByCategory
+                self.cachedCountsByCategory = countsByCategory
+                self.cachedTotalsByCustomId = totalsByCustom
+                self.cachedCountsByCustomId = countsByCustom
+            }
+        }
+    }
+    
+    private func applyPresetTimeFrame(_ timeFrame: ExpenseViewModel.TimeFrame) {
+        let calendar = Calendar.current
+        let now = Date()
+        let range = timeFrame.dateRange(referenceDate: now)
+        rangeStartDate = range.start
+        rangeEndDate = calendar.date(byAdding: .day, value: -1, to: range.end) ?? now
+    }
+    
     // MARK: - Statistics Content
     private var statisticsContent: some View {
         VStack(spacing: 24) {
@@ -273,6 +379,16 @@ struct StatisticsView: View {
             // Insights Section
             if !insights.isEmpty {
                 insightsSection
+            }
+            
+            // Category Share (donut)
+            if !filteredExpenses.isEmpty {
+                categoryShareSection
+            }
+            
+            // Heatmap
+            if !filteredExpenses.isEmpty {
+                spendingHeatmapSection
             }
             
             // Category Breakdown
@@ -298,7 +414,7 @@ struct StatisticsView: View {
                     summaryCard(
                         title: "Total Spent",
                         value: viewModel.formattedAmount(totalExpenses()),
-                        subtitle: selectedTimeFrame.rawValue,
+                        subtitle: dateRangeSubtitle(),
                         icon: "creditcard.fill",
                         color: .appPrimary,
                         comparison: comparisonText()
@@ -307,7 +423,7 @@ struct StatisticsView: View {
                     summaryCard(
                         title: "Transactions",
                         value: "\(filteredExpenses.count)",
-                        subtitle: selectedTimeFrame.rawValue,
+                        subtitle: dateRangeSubtitle(),
                         icon: "list.bullet.circle.fill",
                         color: .jordyBlue,
                         comparison: nil
@@ -327,7 +443,7 @@ struct StatisticsView: View {
                     summaryCard(
                         title: "Total Spent",
                         value: viewModel.formattedAmount(totalExpenses()),
-                        subtitle: selectedTimeFrame.rawValue,
+                        subtitle: dateRangeSubtitle(),
                         icon: "creditcard.fill",
                         color: .appPrimary,
                         comparison: comparisonText()
@@ -337,7 +453,7 @@ struct StatisticsView: View {
                         summaryCard(
                             title: "Transactions",
                             value: "\(filteredExpenses.count)",
-                            subtitle: selectedTimeFrame.rawValue,
+                            subtitle: dateRangeSubtitle(),
                             icon: "list.bullet.circle.fill",
                             color: .jordyBlue,
                             comparison: nil
@@ -407,8 +523,8 @@ struct StatisticsView: View {
                     }
                 } else {
                     if selectedCategory == .custom {
-                        let customCategories = viewModel.getCustomCategories()
-                        if let selectedCustomCategoryId = viewModel.selectedCustomCategoryId,
+                        let customCategories = categoryViewModel.customCategories
+                        if let selectedCustomCategoryId = selectedCustomCategoryId,
                            let customCategory = customCategories.first(where: { $0.id == selectedCustomCategoryId }) {
                             let amount = totalExpenses(for: customCategory)
                             let categoryData = CategoryExpenseData(
@@ -417,7 +533,7 @@ struct StatisticsView: View {
                                 percentage: 100.0,
                                 icon: customCategory.icon,
                                 color: Color.forCategory(customCategory.colorName),
-                                count: filteredExpenses.filter { $0.category == .custom && $0.customCategoryId == customCategory.id }.count
+                                count: cachedCountsByCustomId[customCategory.id, default: 0]
                             )
                             enhancedCategoryRow(categoryData)
                         }
@@ -429,7 +545,7 @@ struct StatisticsView: View {
                             percentage: 100.0,
                             icon: selectedCategory!.icon,
                             color: Color.forCategory(selectedCategory!.color),
-                            count: filteredExpenses.filter { $0.category == selectedCategory! }.count
+                            count: cachedCountsByCategory[selectedCategory!, default: 0]
                         )
                         enhancedCategoryRow(categoryData)
                     }
@@ -443,10 +559,140 @@ struct StatisticsView: View {
         .opacity(animateCards ? 1.0 : 0)
         .animation(.easeOut(duration: 0.6).delay(0.3), value: animateCards)
     }
+
+    // MARK: - Category Share (Donut) Section
+    private var categoryShareSection: some View {
+        let slices = categorySlices()
+        let total = slices.reduce(0) { $0 + $1.amount }
+        
+        return VStack(spacing: 16) {
+            HStack {
+                Text("Category Share")
+                    .font(isIPad ? .title2 : .title3)
+                    .fontWeight(.bold)
+                Spacer()
+                
+                if selectedCategory == nil {
+                    Text("\(slices.filter { $0.amount > 0 }.count) categories")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.tertiarySystemBackground)
+                        .cornerRadius(8)
+                }
+            }
+            
+            CategoryDonutChart(
+                slices: slices,
+                total: total,
+                selectedId: donutSelectedId,
+                onSelect: { slice in
+                    withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.85)) {
+                        donutSelectedId = slice?.id
+                    }
+                }
+            )
+        }
+        .padding(16)
+        .background(Color.secondarySystemBackground)
+        .cornerRadius(16)
+        .onChange(of: selectedCategory) { _ in donutSelectedId = nil }
+        .onChange(of: selectedCustomCategoryId) { _ in donutSelectedId = nil }
+        .scaleEffect(animateCards ? 1.0 : 0.95)
+        .opacity(animateCards ? 1.0 : 0)
+        .animation(.easeOut(duration: 0.6).delay(0.28), value: animateCards)
+    }
+    
+    private func categorySlices() -> [CategoryDonutChart.Slice] {
+        let total = cachedTotalSpent
+        guard total > 0 else { return [] }
+        
+        var result: [CategoryDonutChart.Slice] = []
+        
+        // Default categories
+        for category in viewModel.getAvailableDefaultCategories().filter({ $0 != .custom }) {
+            let amount = cachedTotalsByCategory[category, default: 0]
+            if amount > 0 {
+                result.append(
+                    CategoryDonutChart.Slice(
+                        id: "default:\(category.rawValue)",
+                        title: category.displayName,
+                        amount: amount,
+                        color: Color.forCategory(category.color),
+                        icon: category.icon,
+                        category: category,
+                        customCategoryId: nil
+                    )
+                )
+            }
+        }
+        
+        // Custom categories
+        for custom in categoryViewModel.customCategories {
+            let amount = cachedTotalsByCustomId[custom.id, default: 0]
+            if amount > 0 {
+                result.append(
+                    CategoryDonutChart.Slice(
+                        id: "custom:\(custom.id.uuidString)",
+                        title: custom.name,
+                        amount: amount,
+                        color: Color.forCategory(custom.colorName),
+                        icon: custom.icon,
+                        category: .custom,
+                        customCategoryId: custom.id
+                    )
+                )
+            }
+        }
+        
+        // If a category filter is active, the donut would be a single slice; still ok.
+        // Sort biggest-first for stable legend.
+        return result.sorted { $0.amount > $1.amount }
+    }
+
+    // MARK: - Spending Heatmap Section
+    private var spendingHeatmapSection: some View {
+        let accent: Color = {
+            if let selectedCategory, selectedCategory != .custom {
+                return Color.forCategory(selectedCategory.color)
+            }
+            if selectedCategory == .custom, let id = selectedCustomCategoryId,
+               let custom = categoryViewModel.customCategories.first(where: { $0.id == id }) {
+                return Color.forCategory(custom.colorName)
+            }
+            return .appPrimary
+        }()
+        
+        return VStack(spacing: 16) {
+            HStack {
+                Text("Spending Heatmap")
+                    .font(isIPad ? .title2 : .title3)
+                    .fontWeight(.bold)
+                Spacer()
+            }
+            
+            SpendingHeatmap(
+                expenses: filteredExpenses,
+                startDate: rangeStartDate,
+                endDate: rangeEndDate,
+                accentColor: accent,
+                formattedAmount: viewModel.formattedAmount
+            )
+        }
+        .padding(16)
+        .background(Color.secondarySystemBackground)
+        .cornerRadius(16)
+        .scaleEffect(animateCards ? 1.0 : 0.95)
+        .opacity(animateCards ? 1.0 : 0)
+        .animation(.easeOut(duration: 0.6).delay(0.32), value: animateCards)
+    }
     
     // MARK: - Expense Trend Section
     private var expenseTrendSection: some View {
-        VStack(spacing: 16) {
+        let accent = selectedCategory != nil ? Color.forCategory(selectedCategory!.color) : Color.appPrimary
+        
+        return VStack(spacing: 14) {
             HStack {
                 Text("Spending Trend")
                     .font(isIPad ? .title2 : .title3)
@@ -455,129 +701,105 @@ struct StatisticsView: View {
                 Spacer()
                 
                 Text(selectedTimeFrame.rawValue)
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                     .background(Color.tertiarySystemBackground)
-                    .cornerRadius(8)
+                    .cornerRadius(10)
             }
             
-            VStack(spacing: 16) {
-                // Trend Description
-                HStack {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .foregroundColor(.appPrimary)
-                        .font(.system(size: 16))
-                    
-                    Text(getTrendDescription())
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                    
-                    Spacer()
-                }
+            // Description (smaller + cleaner)
+            HStack(spacing: 10) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundColor(accent)
+                    .font(.system(size: 16, weight: .semibold))
                 
-                // Statistics Summary Cards
-                if !filteredExpenses.isEmpty {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: isIPad ? 3 : 3), spacing: 12) {
-                        trendStatCard(
-                            title: "Total",
-                            value: viewModel.formattedAmount(totalExpenses()),
-                            icon: "creditcard.fill",
-                            color: .appPrimary
-                        )
-                        
-                        trendStatCard(
-                            title: "Average",
-                            value: viewModel.formattedAmount(averageExpense()),
-                            icon: "chart.bar.fill",
-                            color: .jordyBlue
-                        )
-                        
-                        trendStatCard(
-                            title: "Highest",
-                            value: viewModel.formattedAmount(highestExpense()),
-                            icon: "arrow.up.circle.fill",
-                            color: .teaRose
-                        )
+                Text(getTrendDescription())
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                Spacer()
+            }
+            
+            // Stats row (avoid 3 tiny columns on iPhone)
+            if !filteredExpenses.isEmpty {
+                if isIPad {
+                    HStack(spacing: 12) {
+                        trendStatCard(title: "Total", value: viewModel.formattedAmount(totalExpenses()), icon: "creditcard.fill", color: accent)
+                        trendStatCard(title: "Average", value: viewModel.formattedAmount(averageExpense()), icon: "chart.bar.fill", color: .jordyBlue)
+                        trendStatCard(title: "Highest", value: viewModel.formattedAmount(highestExpense()), icon: "arrow.up.circle.fill", color: .teaRose)
                     }
-                }
-                
-                // Chart Section
-                VStack(spacing: 8) {
-                    ExpenseTrendChart(
-                        expenses: filteredExpenses,
-                        timeFrame: selectedTimeFrame,
-                        categoryColor: selectedCategory != nil ? 
-                            Color.forCategory(selectedCategory!.color) : 
-                            Color.appPrimary
-                    )
-                    .environmentObject(viewModel)
-                    .frame(height: isIPad ? 300 : 200)
-                    
-                    // Simplified Chart Info - only show if there's meaningful comparison
-                    if !filteredExpenses.isEmpty {
-                        HStack {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(selectedCategory != nil ? 
-                                        Color.forCategory(selectedCategory!.color) : 
-                                        Color.appPrimary)
-                                    .frame(width: 6, height: 6)
-                                
-                                Text("Trend")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            // Only show comparison if there's a significant change
-                            if let comparison = getTrendComparison(), comparison != "Stable" {
-                                HStack(spacing: 4) {
-                                    Image(systemName: comparison.hasPrefix("↑") ? "arrow.up" : "arrow.down")
-                                        .font(.caption2)
-                                        .foregroundColor(comparison.hasPrefix("↑") ? .red : .green)
-                                    
-                                    Text(comparison)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.tertiarySystemBackground)
-                                .cornerRadius(4)
-                            }
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            trendStatCard(title: "Total", value: viewModel.formattedAmount(totalExpenses()), icon: "creditcard.fill", color: accent)
+                                .frame(width: 140)
+                            trendStatCard(title: "Average", value: viewModel.formattedAmount(averageExpense()), icon: "chart.bar.fill", color: .jordyBlue)
+                                .frame(width: 140)
+                            trendStatCard(title: "Highest", value: viewModel.formattedAmount(highestExpense()), icon: "arrow.up.circle.fill", color: .teaRose)
+                                .frame(width: 140)
                         }
-                        .padding(.horizontal, 4)
+                        .padding(.horizontal, 2)
                     }
                 }
             }
-            .padding(16)
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(16)
+            
+            // Chart
+            ExpenseTrendChart(
+                expenses: filteredExpenses,
+                timeFrame: selectedTimeFrame,
+                categoryColor: accent
+            )
+            .environmentObject(viewModel)
+            
+            // Footer legend + comparison (de-cluttered)
+            if !filteredExpenses.isEmpty {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 6, height: 6)
+                    Text("Trend")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    if let comparison = getTrendComparison(), comparison != "Stable" {
+                        Text(comparison)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.tertiarySystemBackground)
+                            .cornerRadius(8)
+                    }
+                }
+            }
         }
         .scaleEffect(animateCards ? 1.0 : 0.95)
         .opacity(animateCards ? 1.0 : 0)
         .animation(.easeOut(duration: 0.6).delay(0.4), value: animateCards)
+        .padding(16)
+        .background(Color.secondarySystemBackground)
+        .cornerRadius(16)
     }
     
     // MARK: - Trend Stat Card
     private func trendStatCard(title: String, value: String, icon: String, color: Color) -> some View {
-        VStack(spacing: 8) {
+        HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(color.opacity(0.2))
-                    .frame(width: 32, height: 32)
+                    .fill(color.opacity(0.18))
+                    .frame(width: 34, height: 34)
                 
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(color)
             }
             
-            VStack(spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -588,13 +810,15 @@ struct StatisticsView: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.75)
             }
+            
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 12)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 12)
         .background(Color.systemBackground)
-        .cornerRadius(12)
+        .cornerRadius(14)
         .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
     
@@ -604,6 +828,7 @@ struct StatisticsView: View {
             HapticManager.shared.selectionChanged()
             withAnimation(.spring()) {
                 selectedTimeFrame = timeFrame
+                applyPresetTimeFrame(timeFrame)
             }
         }) {
             Text(timeFrame.rawValue)
@@ -627,7 +852,7 @@ struct StatisticsView: View {
                     categoryFilterButton(for: category)
                 }
                 
-                let customCategories = viewModel.getCustomCategories()
+                let customCategories = categoryViewModel.customCategories
                 ForEach(customCategories) { category in
                     customCategoryFilterButton(for: category)
                 }
@@ -642,10 +867,10 @@ struct StatisticsView: View {
             withAnimation(.spring()) {
                 if selectedCategory == category {
                     selectedCategory = nil
-                    viewModel.selectedCustomCategoryId = nil
+                    selectedCustomCategoryId = nil
                 } else {
                     selectedCategory = category
-                    viewModel.selectedCustomCategoryId = nil
+                    selectedCustomCategoryId = nil
                 }
             }
         }) {
@@ -668,17 +893,17 @@ struct StatisticsView: View {
     }
     
     private func customCategoryFilterButton(for category: CustomCategory) -> some View {
-        let isSelected = selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id
+        let isSelected = selectedCategory == .custom && selectedCustomCategoryId == category.id
         
         return Button(action: {
             HapticManager.shared.selectionChanged()
             withAnimation(.spring()) {
                 if isSelected {
                     selectedCategory = nil
-                    viewModel.selectedCustomCategoryId = nil
+                    selectedCustomCategoryId = nil
                 } else {
                     selectedCategory = .custom
-                    viewModel.selectedCustomCategoryId = category.id
+                    selectedCustomCategoryId = category.id
                 }
             }
         }) {
@@ -907,17 +1132,15 @@ struct StatisticsView: View {
     
     // MARK: - Helper Functions
     private func totalExpenses() -> Double {
-        return filteredExpenses.reduce(0) { $0 + $1.amount }
+        return cachedTotalSpent
     }
     
     private func totalExpenses(for category: Expense.Category) -> Double {
-        return filteredExpenses.filter { $0.category == category }.reduce(0) { $0 + $1.amount }
+        return cachedTotalsByCategory[category, default: 0]
     }
     
     private func totalExpenses(for customCategory: CustomCategory) -> Double {
-        return filteredExpenses.filter { 
-            $0.category == .custom && $0.customCategoryId == customCategory.id 
-        }.reduce(0) { $0 + $1.amount }
+        return cachedTotalsByCustomId[customCategory.id, default: 0]
     }
     
     private func averageExpense() -> Double {
@@ -926,54 +1149,23 @@ struct StatisticsView: View {
     }
     
     private func comparisonText() -> String? {
-        let currentTotal = totalExpenses()
-        let previousTotal = previousPeriodExpenses.reduce(0) { $0 + $1.amount }
+        let currentTotal = cachedTotalSpent
+        let previousTotal = cachedPreviousTotalSpent
         
         guard previousTotal > 0 else { return nil }
         
         let changePercent = ((currentTotal - previousTotal) / previousTotal) * 100
         let trend = changePercent > 0 ? "↑" : "↓"
         
-        return "\(trend) \(String(format: "%.1f", abs(changePercent)))% vs. previous \(selectedTimeFrame.rawValue.lowercased())"
+        return "\(trend) \(String(format: "%.1f", abs(changePercent)))% vs. previous period"
     }
     
     private func getCategoriesWithExpenses() -> [CategoryExpenseData] {
-        var categoryData: [CategoryExpenseData] = []
-        let total = totalExpenses()
-        
-        // Default categories
-        for category in viewModel.getAvailableDefaultCategories() {
-            let amount = totalExpenses(for: category)
-            if amount > 0 {
-                let count = filteredExpenses.filter { $0.category == category }.count
-                categoryData.append(CategoryExpenseData(
-                    name: category.rawValue,
-                    amount: amount,
-                    percentage: total > 0 ? (amount / total) * 100 : 0,
-                    icon: category.icon,
-                    color: Color.forCategory(category.color),
-                    count: count
-                ))
-            }
-        }
-        
-        // Custom categories
-        for customCategory in viewModel.getCustomCategories() {
-            let amount = totalExpenses(for: customCategory)
-            if amount > 0 {
-                let count = filteredExpenses.filter { $0.category == .custom && $0.customCategoryId == customCategory.id }.count
-                categoryData.append(CategoryExpenseData(
-                    name: customCategory.name,
-                    amount: amount,
-                    percentage: total > 0 ? (amount / total) * 100 : 0,
-                    icon: customCategory.icon,
-                    color: Color.forCategory(customCategory.colorName),
-                    count: count
-                ))
-            }
-        }
-        
-        return categoryData.sorted { $0.amount > $1.amount }
+        StatisticsCalculator.categoryBreakdown(
+            filteredExpenses: filteredExpenses,
+            defaultCategories: viewModel.getAvailableDefaultCategories(),
+            customCategories: categoryViewModel.customCategories
+        )
     }
     
     private func getTrendDescription() -> String {
@@ -983,8 +1175,8 @@ struct StatisticsView: View {
         
         if let category = selectedCategory {
             if category == .custom {
-                let customCategories = viewModel.getCustomCategories()
-                if let selectedCustomCategoryId = viewModel.selectedCustomCategoryId,
+                let customCategories = categoryViewModel.customCategories
+                if let selectedCustomCategoryId = selectedCustomCategoryId,
                    let customCategory = customCategories.first(where: { $0.id == selectedCustomCategoryId }) {
                     return "Showing spending trend for \(customCategory.name) expenses."
                 }
@@ -993,13 +1185,13 @@ struct StatisticsView: View {
                 return "Showing spending trend for \(category.rawValue) expenses."
             }
         } else {
-            return "Showing overall spending trend for \(selectedTimeFrame.rawValue.lowercased())."
+            return "Showing overall spending trend for selected date range."
         }
     }
     
     private func getTrendComparison() -> String? {
-        let currentTotal = totalExpenses()
-        let previousTotal = previousPeriodExpenses.reduce(0) { $0 + $1.amount }
+        let currentTotal = cachedTotalSpent
+        let previousTotal = cachedPreviousTotalSpent
         
         guard previousTotal > 0 else { return nil }
         
@@ -1010,11 +1202,18 @@ struct StatisticsView: View {
         }
         
         let trend = changePercent > 0 ? "↑" : "↓"
-        return "\(trend) \(String(format: "%.1f", abs(changePercent)))%"
+        
+        // Avoid absurd-looking numbers when previous period is tiny.
+        let capped = min(abs(changePercent), 999)
+        if abs(changePercent) > 999 {
+            return "\(trend) \(String(format: "%.0f", capped))%+"
+        }
+        
+        return "\(trend) \(String(format: "%.1f", capped))%"
     }
     
     private func highestExpense() -> Double {
-        return filteredExpenses.max { $0.amount < $1.amount }?.amount ?? 0
+        return cachedMaxExpense
     }
     
     private func getHeaderSubtitle() -> String {
@@ -1024,22 +1223,25 @@ struct StatisticsView: View {
         
         let expenseCount = filteredExpenses.count
         let totalAmount = totalExpenses()
+        let rangeFormatter = DateFormatter()
+        rangeFormatter.dateStyle = .medium
+        let rangeLabel = "\(rangeFormatter.string(from: rangeStartDate)) – \(rangeFormatter.string(from: rangeEndDate))"
         
         if selectedCategory != nil {
             // When a category is selected
             if selectedCategory == .custom {
-                let customCategories = viewModel.getCustomCategories()
-                if let selectedCustomCategoryId = viewModel.selectedCustomCategoryId,
+                let customCategories = categoryViewModel.customCategories
+                if let selectedCustomCategoryId = selectedCustomCategoryId,
                    let customCategory = customCategories.first(where: { $0.id == selectedCustomCategoryId }) {
-                    return "\(expenseCount) \(customCategory.name.lowercased()) expense\(expenseCount == 1 ? "" : "s") • \(selectedTimeFrame.rawValue.lowercased())"
+                    return "\(expenseCount) \(customCategory.name.lowercased()) expense\(expenseCount == 1 ? "" : "s") • \(rangeLabel)"
                 }
-                return "\(expenseCount) custom expense\(expenseCount == 1 ? "" : "s") • \(selectedTimeFrame.rawValue.lowercased())"
+                return "\(expenseCount) custom expense\(expenseCount == 1 ? "" : "s") • \(rangeLabel)"
             } else {
-                return "\(expenseCount) \(selectedCategory!.rawValue.lowercased()) expense\(expenseCount == 1 ? "" : "s") • \(selectedTimeFrame.rawValue.lowercased())"
+                return "\(expenseCount) \(selectedCategory!.rawValue.lowercased()) expense\(expenseCount == 1 ? "" : "s") • \(rangeLabel)"
             }
         } else {
             // When no category is selected
-            return "\(expenseCount) expense\(expenseCount == 1 ? "" : "s") • \(viewModel.formattedAmount(totalAmount)) spent"
+            return "\(expenseCount) expense\(expenseCount == 1 ? "" : "s") • \(rangeLabel) • \(viewModel.formattedAmount(totalAmount))"
         }
     }
 }
@@ -1066,5 +1268,6 @@ struct StatisticsView_Previews: PreviewProvider {
     static var previews: some View {
         StatisticsView()
             .environmentObject(ExpenseViewModel())
+            .environmentObject(CategoryViewModel())
     }
 } 

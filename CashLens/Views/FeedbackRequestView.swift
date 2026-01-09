@@ -1,5 +1,6 @@
 import SwiftUI
 import StoreKit
+import StoreKit
 
 struct FeedbackRequestView: View {
     @State private var showingAnimation = false
@@ -157,18 +158,28 @@ struct FeedbackRequestView: View {
         // Mark as feedback requested
         FeedbackManager.shared.markFeedbackRequested()
         
-        // Open App Store directly for rating
-        let appStoreURL = "https://apps.apple.com/us/app/cashlens/id6743153951?action=write-review" 
+        // Prefer in-app rating prompt (safe + avoids bad URLs on some devices/regions).
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            SKStoreReviewController.requestReview(in: windowScene)
+            return
+        }
         
-        if let url = URL(string: appStoreURL) {
-            UIApplication.shared.open(url, options: [:]) { success in
-                if !success {
-                    print("Failed to open App Store URL")
-                    // Fallback: try to open general App Store page
-                    if let fallbackURL = URL(string: "https://apps.apple.com/us/app/cashlens/id6743153951") {
-                        UIApplication.shared.open(fallbackURL)
+        // Fallback: open App Store review page (no country code; App Store will redirect).
+        let appId = "6743153951"
+        let reviewURLStrings = [
+            "itms-apps://itunes.apple.com/app/id\(appId)?action=write-review",
+            "https://apps.apple.com/app/id\(appId)?action=write-review",
+            "https://apps.apple.com/app/id\(appId)"
+        ]
+        
+        for urlString in reviewURLStrings {
+            if let url = URL(string: urlString) {
+                UIApplication.shared.open(url, options: [:]) { success in
+                    if success == false {
+                        print("Failed to open rating URL: \(urlString)")
                     }
                 }
+                break
             }
         }
     }
@@ -179,11 +190,12 @@ struct FeedbackRequestView: View {
         // Mark as feedback requested
         FeedbackManager.shared.markFeedbackRequested()
         
-        let appURL = "https://apps.apple.com/us/app/cashlens/id6743153951"
-        let shareText = "Check out CashLens - the best expense tracking app! 💰📱"
+        let appId = "6743153951"
+        let appURLString = "https://apps.apple.com/app/id\(appId)"
+        let shareText = "Check out CashLens - the best expense tracking app!"
         
         let activityController = UIActivityViewController(
-            activityItems: [shareText, URL(string: appURL)!],
+            activityItems: [shareText, URL(string: appURLString) as Any].compactMap { $0 },
             applicationActivities: nil
         )
         
@@ -199,9 +211,9 @@ struct FeedbackRequestView: View {
 class FeedbackManager: ObservableObject {
     static let shared = FeedbackManager()
     
-    private let hasRequestedFeedbackKey = "hasRequestedFeedback"
-    private let successfulActionsCountKey = "successfulActionsCount"
-    private let lastFeedbackAttemptKey = "lastFeedbackAttempt"
+    private let hasRequestedFeedbackKey = UserDefaultsKeys.hasRequestedFeedback
+    private let successfulActionsCountKey = UserDefaultsKeys.successfulActionsCount
+    private let lastFeedbackAttemptKey = UserDefaultsKeys.lastFeedbackAttempt
     private let feedbackTriggerThreshold = 3 // Show after 3 successful actions
     private let minimumHoursBetweenAttempts: Double = 24 // Minimum 24 hours between attempts
     

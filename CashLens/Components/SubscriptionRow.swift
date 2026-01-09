@@ -2,10 +2,27 @@ import SwiftUI
 
 struct SubscriptionRow: View {
     let subscription: Subscription
+    let monthlyEquivalentText: String?
     let onToggle: () -> Void
     let onEdit: () -> Void
     let onMarkPaid: (() -> Void)?
     let onDelete: (() -> Void)?
+    
+    init(
+        subscription: Subscription,
+        monthlyEquivalentText: String? = nil,
+        onToggle: @escaping () -> Void,
+        onEdit: @escaping () -> Void,
+        onMarkPaid: (() -> Void)?,
+        onDelete: (() -> Void)?
+    ) {
+        self.subscription = subscription
+        self.monthlyEquivalentText = monthlyEquivalentText
+        self.onToggle = onToggle
+        self.onEdit = onEdit
+        self.onMarkPaid = onMarkPaid
+        self.onDelete = onDelete
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -48,10 +65,26 @@ struct SubscriptionRow: View {
                             Spacer()
                         }
                         
-                        // Frequency
-                        Text(subscription.frequency.rawValue.capitalized)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                        // Frequency + reminder indicator
+                        HStack(spacing: 8) {
+                            Text(subscription.frequency.rawValue.capitalized)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            
+                            Image(systemName: subscription.reminderEnabled && subscription.isActive ? "bell.fill" : "bell.slash")
+                                .font(.caption)
+                                .foregroundColor(.secondary.opacity(subscription.reminderEnabled && subscription.isActive ? 0.8 : 0.6))
+                            
+                            Spacer()
+                        }
+                        
+                        // Monthly equivalent (clarifies expensive weekly subscriptions)
+                        if let monthlyEquivalentText, subscription.isActive {
+                            Text("≈ \(monthlyEquivalentText)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
                         
                         // Due date - better aligned and styled
                         if subscription.daysUntilNext == 0 {
