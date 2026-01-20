@@ -193,12 +193,23 @@ struct ExportDataView: View {
                 if let exportUrl = url {
                     exportURL = exportUrl
                     showingShareSheet = true
+                    
+                    // Track successful backup
+                    recordBackup(format: exportFormat)
                 } else {
                     alertMessage = "Failed to export data to \(exportFormat.rawValue)."
                     showingAlert = true
                 }
             }
         }
+    }
+    
+    private func recordBackup(format: ExportFormat) {
+        UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastBackupDate)
+        UserDefaults.standard.set(format.rawValue, forKey: UserDefaultsKeys.lastBackupFormat)
+        
+        let currentCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.totalBackupCount)
+        UserDefaults.standard.set(currentCount + 1, forKey: UserDefaultsKeys.totalBackupCount)
     }
     
     // MARK: - Haptic Feedback

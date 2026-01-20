@@ -1,9 +1,14 @@
 import SwiftUI
 
-struct CustomCategoryItem: View {
+struct CustomCategoryItem: View, Equatable {
     let category: CustomCategory
     let isSelected: Bool
     let action: () -> Void
+    
+    // Equatable conformance - ignore action closure
+    static func == (lhs: CustomCategoryItem, rhs: CustomCategoryItem) -> Bool {
+        lhs.category.id == rhs.category.id && lhs.isSelected == rhs.isSelected
+    }
     
     var body: some View {
         Button(action: action) {
@@ -17,18 +22,16 @@ struct CustomCategoryItem: View {
                         .font(.system(size: 24))
                         .foregroundColor(Color.forCategory(category.colorName))
                 }
+                .drawingGroup() // Rasterize icon for better scroll performance
+                // Selection ring as overlay (outside drawingGroup to prevent clipping)
                 .overlay(
                     Circle()
-                        .stroke(isSelected ? 
-                               Color.forCategory(category.colorName).opacity(0.9) : 
-                               Color.clear, 
-                               lineWidth: 3)
+                        .stroke(isSelected ? Color.forCategory(category.colorName).opacity(0.9) : Color.clear,
+                                lineWidth: 3)
                 )
-                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-                .shadow(color: isSelected ?
-                       Color.forCategory(category.colorName).opacity(0.25) :
-                       Color.clear,
-                       radius: 6, x: 0, y: 0)
+                // Single lightweight shadow
+                .shadow(color: isSelected ? Color.forCategory(category.colorName).opacity(0.2) : Color.black.opacity(0.04),
+                        radius: isSelected ? 4 : 2, x: 0, y: 1)
                 
                 Text(category.name)
                     .font(.caption)
@@ -36,6 +39,7 @@ struct CustomCategoryItem: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
+        .animation(.easeOut(duration: 0.15), value: isSelected)
     }
 }
 

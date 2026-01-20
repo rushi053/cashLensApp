@@ -766,9 +766,8 @@ struct AllExpensesView: View {
                         }
                     } else {
                         ForEach(Array(visibleExpenses.enumerated()), id: \.element.id) { idx, expense in
-                            ExpenseCard(expense: expense)
-                                .environmentObject(viewModel)
-                                .environmentObject(categoryViewModel)
+                            ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+                                .equatable()
                                 .padding(.horizontal)
                                 .padding(.top, idx == 0 ? 12 : 0)
                                 .onTapGesture {
@@ -895,9 +894,8 @@ struct AllExpensesView: View {
     }
     
     private func expenseRowView(expense: Expense, groupIndex: Int, expenseIndex: Int) -> some View {
-        ExpenseCard(expense: expense)
-            .environmentObject(viewModel)
-            .environmentObject(categoryViewModel)
+        ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+            .equatable()
             .padding(.horizontal)
             .padding(.vertical, 8)
             .background(Color.systemBackground)
@@ -929,10 +927,11 @@ struct AllExpensesView: View {
                 }
             }
             .opacity(animateContent ? 1 : 0)
-            .offset(y: animateContent ? 0 : 20)
+            .offset(y: animateContent ? 0 : 10)
+            // Simplified animation - only for initial appearance, not for every change
             .animation(
-                totalMatchCount <= 120
-                    ? .spring(response: 0.6, dampingFraction: 0.8).delay(0.1 + Double(groupIndex) * 0.05 + Double(expenseIndex) * 0.03)
+                totalMatchCount <= 50
+                    ? .easeOut(duration: 0.25).delay(0.02 * Double(min(groupIndex * 3 + expenseIndex, 15)))
                     : .none,
                 value: animateContent
             )

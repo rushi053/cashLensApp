@@ -11,15 +11,26 @@ struct ExpenseTrendChart: View {
         return UIDevice.current.userInterfaceIdiom == .pad
     }
     
-    // Computed properties for chart data
-    private var dateRange: [Date] {
+    // MARK: - Chart Data (Performance Optimized)
+    // Pre-grouped expense data for O(n) instead of O(n×m) complexity
+    
+    private var chartData: (dates: [Date], values: [Double]) {
         let calendar = Calendar.current
         let now = Date()
+        
+        // First, pre-group all expenses by their bucket key (single pass through expenses)
+        var groupedAmounts: [String: Double] = [:]
+        
+        for expense in expenses {
+            let key = bucketKey(for: expense.date, timeFrame: timeFrame, calendar: calendar)
+            groupedAmounts[key, default: 0] += expense.amount
+        }
+        
+        // Generate date range
         var dates: [Date] = []
         
         switch timeFrame {
         case .day:
-            // For day, show hourly data
             let startOfDay = calendar.startOfDay(for: now)
             for hour in 0..<24 {
                 if let date = calendar.date(byAdding: .hour, value: hour, to: startOfDay) {
@@ -27,15 +38,12 @@ struct ExpenseTrendChart: View {
                 }
             }
         case .week:
-            // For week, show daily data for the past 7 days
-            for day in 0..<7 {
+            for day in (0..<7).reversed() {
                 if let date = calendar.date(byAdding: .day, value: -day, to: now) {
                     dates.append(calendar.startOfDay(for: date))
                 }
             }
-            dates.reverse()
         case .month:
-            // For month, show data for each day of the current month
             if let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)),
                let range = calendar.range(of: .day, in: .month, for: now) {
                 for day in 1...range.count {
@@ -45,7 +53,6 @@ struct ExpenseTrendChart: View {
                 }
             }
         case .year:
-            // For year, show monthly data
             if let startOfYear = calendar.date(from: calendar.dateComponents([.year], from: now)) {
                 for month in 0..<12 {
                     if let date = calendar.date(byAdding: .month, value: month, to: startOfYear) {
@@ -54,9 +61,8 @@ struct ExpenseTrendChart: View {
                 }
             }
         case .all:
-            // For all, group by months for the available data
             if let oldestExpense = expenses.min(by: { $0.date < $1.date })?.date {
-                var current = calendar.startOfDay(for: oldestExpense)
+                var current = calendar.date(from: calendar.dateComponents([.year, .month], from: oldestExpense)) ?? calendar.startOfDay(for: oldestExpense)
                 let endDate = calendar.startOfDay(for: now)
                 
                 while current <= endDate {
@@ -70,48 +76,39 @@ struct ExpenseTrendChart: View {
             }
         }
         
-        return dates
+        // Map dates to values using pre-grouped data (O(1) lookup per date)
+        let values = dates.map { date -> Double in
+            let key = bucketKey(for: date, timeFrame: timeFrame, calendar: calendar)
+            return groupedAmounts[key, default: 0]
+        }
+        
+        return (dates, values)
+    }
+    
+    /// Generate a unique bucket key for grouping expenses
+    private func bucketKey(for date: Date, timeFrame: ExpenseViewModel.TimeFrame, calendar: Calendar) -> String {
+        switch timeFrame {
+        case .day:
+            let day = calendar.component(.day, from: date)
+            let hour = calendar.component(.hour, from: date)
+            return "\(day)-\(hour)"
+        case .week, .month:
+            let year = calendar.component(.year, from: date)
+            let day = calendar.ordinality(of: .day, in: .year, for: date) ?? 0
+            return "\(year)-\(day)"
+        case .year, .all:
+            let year = calendar.component(.year, from: date)
+            let month = calendar.component(.month, from: date)
+            return "\(year)-\(month)"
+        }
+    }
+    
+    private var dateRange: [Date] {
+        chartData.dates
     }
     
     private var dataPoints: [Double] {
-        let calendar = Calendar.current
-        
-        return dateRange.map { date in
-            let filteredExpenses: [Expense]
-            
-            switch timeFrame {
-            case .day:
-                // Group by hour
-                filteredExpenses = expenses.filter {
-                    calendar.component(.day, from: $0.date) == calendar.component(.day, from: date) &&
-                    calendar.component(.hour, from: $0.date) == calendar.component(.hour, from: date)
-                }
-            case .week:
-                // Group by day
-                filteredExpenses = expenses.filter {
-                    calendar.isDate($0.date, inSameDayAs: date)
-                }
-            case .month:
-                // Group by day
-                filteredExpenses = expenses.filter {
-                    calendar.isDate($0.date, inSameDayAs: date)
-                }
-            case .year:
-                // Group by month
-                filteredExpenses = expenses.filter {
-                    calendar.component(.year, from: $0.date) == calendar.component(.year, from: date) &&
-                    calendar.component(.month, from: $0.date) == calendar.component(.month, from: date)
-                }
-            case .all:
-                // Group by month
-                filteredExpenses = expenses.filter {
-                    calendar.component(.year, from: $0.date) == calendar.component(.year, from: date) &&
-                    calendar.component(.month, from: $0.date) == calendar.component(.month, from: date)
-                }
-            }
-            
-            return filteredExpenses.reduce(0) { $0 + $1.amount }
-        }
+        chartData.values
     }
     
     private var maxValue: Double {

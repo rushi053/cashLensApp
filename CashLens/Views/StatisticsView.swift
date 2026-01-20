@@ -12,9 +12,8 @@ struct StatisticsView: View {
     @State private var animateCards = false
     @State private var showingDateRangePicker = false
     
-    // Performance: cache computed stats so tab switching & UI updates stay smooth with large datasets.
-    @State private var cachedFilteredExpenses: [Expense] = []
-    @State private var cachedPreviousPeriodExpenses: [Expense] = []
+    // Performance: cache ONLY aggregated data (not full arrays) to minimize memory.
+    @State private var cachedFilteredCount: Int = 0
     @State private var cachedInsights: [StatInsight] = []
     @State private var cachedTotalSpent: Double = 0
     @State private var cachedPreviousTotalSpent: Double = 0
@@ -23,8 +22,12 @@ struct StatisticsView: View {
     @State private var cachedCountsByCategory: [Expense.Category: Int] = [:]
     @State private var cachedTotalsByCustomId: [UUID: Double] = [:]
     @State private var cachedCountsByCustomId: [UUID: Int] = [:]
+    // Pre-aggregated chart data to avoid passing full expense arrays to charts
+    @State private var cachedTrendData: [(date: Date, amount: Double)] = []
+    @State private var cachedHeatmapData: [Date: Double] = [:]
     @State private var statsRecomputeTask: Task<Void, Never>?
     @State private var didInitializeRange = false
+    @State private var isRecomputingStats = false
     
     // Date range sheet uses temporary values to avoid recomputing while scrolling the picker.
     @State private var tempRangeStartDate = Date()
@@ -34,20 +37,33 @@ struct StatisticsView: View {
     @State private var donutSelectedId: String? = nil
     
     // MARK: - Computed Properties
-    private var filteredExpenses: [Expense] {
-        cachedFilteredExpenses
-    }
     
-    private var previousPeriodExpenses: [Expense] {
-        cachedPreviousPeriodExpenses
+    /// Returns filtered expenses on-demand (NOT cached) to avoid memory duplication.
+    /// Use cachedFilteredCount for count checks, and cachedTotalsByCategory for totals.
+    private var filteredExpenses: [Expense] {
+        ExpenseFilter.apply(
+            expenses: viewModel.expenses,
+            category: selectedCategory,
+            customCategoryId: selectedCustomCategoryId,
+            timeFrame: .all,
+            dateRangeStart: rangeStartDate,
+            dateRangeEnd: rangeEndDate
+        )
     }
     
     private var insights: [StatInsight] {
         cachedInsights
     }
     
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    
     private var isIPad: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
+    }
+    
+    /// True when we have extra horizontal space (iPad or iPhone landscape)
+    private var isWideLayout: Bool {
+        isIPad || horizontalSizeClass == .regular
     }
     
     // MARK: - Main Body
@@ -68,8 +84,10 @@ struct StatisticsView: View {
                         statisticsContent
                     }
                 }
-                .padding(.horizontal, isIPad ? 32 : 20)
+                .padding(.horizontal, isWideLayout ? 32 : 20)
                 .padding(.bottom, 120)
+                .frame(maxWidth: isWideLayout ? 1200 : .infinity) // Limit max width on very wide screens
+                .frame(maxWidth: .infinity) // Center content
             }
             .background(Color.systemBackground)
             .navigationBarTitle("")
@@ -86,9 +104,7 @@ struct StatisticsView: View {
                 scheduleRecomputeStats(immediate: true)
             }
         }
-        .if(isIPad) { view in
-            view.navigationViewStyle(StackNavigationViewStyle())
-        }
+        .navigationViewStyle(StackNavigationViewStyle()) // Always use stack style to prevent split view
         .sheet(isPresented: $showingAddExpense) {
             AddExpenseView(viewModel: viewModel)
         }
@@ -141,7 +157,7 @@ struct StatisticsView: View {
             VStack(spacing: 12) {
                 HStack {
                     Text("Time Period")
-                        .font(isIPad ? .title3 : .headline)
+                        .font(isWideLayout ? .title3 : .headline)
                         .fontWeight(.bold)
                     Spacer()
                 }
@@ -163,7 +179,7 @@ struct StatisticsView: View {
             VStack(spacing: 12) {
                 HStack {
                     Text("Filter by Category")
-                        .font(isIPad ? .title3 : .headline)
+                        .font(isWideLayout ? .title3 : .headline)
                         .fontWeight(.bold)
                     
                     Spacer()
@@ -184,7 +200,7 @@ struct StatisticsView: View {
                 categorySelector
             }
         }
-        .padding(isIPad ? 24 : 20)
+        .padding(isWideLayout ? 24 : 20)
         .background(Color.secondarySystemBackground)
         .cornerRadius(16)
     }
@@ -193,7 +209,7 @@ struct StatisticsView: View {
         VStack(spacing: 12) {
             HStack {
                 Text("Date Range")
-                    .font(isIPad ? .title3 : .headline)
+                    .font(isWideLayout ? .title3 : .headline)
                     .fontWeight(.bold)
                 Spacer()
             }
@@ -297,6 +313,11 @@ struct StatisticsView: View {
         let selectedCustomId = selectedCustomCategoryId
         let formattedAmount = viewModel.formattedAmount
         
+        // Show loading for large datasets
+        if expensesSnapshot.count > 500 {
+            isRecomputingStats = true
+        }
+        
         Task.detached(priority: .userInitiated) {
             let currentFiltered = ExpenseFilter.apply(
                 expenses: expensesSnapshot,
@@ -322,6 +343,9 @@ struct StatisticsView: View {
             var totalsByCustom: [UUID: Double] = [:]
             var countsByCustom: [UUID: Int] = [:]
             
+            // Pre-aggregate heatmap data (totals by day) - limited to 365 days
+            var heatmapData: [Date: Double] = [:]
+            
             for e in currentFiltered {
                 total += e.amount
                 if e.amount > maxExpense { maxExpense = e.amount }
@@ -333,6 +357,10 @@ struct StatisticsView: View {
                     countsByCustom[id, default: 0] += 1
                     totalsByCustom[id, default: 0] += e.amount
                 }
+                
+                // Aggregate for heatmap
+                let dayKey = calendar.startOfDay(for: e.date)
+                heatmapData[dayKey, default: 0] += e.amount
             }
             
             let previousTotal = prevFiltered.reduce(0) { $0 + $1.amount }
@@ -347,9 +375,20 @@ struct StatisticsView: View {
                 formattedAmount: formattedAmount
             )
             
+            // Pre-aggregate trend data (by month for memory efficiency)
+            var trendData: [(date: Date, amount: Double)] = []
+            var monthlyTotals: [Date: Double] = [:]
+            for e in currentFiltered {
+                if let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: e.date)) {
+                    monthlyTotals[monthStart, default: 0] += e.amount
+                }
+            }
+            trendData = monthlyTotals.map { ($0.key, $0.value) }.sorted { $0.0 < $1.0 }
+            
+            let filteredCount = currentFiltered.count
+            
             await MainActor.run {
-                self.cachedFilteredExpenses = currentFiltered
-                self.cachedPreviousPeriodExpenses = prevFiltered
+                self.cachedFilteredCount = filteredCount
                 self.cachedInsights = computedInsights
                 self.cachedTotalSpent = total
                 self.cachedPreviousTotalSpent = previousTotal
@@ -358,6 +397,9 @@ struct StatisticsView: View {
                 self.cachedCountsByCategory = countsByCategory
                 self.cachedTotalsByCustomId = totalsByCustom
                 self.cachedCountsByCustomId = countsByCustom
+                self.cachedTrendData = trendData
+                self.cachedHeatmapData = heatmapData
+                self.isRecomputingStats = false
             }
         }
     }
@@ -382,12 +424,12 @@ struct StatisticsView: View {
             }
             
             // Category Share (donut)
-            if !filteredExpenses.isEmpty {
+            if cachedFilteredCount > 0 {
                 categoryShareSection
             }
             
             // Heatmap
-            if !filteredExpenses.isEmpty {
+            if cachedFilteredCount > 0 {
                 spendingHeatmapSection
             }
             
@@ -404,12 +446,13 @@ struct StatisticsView: View {
         VStack(spacing: 16) {
             HStack {
                 Text("Overview")
-                    .font(isIPad ? .title2 : .title3)
+                    .font(isWideLayout ? .title2 : .title3)
                     .fontWeight(.bold)
                 Spacer()
             }
             
-            if isIPad {
+            if isWideLayout {
+                // Wide layout: all cards in a row
                 HStack(spacing: 16) {
                     summaryCard(
                         title: "Total Spent",
@@ -422,7 +465,7 @@ struct StatisticsView: View {
                     
                     summaryCard(
                         title: "Transactions",
-                        value: "\(filteredExpenses.count)",
+                        value: "\(cachedFilteredCount)",
                         subtitle: dateRangeSubtitle(),
                         icon: "list.bullet.circle.fill",
                         color: .jordyBlue,
@@ -439,6 +482,7 @@ struct StatisticsView: View {
                     )
                 }
             } else {
+                // Compact layout: stacked cards
                 VStack(spacing: 12) {
                     summaryCard(
                         title: "Total Spent",
@@ -452,7 +496,7 @@ struct StatisticsView: View {
                     HStack(spacing: 12) {
                         summaryCard(
                             title: "Transactions",
-                            value: "\(filteredExpenses.count)",
+                            value: "\(cachedFilteredCount)",
                             subtitle: dateRangeSubtitle(),
                             icon: "list.bullet.circle.fill",
                             color: .jordyBlue,
@@ -480,12 +524,12 @@ struct StatisticsView: View {
         VStack(spacing: 16) {
             HStack {
                 Text("Insights")
-                    .font(isIPad ? .title2 : .title3)
+                    .font(isWideLayout ? .title2 : .title3)
                     .fontWeight(.bold)
                 Spacer()
             }
             
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: isIPad ? 2 : 1), spacing: 12) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: isWideLayout ? 2 : 1), spacing: 12) {
                 ForEach(insights) { insight in
                     insightCard(insight)
                 }
@@ -501,7 +545,7 @@ struct StatisticsView: View {
         VStack(spacing: 16) {
             HStack {
                 Text("Category Breakdown")
-                    .font(isIPad ? .title2 : .title3)
+                    .font(isWideLayout ? .title2 : .title3)
                     .fontWeight(.bold)
                 Spacer()
                 
@@ -568,7 +612,7 @@ struct StatisticsView: View {
         return VStack(spacing: 16) {
             HStack {
                 Text("Category Share")
-                    .font(isIPad ? .title2 : .title3)
+                    .font(isWideLayout ? .title2 : .title3)
                     .fontWeight(.bold)
                 Spacer()
                 
@@ -667,7 +711,7 @@ struct StatisticsView: View {
         return VStack(spacing: 16) {
             HStack {
                 Text("Spending Heatmap")
-                    .font(isIPad ? .title2 : .title3)
+                    .font(isWideLayout ? .title2 : .title3)
                     .fontWeight(.bold)
                 Spacer()
             }
@@ -695,7 +739,7 @@ struct StatisticsView: View {
         return VStack(spacing: 14) {
             HStack {
                 Text("Spending Trend")
-                    .font(isIPad ? .title2 : .title3)
+                    .font(isWideLayout ? .title2 : .title3)
                     .fontWeight(.bold)
                 
                 Spacer()
@@ -724,7 +768,7 @@ struct StatisticsView: View {
             }
             
             // Stats row (avoid 3 tiny columns on iPhone)
-            if !filteredExpenses.isEmpty {
+            if cachedFilteredCount > 0 {
                 if isIPad {
                     HStack(spacing: 12) {
                         trendStatCard(title: "Total", value: viewModel.formattedAmount(totalExpenses()), icon: "creditcard.fill", color: accent)
@@ -755,7 +799,7 @@ struct StatisticsView: View {
             .environmentObject(viewModel)
             
             // Footer legend + comparison (de-cluttered)
-            if !filteredExpenses.isEmpty {
+            if cachedFilteredCount > 0 {
                 HStack(spacing: 8) {
                     Circle()
                         .fill(accent)
@@ -826,7 +870,8 @@ struct StatisticsView: View {
     private func timeFrameButton(_ timeFrame: ExpenseViewModel.TimeFrame) -> some View {
         Button(action: {
             HapticManager.shared.selectionChanged()
-            withAnimation(.spring()) {
+            // Fast UI animation, data computation happens in background
+            withAnimation(.easeOut(duration: 0.15)) {
                 selectedTimeFrame = timeFrame
                 applyPresetTimeFrame(timeFrame)
             }
@@ -864,7 +909,8 @@ struct StatisticsView: View {
     private func categoryFilterButton(for category: Expense.Category) -> some View {
         Button(action: {
             HapticManager.shared.selectionChanged()
-            withAnimation(.spring()) {
+            // Fast animation for UI, data filtering is debounced in background
+            withAnimation(.easeOut(duration: 0.15)) {
                 if selectedCategory == category {
                     selectedCategory = nil
                     selectedCustomCategoryId = nil
@@ -897,7 +943,8 @@ struct StatisticsView: View {
         
         return Button(action: {
             HapticManager.shared.selectionChanged()
-            withAnimation(.spring()) {
+            // Fast animation for UI, data filtering is debounced in background
+            withAnimation(.easeOut(duration: 0.15)) {
                 if isSelected {
                     selectedCategory = nil
                     selectedCustomCategoryId = nil
@@ -935,7 +982,7 @@ struct StatisticsView: View {
                         .lineLimit(1)
                     
                     Text(value)
-                        .font(isIPad ? .title2 : .title3)
+                        .font(isWideLayout ? .title2 : .title3)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                         .lineLimit(1)
@@ -952,10 +999,10 @@ struct StatisticsView: View {
                 ZStack {
                     Circle()
                         .fill(color.opacity(0.2))
-                        .frame(width: isIPad ? 50 : 40, height: isIPad ? 50 : 40)
+                        .frame(width: isWideLayout ? 50 : 40, height: isWideLayout ? 50 : 40)
                     
                     Image(systemName: icon)
-                        .font(.system(size: isIPad ? 22 : 18))
+                        .font(.system(size: isWideLayout ? 22 : 18))
                         .foregroundColor(color)
                 }
             }
@@ -1144,7 +1191,7 @@ struct StatisticsView: View {
     }
     
     private func averageExpense() -> Double {
-        let count = filteredExpenses.count
+        let count = cachedFilteredCount
         return count > 0 ? totalExpenses() / Double(count) : 0
     }
     
@@ -1161,15 +1208,49 @@ struct StatisticsView: View {
     }
     
     private func getCategoriesWithExpenses() -> [CategoryExpenseData] {
-        StatisticsCalculator.categoryBreakdown(
-            filteredExpenses: filteredExpenses,
-            defaultCategories: viewModel.getAvailableDefaultCategories(),
-            customCategories: categoryViewModel.customCategories
-        )
+        // Use cached totals instead of recomputing from expenses (memory efficient)
+        var categoryData: [CategoryExpenseData] = []
+        let total = cachedTotalSpent
+        
+        for category in viewModel.getAvailableDefaultCategories() {
+            let amount = cachedTotalsByCategory[category, default: 0]
+            if amount > 0 {
+                let count = cachedCountsByCategory[category, default: 0]
+                categoryData.append(
+                    CategoryExpenseData(
+                        name: category.rawValue,
+                        amount: amount,
+                        percentage: total > 0 ? (amount / total) * 100 : 0,
+                        icon: category.icon,
+                        color: Color.forCategory(category.color),
+                        count: count
+                    )
+                )
+            }
+        }
+        
+        for customCategory in categoryViewModel.customCategories {
+            let amount = cachedTotalsByCustomId[customCategory.id, default: 0]
+            if amount > 0 {
+                let count = cachedCountsByCustomId[customCategory.id, default: 0]
+                categoryData.append(
+                    CategoryExpenseData(
+                        name: customCategory.name,
+                        amount: amount,
+                        percentage: total > 0 ? (amount / total) * 100 : 0,
+                        icon: customCategory.icon,
+                        color: Color.forCategory(customCategory.colorName),
+                        count: count
+                    )
+                )
+            }
+        }
+        
+        return categoryData.sorted { $0.amount > $1.amount }
     }
     
     private func getTrendDescription() -> String {
-        if filteredExpenses.isEmpty {
+        if cachedFilteredCount == 0 {
             return "No expenses recorded for this period."
         }
         
@@ -1221,7 +1302,7 @@ struct StatisticsView: View {
             return "Add expenses to see insights"
         }
         
-        let expenseCount = filteredExpenses.count
+        let expenseCount = cachedFilteredCount
         let totalAmount = totalExpenses()
         let rangeFormatter = DateFormatter()
         rangeFormatter.dateStyle = .medium

@@ -87,6 +87,9 @@ struct ProfileView: View {
                     
                     // Data Management Section
                     dataManagementSection
+                    
+                    // Backup Health Section
+                    backupHealthSection
                 }
                 .padding()
             }
@@ -244,11 +247,14 @@ struct ProfileView: View {
                 .padding(.bottom, 4)
             
             currencyRow
+            
             appearanceRow
+            appearancePicker // Appears directly below appearance row
+            
             defaultTimeFrameRow
+            defaultTimeFramePicker // Appears directly below time frame row
+            
             donationRow
-            appearancePicker
-            defaultTimeFramePicker
         }
         .padding()
         .background(Color.secondarySystemBackground.opacity(0.5))
@@ -836,7 +842,11 @@ struct ProfileView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.mauve.opacity(0.3), lineWidth: 1)
             )
-            .transition(.opacity)
+            .padding(.top, -8) // Reduce spacing to appear connected to the row above
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .top)),
+                removal: .opacity
+            ))
         }
     }
     
@@ -885,7 +895,11 @@ struct ProfileView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.mauve.opacity(0.3), lineWidth: 1)
             )
-            .transition(.opacity)
+            .padding(.top, -8) // Reduce spacing to appear connected to the row above
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .move(edge: .top)),
+                removal: .opacity
+            ))
         }
     }
     
@@ -1194,6 +1208,296 @@ struct ProfileView: View {
         .padding()
         .background(Color.secondarySystemBackground.opacity(0.5))
         .cornerRadius(20)
+    }
+    
+    // MARK: - Backup Health Section
+    private var backupHealthSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Backup Health")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                
+                Spacer()
+                
+                // Health status badge
+                backupHealthBadge
+            }
+            .padding(.bottom, 4)
+            
+            // Main health card
+            backupHealthCard
+            
+            // Info note
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                
+                Text("Your data is stored only on this device. Regular backups ensure you never lose your financial history.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 4)
+        }
+        .padding()
+        .background(Color.secondarySystemBackground.opacity(0.5))
+        .cornerRadius(20)
+    }
+    
+    private var backupHealthBadge: some View {
+        let status = backupHealthStatus
+        
+        return HStack(spacing: 4) {
+            Circle()
+                .fill(status.color)
+                .frame(width: 8, height: 8)
+            
+            Text(status.label)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(status.color)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(status.color.opacity(0.15))
+        .cornerRadius(12)
+    }
+    
+    private var backupHealthCard: some View {
+        let status = backupHealthStatus
+        let lastBackup = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date
+        let backupCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.totalBackupCount)
+        
+        return VStack(spacing: 16) {
+            // Visual indicator
+            HStack(spacing: 20) {
+                // Icon with status ring
+                ZStack {
+                    Circle()
+                        .stroke(status.color.opacity(0.3), lineWidth: 4)
+                        .frame(width: 60, height: 60)
+                    
+                    Circle()
+                        .trim(from: 0, to: status.ringProgress)
+                        .stroke(status.color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 60, height: 60)
+                        .rotationEffect(.degrees(-90))
+                    
+                    Image(systemName: status.icon)
+                        .font(.system(size: 24))
+                        .foregroundColor(status.color)
+                }
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(status.title)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Text(status.subtitle)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                
+                Spacer()
+            }
+            
+            Divider()
+            
+            // Stats row
+            HStack(spacing: 0) {
+                // Last backup
+                VStack(spacing: 4) {
+                    Text("Last Backup")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .textCase(.uppercase)
+                    
+                    if let date = lastBackup {
+                        Text(formatBackupDate(date))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    } else {
+                        Text("Never")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.red)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(width: 1, height: 30)
+                
+                // Total backups
+                VStack(spacing: 4) {
+                    Text("Total Backups")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .textCase(.uppercase)
+                    
+                    Text("\(backupCount)")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                }
+                .frame(maxWidth: .infinity)
+                
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.3))
+                    .frame(width: 1, height: 30)
+                
+                // Data count
+                VStack(spacing: 4) {
+                    Text("Expenses")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .textCase(.uppercase)
+                    
+                    Text("\(viewModel.expenses.count)")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            
+            // Backup now button (shown when status is not good)
+            if status != .good {
+                Button(action: {
+                    hapticFeedback(style: .medium)
+                    showingExportSheet = true
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise.icloud")
+                            .font(.system(size: 16, weight: .semibold))
+                        
+                        Text("Backup Now")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(12)
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
+        }
+        .padding()
+        .background(Color.secondarySystemBackground)
+        .cornerRadius(12)
+    }
+    
+    // MARK: - Backup Health Status
+    private enum BackupHealthStatus: Equatable {
+        case good
+        case okay
+        case needsAttention
+        case critical
+        
+        var label: String {
+            switch self {
+            case .good: return "Good"
+            case .okay: return "OK"
+            case .needsAttention: return "Needs Attention"
+            case .critical: return "Critical"
+            }
+        }
+        
+        var color: Color {
+            switch self {
+            case .good: return .green
+            case .okay: return .orange
+            case .needsAttention: return .orange
+            case .critical: return .red
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .good: return "checkmark.shield.fill"
+            case .okay: return "clock.badge.checkmark.fill"
+            case .needsAttention: return "exclamationmark.shield.fill"
+            case .critical: return "xmark.shield.fill"
+            }
+        }
+        
+        var title: String {
+            switch self {
+            case .good: return "Your data is safe"
+            case .okay: return "Backup recommended"
+            case .needsAttention: return "Backup needed"
+            case .critical: return "No backup found"
+            }
+        }
+        
+        var subtitle: String {
+            switch self {
+            case .good: return "You've backed up recently. Great job!"
+            case .okay: return "It's been a while since your last backup."
+            case .needsAttention: return "Your data hasn't been backed up in over a month."
+            case .critical: return "Your data exists only on this device. Please backup!"
+            }
+        }
+        
+        var ringProgress: CGFloat {
+            switch self {
+            case .good: return 1.0
+            case .okay: return 0.65
+            case .needsAttention: return 0.35
+            case .critical: return 0.1
+            }
+        }
+    }
+    
+    private var backupHealthStatus: BackupHealthStatus {
+        guard let lastBackup = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date else {
+            return .critical
+        }
+        
+        let daysSinceBackup = Calendar.current.dateComponents([.day], from: lastBackup, to: Date()).day ?? Int.max
+        
+        switch daysSinceBackup {
+        case 0...7:
+            return .good
+        case 8...14:
+            return .okay
+        case 15...30:
+            return .needsAttention
+        default:
+            return .critical
+        }
+    }
+    
+    private func formatBackupDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            let days = calendar.dateComponents([.day], from: date, to: now).day ?? 0
+            if days < 7 {
+                return "\(days) days ago"
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateStyle = .medium
+                return formatter.string(from: date)
+            }
+        }
     }
     
     // MARK: - Haptic Feedback

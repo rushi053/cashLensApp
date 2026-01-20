@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var showingCustomizeSummary = false
     @State private var showingManageCategories = false
     @State private var showOnlySubscriptionsOnHome = false
+    @State private var showingSearch = false
     
     private var isIPad: Bool {
         return UIDevice.current.userInterfaceIdiom == .pad
@@ -79,6 +80,11 @@ struct HomeView: View {
             ManageCategoriesView()
                 .environmentObject(categoryViewModel)
                 .environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showingSearch) {
+            QuickSearchView()
+                .environmentObject(viewModel)
+                .environmentObject(categoryViewModel)
         }
     }
     
@@ -221,7 +227,8 @@ struct HomeView: View {
                                                 isSelected: viewModel.selectedCategory == category,
                                                 action: {
                                                     HapticManager.shared.mediumTap()
-                                                    withAnimation(.spring()) {
+                                                    // Fast animation for UI, data filtering is debounced
+                                                    withAnimation(.easeOut(duration: 0.15)) {
                                                         if viewModel.selectedCategory == category {
                                                             viewModel.selectedCategory = nil
                                                         } else {
@@ -240,7 +247,8 @@ struct HomeView: View {
                                                 isSelected: viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id,
                                                 action: {
                                                     HapticManager.shared.mediumTap()
-                                                    withAnimation(.spring()) {
+                                                    // Fast animation for UI, data filtering is debounced
+                                                    withAnimation(.easeOut(duration: 0.15)) {
                                                         if viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id {
                                                             viewModel.selectedCategory = nil
                                                             viewModel.selectedCustomCategoryId = nil
@@ -336,13 +344,28 @@ struct HomeView: View {
             
             Spacer()
             
+            // Search Button
+            Button(action: {
+                HapticManager.shared.lightTap()
+                showingSearch = true
+            }) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(Color.mauve)
+                    .shadow(color: Color.mauve.opacity(0.3), radius: 4, x: 0, y: 2)
+            }
+            .opacity(animateCards ? 1 : 0)
+            .scaleEffect(animateCards ? 1 : 0.5)
+            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
+            .padding(.trailing, 8)
+            
             // Theme Toggle Button
             Button(action: {
                 HapticManager.shared.mediumTap()
                 toggleAppearanceMode()
             }) {
                 Image(systemName: viewModel.appearanceMode == .dark ? "sun.max.fill" : "moon.fill")
-                    .font(.system(size: 28))
+                    .font(.system(size: 24))
                     .foregroundColor(Color.mauve)
                     .shadow(color: Color.mauve.opacity(0.3), radius: 4, x: 0, y: 2)
             }
@@ -356,7 +379,7 @@ struct HomeView: View {
                 showingProfile = true
             }) {
                 Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 32))
+                    .font(.system(size: 28))
                     .foregroundColor(Color.mauve)
                     .shadow(color: Color.mauve.opacity(0.3), radius: 4, x: 0, y: 2)
             }
@@ -553,7 +576,9 @@ struct HomeView: View {
                             isSelected: viewModel.selectedCategory == category,
                             action: {
                                 HapticManager.shared.mediumTap()
-                                withAnimation(.spring()) {
+                                // Fast animation ONLY for the selection state
+                                // Data filtering happens in background via debounced pipeline
+                                withAnimation(.easeOut(duration: 0.15)) {
                                     if viewModel.selectedCategory == category {
                                         viewModel.selectedCategory = nil
                                     } else {
@@ -572,7 +597,8 @@ struct HomeView: View {
                             isSelected: viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id,
                             action: {
                                 HapticManager.shared.mediumTap()
-                                withAnimation(.spring()) {
+                                // Fast animation ONLY for the selection state
+                                withAnimation(.easeOut(duration: 0.15)) {
                                     if viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id {
                                         viewModel.selectedCategory = nil
                                         viewModel.selectedCustomCategoryId = nil
@@ -589,7 +615,7 @@ struct HomeView: View {
                 .padding(.horizontal, 4)
             }
         }
-        .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.6), value: animateCards)
+        .animation(.easeOut(duration: 0.25), value: animateCards)
     }
     
     // MARK: - Recent Expenses View
@@ -706,22 +732,24 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
             } else {
+                // Use LazyVStack with optimized ExpenseCards
                 LazyVStack(spacing: 16) {
                     ForEach(Array(list.prefix(5).enumerated()), id: \.element.id) { index, expense in
-                        ExpenseCard(expense: expense)
-                            .environmentObject(viewModel)
-                            .environmentObject(categoryViewModel)
-                            .transition(.slide)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index)), value: animateCards)
+                        // Use the optimized initializer to prevent unnecessary re-renders
+                        ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+                            .equatable() // Tell SwiftUI to use our Equatable implementation
                             .onTapGesture {
                                 HapticManager.shared.impact(style: .light)
                                 selectedExpense = expense
                             }
+                            .opacity(animateCards ? 1 : 0)
+                            .offset(y: animateCards ? 0 : 10)
                     }
                 }
+                .animation(.easeOut(duration: 0.3), value: animateCards)
             }
         }
-        .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.7), value: animateCards)
+        // Removed heavy spring animation - data changes should not trigger view animations
     }
     
     // MARK: - Empty State View
@@ -828,17 +856,17 @@ struct HomeView: View {
             } else {
                 LazyVStack(spacing: 16) {
                     ForEach(Array(viewModel.filteredExpenses.prefix(5).enumerated()), id: \.element.id) { index, expense in
-                        ExpenseCard(expense: expense)
-                            .environmentObject(viewModel)
-                            .environmentObject(categoryViewModel)
-                            .transition(.slide)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index)), value: animateCards)
+                        ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+                            .equatable()
                             .onTapGesture {
                                 HapticManager.shared.impact(style: .light)
                                 selectedExpense = expense
                             }
+                            .opacity(animateCards ? 1 : 0)
+                            .offset(y: animateCards ? 0 : 10)
                     }
                 }
+                .animation(.easeOut(duration: 0.3), value: animateCards)
             }
         }
     }

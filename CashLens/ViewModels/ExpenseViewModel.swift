@@ -14,6 +14,19 @@ class ExpenseViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Cached Totals (Performance Optimization)
+    // These are updated asynchronously when filteredExpenses changes
+    @Published private(set) var cachedTotalAmount: Double = 0
+    @Published private(set) var cachedTotalsByCategory: [Expense.Category: Double] = [:]
+    @Published private(set) var cachedTotalsByCustomId: [UUID: Double] = [:]
+    @Published private(set) var cachedCountsByCategory: [Expense.Category: Int] = [:]
+    @Published private(set) var cachedCountsByCustomId: [UUID: Int] = [:]
+    @Published private(set) var isFilteringInProgress: Bool = false
+    
+    // Background task management for filtering
+    private var filterTask: Task<Void, Never>?
+    private var totalsTask: Task<Void, Never>?
+    
     /// Controls what Home should default to on launch (when no explicit last selection is stored).
     @Published var defaultHomeTimeFrame: TimeFrame = .month {
         didSet {
@@ -214,44 +227,145 @@ class ExpenseViewModel: ObservableObject {
         }
     }
     
-    // Set up filtering
+    // MARK: - Filtering Setup (Performance Optimized)
+    
+    /// Set up filtering with debouncing and background processing for smooth UI
     private func setupFiltering() {
         Publishers.CombineLatest4($expenses, $selectedCategory, $selectedCustomCategoryId, $selectedTimeFrame)
-            .map { [weak self] expenses, category, customCategoryId, timeFrame in
-                self?.filterExpenses(expenses, category: category, customCategoryId: customCategoryId, timeFrame: timeFrame) ?? []
+            .debounce(for: .milliseconds(50), scheduler: RunLoop.main) // Batch rapid changes
+            .sink { [weak self] expenses, category, customCategoryId, timeFrame in
+                self?.scheduleFilterRecompute(
+                    expenses: expenses,
+                    category: category,
+                    customCategoryId: customCategoryId,
+                    timeFrame: timeFrame
+                )
             }
-            .assign(to: \.filteredExpenses, on: self)
             .store(in: &cancellables)
     }
     
+    /// Schedule filter recomputation on background thread to keep UI responsive
+    private func scheduleFilterRecompute(
+        expenses: [Expense],
+        category: Expense.Category?,
+        customCategoryId: UUID?,
+        timeFrame: TimeFrame
+    ) {
+        // Cancel any pending filter task
+        filterTask?.cancel()
+        isFilteringInProgress = true
+        
+        filterTask = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            
+            // Small delay to batch very rapid changes (e.g., quick category taps)
+            try? await Task.sleep(nanoseconds: 30_000_000) // 30ms
+            
+            // Check if task was cancelled
+            guard !Task.isCancelled else { return }
+            
+            // Perform filtering on background thread
+            let result = await Task.detached(priority: .userInitiated) {
+                ExpenseFilter.apply(
+                    expenses: expenses,
+                    category: category,
+                    customCategoryId: customCategoryId,
+                    timeFrame: timeFrame,
+                    referenceDate: Date()
+                )
+            }.value
+            
+            // Check again if task was cancelled before updating
+            guard !Task.isCancelled else { return }
+            
+            // Update on main thread
+            self.filteredExpenses = result
+            self.isFilteringInProgress = false
+            
+            // Update cached totals in background
+            self.updateCachedTotals(for: result)
+        }
+    }
+    
+    /// Update cached totals asynchronously for O(1) access
+    private func updateCachedTotals(for expenses: [Expense]) {
+        totalsTask?.cancel()
+        
+        totalsTask = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            
+            // Compute totals on background thread
+            let (total, byCategory, byCustomId, countsByCategory, countsByCustomId) = await Task.detached(priority: .utility) {
+                var total: Double = 0
+                var byCategory: [Expense.Category: Double] = [:]
+                var byCustomId: [UUID: Double] = [:]
+                var countsByCategory: [Expense.Category: Int] = [:]
+                var countsByCustomId: [UUID: Int] = [:]
+                
+                for expense in expenses {
+                    guard expense.amount.isFinite else { continue }
+                    
+                    total += expense.amount
+                    byCategory[expense.category, default: 0] += expense.amount
+                    countsByCategory[expense.category, default: 0] += 1
+                    
+                    if expense.category == .custom, let customId = expense.customCategoryId {
+                        byCustomId[customId, default: 0] += expense.amount
+                        countsByCustomId[customId, default: 0] += 1
+                    }
+                }
+                
+                return (total, byCategory, byCustomId, countsByCategory, countsByCustomId)
+            }.value
+            
+            guard !Task.isCancelled else { return }
+            
+            // Update cached values
+            self.cachedTotalAmount = total.isFinite ? total : 0
+            self.cachedTotalsByCategory = byCategory
+            self.cachedTotalsByCustomId = byCustomId
+            self.cachedCountsByCategory = countsByCategory
+            self.cachedCountsByCustomId = countsByCustomId
+        }
+    }
+    
+    /// Get total expenses - uses cached value for O(1) performance
+    /// - Parameter category: Optional category to filter by. If nil, returns total of all filtered expenses.
+    /// - Returns: The total amount for the specified category or all expenses
     func totalExpenses(for category: Expense.Category? = nil) -> Double {
-        let expensesToSum = category == nil ? 
-            filteredExpenses : 
+        // Use cached values for O(1) access
+        if let category = category {
+            return cachedTotalsByCategory[category, default: 0]
+        }
+        return cachedTotalAmount
+    }
+    
+    /// Get total expenses for a custom category - uses cached value for O(1) performance
+    /// - Parameter customCategoryId: The UUID of the custom category
+    /// - Returns: The total amount for the specified custom category
+    func totalExpenses(forCustomCategoryId customCategoryId: UUID) -> Double {
+        return cachedTotalsByCustomId[customCategoryId, default: 0]
+    }
+    
+    /// Get expense count for a category - uses cached value for O(1) performance
+    func expenseCount(for category: Expense.Category) -> Int {
+        return cachedCountsByCategory[category, default: 0]
+    }
+    
+    /// Get expense count for a custom category - uses cached value for O(1) performance
+    func expenseCount(forCustomCategoryId customCategoryId: UUID) -> Int {
+        return cachedCountsByCustomId[customCategoryId, default: 0]
+    }
+    
+    /// Force recalculate totals if needed (legacy compatibility)
+    /// This is useful when you need immediate accurate totals without waiting for cache
+    func calculateTotalExpenses(for category: Expense.Category? = nil) -> Double {
+        let expensesToSum = category == nil ?
+            filteredExpenses :
             filteredExpenses.filter { $0.category == category }
         
         let total = expensesToSum.reduce(0) { result, expense in
-            // Safety check for each expense amount
-            guard expense.amount.isFinite else {
-                print("Warning: Invalid expense amount detected: \(expense.amount) for expense: \(expense.title)")
-                return result
-            }
-            return result + expense.amount
-        }
-        
-        // Final safety check for the total
-        return total.isFinite ? total : 0.0
-    }
-    
-    func totalExpenses(forCustomCategoryId customCategoryId: UUID) -> Double {
-        let expensesToSum = filteredExpenses.filter {
-            $0.category == .custom && $0.customCategoryId == customCategoryId
-        }
-        
-        let total = expensesToSum.reduce(0) { result, expense in
-            guard expense.amount.isFinite else {
-                print("Warning: Invalid expense amount detected: \(expense.amount) for expense: \(expense.title)")
-                return result
-            }
+            guard expense.amount.isFinite else { return result }
             return result + expense.amount
         }
         
@@ -278,7 +392,8 @@ class ExpenseViewModel: ObservableObject {
     func getSummaryCardsData(customCategories: [CustomCategory]? = nil) -> [(category: Expense.Category?, customCategoryId: UUID?, title: String, amount: Double, icon: String, color: Color)] {
         var cardsData: [(category: Expense.Category?, customCategoryId: UUID?, title: String, amount: Double, icon: String, color: Color)] = []
         
-        let totalAmount = totalExpenses()
+        // Use cached total for O(1) access
+        let totalAmount = cachedTotalAmount
         
         // Always include total expenses as first card
         cardsData.append((
@@ -300,7 +415,8 @@ class ExpenseViewModel: ObservableObject {
                     continue
                 }
                 
-                let amount = totalExpenses(forCustomCategoryId: customId)
+                // Use cached value for O(1) access
+                let amount = cachedTotalsByCustomId[customId, default: 0]
                 
                 cardsData.append((
                     category: .custom,
@@ -311,7 +427,8 @@ class ExpenseViewModel: ObservableObject {
                     color: Color.forCategory(custom.colorName)
                 ))
             } else if let category = Expense.Category(rawValue: token), category != .custom {
-                let amount = totalExpenses(for: category)
+                // Use cached value for O(1) access
+                let amount = cachedTotalsByCategory[category, default: 0]
                 
                 cardsData.append((
                     category: category,

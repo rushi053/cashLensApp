@@ -42,6 +42,11 @@ enum UserDefaultsKeys {
     static let backupReminderDayOfMonth = "backupReminderDayOfMonth" // 1...28
     static let backupReminderHour = "backupReminderHour"
     static let backupReminderMinute = "backupReminderMinute"
+    
+    // MARK: - Backup Tracking
+    static let lastBackupDate = "lastBackupDate"
+    static let lastBackupFormat = "lastBackupFormat"
+    static let totalBackupCount = "totalBackupCount"
 }
 
 

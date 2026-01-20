@@ -47,6 +47,9 @@ struct CategoryDonutChart: View {
         return "100%"
     }
     
+    private let strokeWidth: CGFloat = 18
+    private let chartSize: CGFloat = 150
+    
     var body: some View {
         VStack(spacing: 14) {
             ZStack {
@@ -57,13 +60,15 @@ struct CategoryDonutChart: View {
                             .trim(from: item.start, to: item.end)
                             .stroke(
                                 item.slice.color,
-                                style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                                style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round)
                             )
                             .rotationEffect(.degrees(-90))
                             .opacity(selectedId == nil || selectedId == item.slice.id ? 1.0 : 0.25)
                     }
                 }
-                .frame(width: 150, height: 150)
+                .frame(width: chartSize, height: chartSize)
+                .padding(strokeWidth / 2 + 2) // Account for stroke extending beyond frame + small buffer
+                .clipShape(Circle()) // Ensure perfectly circular edges
                 .drawingGroup()
                 .contentShape(Circle())
                 .onTapGesture {
