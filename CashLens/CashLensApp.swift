@@ -49,6 +49,7 @@ struct CashLensApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var showOnboarding = false
     @State private var showSplash = true
+    @State private var showCurrencyPicker = false
 
     init() {
         let context = persistenceController.container.viewContext
@@ -111,6 +112,20 @@ struct CashLensApp: App {
             }
             .animation(.easeInOut, value: showOnboarding)
             .animation(.easeInOut, value: showSplash)
+            .onChange(of: showOnboarding) { _, newValue in
+                // When onboarding completes, show currency picker if not already shown
+                if !newValue && !UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownCurrencyPicker) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        showCurrencyPicker = true
+                    }
+                }
+            }
+            .sheet(isPresented: $showCurrencyPicker, onDismiss: {
+                // Mark currency picker as shown
+                UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasShownCurrencyPicker)
+            }) {
+                CurrencyPickerView(viewModel: viewModel, isInitialSetup: true)
+            }
         }
     }
 }

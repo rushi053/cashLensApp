@@ -4,7 +4,6 @@ struct OnboardingView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @Binding var showOnboarding: Bool
     @State private var currentPage = 0
-    @State private var showingCurrencyPicker = false
     
     private let pages: [OnboardingPage] = [
         OnboardingPage(
@@ -136,9 +135,6 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.light) // Force light mode for better visual appeal
-        .sheet(isPresented: $showingCurrencyPicker) {
-            CurrencyPickerView(viewModel: viewModel)
-        }
     }
     
     private func pageView(for page: OnboardingPage) -> some View {
@@ -180,14 +176,9 @@ struct OnboardingView: View {
             viewModel.appearanceMode = .light
         }
         
-        // Show currency picker immediately after onboarding
+        // Dismiss onboarding - currency picker will be shown from CashLensApp
         withAnimation {
             showOnboarding = false
-            
-            // Show currency picker with a slight delay to allow for smooth transition
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                showingCurrencyPicker = true
-            }
         }
     }
 }

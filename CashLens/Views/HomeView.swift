@@ -275,11 +275,30 @@ struct HomeView: View {
                         
                         // Summary Section
                         VStack(spacing: 16) {
-                            Text("Summary")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 20)
+                            HStack {
+                                Text("Summary")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    HapticManager.shared.lightTap()
+                                    showingCustomizeSummary = true
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Text("Customize")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        
+                                        Image(systemName: "slider.horizontal.3")
+                                            .font(.caption)
+                                    }
+                                    .foregroundColor(.appPrimary)
+                                }
+                                .buttonStyle(ScaleButtonStyle())
+                            }
+                            .padding(.horizontal, 20)
                             
                             // Summary cards in their own container with proper spacing
                             VStack(spacing: 16) {
@@ -296,11 +315,30 @@ struct HomeView: View {
                         
                         // Recent Expenses Section
                         VStack(spacing: 16) {
-                            Text("Recent Activity")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 20)
+                            HStack {
+                                Text("Recent Activity")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    HapticManager.shared.lightTap()
+                                    showingAllExpenses = true
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Text("See All")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                    }
+                                    .foregroundColor(.appPrimary)
+                                }
+                                .buttonStyle(ScaleButtonStyle())
+                            }
+                            .padding(.horizontal, 20)
                             
                             // Recent expenses in their own container
                             recentExpensesContent

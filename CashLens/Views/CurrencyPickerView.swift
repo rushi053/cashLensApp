@@ -4,6 +4,7 @@ import Foundation
 struct CurrencyPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: ExpenseViewModel
+    var isInitialSetup: Bool = false
     @State private var searchText = ""
     @State private var selectedRegion: CurrencyRegion = .all
     
@@ -22,6 +23,21 @@ struct CurrencyPickerView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
+                // Welcome header for initial setup
+                if isInitialSetup {
+                    VStack(spacing: 8) {
+                        Text("💰")
+                            .font(.system(size: 40))
+                        Text("Select your preferred currency")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.secondarySystemBackground.opacity(0.5))
+                }
+                
                 // Search bar
                 SearchBar(text: $searchText, placeholder: "Search currencies...")
                     .padding()
@@ -104,17 +120,20 @@ struct CurrencyPickerView: View {
                     }
                 }
             }
-            .navigationBarTitle("Select Currency", displayMode: .inline)
-            .navigationBarItems(trailing: 
-                Button(action: {
-                    hapticFeedback(style: .medium)
-                    dismiss()
-                }) {
-                    Text("Done")
-                        .fontWeight(.bold)
-                        .foregroundColor(.appPrimary)
+            .navigationBarTitle(isInitialSetup ? "Choose Your Currency" : "Select Currency", displayMode: .inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        hapticFeedback(style: .medium)
+                        dismiss()
+                    }) {
+                        Text(isInitialSetup ? "Continue" : "Done")
+                            .fontWeight(.bold)
+                            .foregroundColor(.appPrimary)
+                    }
                 }
-            )
+            }
+            .interactiveDismissDisabled(isInitialSetup) // Prevent swipe to dismiss on initial setup
         }
     }
     
