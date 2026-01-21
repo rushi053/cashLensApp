@@ -3,14 +3,34 @@ import SwiftUI
 struct AllExpensesView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var viewModel: ExpenseViewModel
-    @StateObject private var categoryViewModel = CategoryViewModel()
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
+    let initialFilter: AllExpensesInitialFilter?
     @State private var searchText = ""
     @State private var sortOption: SortOption = .dateDesc
     @State private var showingSortOptions = false
     @State private var animateContent = false
     @State private var scrollToTop = false  // Track when to scroll to top
     @State private var selectedExpense: Expense?
-    @State private var showingEditSheet = false
+    @State private var didApplyInitialFilter = false
+    
+    // Performance: cache computed results + paginate rendering for large datasets
+    @State private var computedExpenses: [Expense] = []
+    @State private var computedDateGroups: [(Date, [Expense])] = []
+    @State private var totalMatchCount: Int = 0
+    @State private var displayLimit: Int = 250
+    @State private var isRecomputing: Bool = false
+    @State private var searchDebounceTask: Task<Void, Never>?
+    
+    // Date range filter
+    @State private var useDateRangeFilter = false
+    @State private var rangeStartDate = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+    @State private var rangeEndDate = Date()
+    @State private var showingDateRangePicker = false
+    
+    // Quick filters
+    @State private var filterCategory: Expense.Category? = nil
+    @State private var filterCustomCategoryId: UUID? = nil
+    @State private var showOnlySubscriptions = false
     
     enum SortOption: String, CaseIterable {
         case dateDesc = "Newest First"
@@ -30,18 +50,8 @@ struct AllExpensesView: View {
         }
     }
     
-    // Filtered and sorted expenses
-    private var filteredExpenses: [Expense] {
-        let filtered = searchText.isEmpty ? 
-            viewModel.expenses : 
-            viewModel.expenses.filter { 
-                $0.title.localizedCaseInsensitiveContains(searchText) ||
-                $0.category.rawValue.localizedCaseInsensitiveContains(searchText) ||
-                (viewModel.categoryDisplayName(for: $0).localizedCaseInsensitiveContains(searchText)) ||
-                (($0.notes ?? "").localizedCaseInsensitiveContains(searchText))
-            }
-        
-        return sortExpenses(filtered)
+    private var visibleExpenses: [Expense] {
+        Array(computedExpenses.prefix(max(0, min(displayLimit, computedExpenses.count))))
     }
     
     // Sort expenses based on selected sort option
@@ -60,8 +70,249 @@ struct AllExpensesView: View {
         }
     }
     
+    private var shouldGroupByDate: Bool {
+        sortOption == .dateAsc || sortOption == .dateDesc
+    }
+    
+    private var visibleDateGroups: [(Date, [Expense])] {
+        var out: [(Date, [Expense])] = []
+        out.reserveCapacity(min(computedDateGroups.count, 60))
+        var running = 0
+        for g in computedDateGroups {
+            if running >= displayLimit { break }
+            out.append(g)
+            running += g.1.count
+        }
+        return out
+    }
+    
+    private func recomputeResults(resetPagination: Bool) {
+        searchDebounceTask?.cancel()
+        isRecomputing = true
+        
+        let expensesSnapshot = viewModel.expenses
+        let customCategoriesSnapshot = categoryViewModel.customCategories
+        let search = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sort = sortOption
+        let useRange = useDateRangeFilter
+        let start = rangeStartDate
+        let end = rangeEndDate
+        let filterCat = filterCategory
+        let filterCustomId = filterCustomCategoryId
+        let subsOnly = showOnlySubscriptions
+        
+        Task.detached(priority: .userInitiated) {
+            let customNameById: [UUID: String] = Dictionary(uniqueKeysWithValues: customCategoriesSnapshot.map { ($0.id, $0.name) })
+            
+            var base: [Expense] = expensesSnapshot
+            if useRange {
+                base = ExpenseFilter.apply(
+                    expenses: base,
+                    category: nil,
+                    customCategoryId: nil,
+                    timeFrame: .all,
+                    dateRangeStart: start,
+                    dateRangeEnd: end
+                )
+            }
+            
+            if subsOnly {
+                base = base.filter { $0.isFromSubscription }
+            }
+            
+            if let cat = filterCat {
+                if cat == .custom {
+                    if let id = filterCustomId {
+                        base = base.filter { $0.category == .custom && $0.customCategoryId == id }
+                    } else {
+                        base = base.filter { $0.category == .custom }
+                    }
+                } else {
+                    base = base.filter { $0.category == cat }
+                }
+            }
+            
+            if !search.isEmpty {
+                let q = search.lowercased()
+                base = base.filter { e in
+                    if e.title.lowercased().contains(q) { return true }
+                    if e.category.rawValue.lowercased().contains(q) { return true }
+                    if let notes = e.notes?.lowercased(), notes.contains(q) { return true }
+                    if e.category == .custom, let id = e.customCategoryId {
+                        return (customNameById[id] ?? "Custom").lowercased().contains(q)
+                    }
+                    return false
+                }
+            }
+            
+            let sorted: [Expense]
+            switch sort {
+            case .dateDesc:
+                sorted = base.sorted { $0.date > $1.date }
+            case .dateAsc:
+                sorted = base.sorted { $0.date < $1.date }
+            case .amountDesc:
+                sorted = base.sorted { $0.amount > $1.amount }
+            case .amountAsc:
+                sorted = base.sorted { $0.amount < $1.amount }
+            case .category:
+                sorted = base.sorted {
+                    let a = ($0.category == .custom && $0.customCategoryId != nil) ? (customNameById[$0.customCategoryId!] ?? "Custom") : $0.category.rawValue
+                    let b = ($1.category == .custom && $1.customCategoryId != nil) ? (customNameById[$1.customCategoryId!] ?? "Custom") : $1.category.rawValue
+                    if a == b { return $0.date > $1.date }
+                    return a < b
+                }
+            }
+            
+            let calendar = Calendar.current
+            var groups: [(Date, [Expense])] = []
+            if sort == .dateAsc || sort == .dateDesc {
+                var currentDay: Date? = nil
+                for e in sorted {
+                    let day = calendar.startOfDay(for: e.date)
+                    if currentDay != day {
+                        groups.append((day, [e]))
+                        currentDay = day
+                    } else {
+                        groups[groups.count - 1].1.append(e)
+                    }
+                }
+            }
+            
+            await MainActor.run {
+                totalMatchCount = sorted.count
+                computedExpenses = sorted
+                computedDateGroups = groups
+                if resetPagination {
+                    displayLimit = 250
+                } else {
+                    displayLimit = min(max(250, displayLimit), max(250, sorted.count))
+                }
+                isRecomputing = false
+            }
+        }
+    }
+    
+    private func recomputeSearchDebounced() {
+        searchDebounceTask?.cancel()
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            recomputeResults(resetPagination: true)
+        }
+    }
+    
+    private func loadMoreIfNeeded() {
+        guard displayLimit < totalMatchCount else { return }
+        displayLimit = min(totalMatchCount, displayLimit + 250)
+    }
+    
     private var isIPad: Bool {
         return UIDevice.current.userInterfaceIdiom == .pad
+    }
+    
+    private var quickFiltersRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                filterChip(
+                    title: "All",
+                    systemIcon: "line.3.horizontal.decrease.circle",
+                    isSelected: filterCategory == nil && !showOnlySubscriptions
+                ) {
+                    HapticManager.shared.selectionChanged()
+                    withAnimation(.spring()) {
+                        filterCategory = nil
+                        filterCustomCategoryId = nil
+                        showOnlySubscriptions = false
+                        scrollToTop = true
+                    }
+                }
+                
+                filterChip(
+                    title: "Subscriptions",
+                    systemIcon: "arrow.triangle.2.circlepath",
+                    isSelected: showOnlySubscriptions
+                ) {
+                    HapticManager.shared.selectionChanged()
+                    withAnimation(.spring()) {
+                        showOnlySubscriptions.toggle()
+                        scrollToTop = true
+                    }
+                }
+                
+                ForEach(viewModel.getAvailableDefaultCategories().filter { $0 != .custom }, id: \.self) { category in
+                    filterChip(
+                        title: category.rawValue,
+                        systemIcon: category.icon,
+                        isSelected: filterCategory == category
+                    ) {
+                        HapticManager.shared.selectionChanged()
+                        withAnimation(.spring()) {
+                            if filterCategory == category {
+                                filterCategory = nil
+                            } else {
+                                filterCategory = category
+                            }
+                            filterCustomCategoryId = nil
+                            scrollToTop = true
+                        }
+                    }
+                }
+                
+                ForEach(categoryViewModel.customCategories) { custom in
+                    filterChip(
+                        title: custom.name,
+                        systemIcon: custom.icon,
+                        isSelected: filterCategory == .custom && filterCustomCategoryId == custom.id
+                    ) {
+                        HapticManager.shared.selectionChanged()
+                        withAnimation(.spring()) {
+                            if filterCategory == .custom && filterCustomCategoryId == custom.id {
+                                filterCategory = nil
+                                filterCustomCategoryId = nil
+                            } else {
+                                filterCategory = .custom
+                                filterCustomCategoryId = custom.id
+                            }
+                            scrollToTop = true
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 6)
+        }
+    }
+    
+    private func filterChip(title: String, systemIcon: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemIcon)
+                    .font(.system(size: 12, weight: .semibold))
+                
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+            }
+            .foregroundColor(isSelected ? .white : .primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                Group {
+                    if isSelected {
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    } else {
+                        Color.secondarySystemBackground
+                    }
+                }
+                .cornerRadius(14)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
     
     var body: some View {
@@ -166,14 +417,51 @@ struct AllExpensesView: View {
                             }
                             .buttonStyle(ScaleButtonStyle())
                             
+                            // Date range filter button
+                            Button(action: {
+                                HapticManager.shared.lightTap()
+                                showingDateRangePicker = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: useDateRangeFilter ? "calendar.badge.checkmark" : "calendar")
+                                        .font(.system(size: 14))
+                                    Text("Date")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.9)
+                                }
+                                .foregroundColor(useDateRangeFilter ? .white : .appPrimary)
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 12)
+                                .background(
+                                    Group {
+                                        if useDateRangeFilter {
+                                            LinearGradient(
+                                                gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
+                                        } else {
+                                            Color.tertiarySystemBackground
+                                        }
+                                    }
+                                    .cornerRadius(16)
+                                )
+                            }
+                            .buttonStyle(ScaleButtonStyle())
+                            
                             Spacer()
                             
-                            Text("\(filteredExpenses.count) expenses")
+                            Text("\(totalMatchCount) expenses")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)
                         }
                         .padding(.horizontal)
+                        
+                        // Quick filters
+                        quickFiltersRow
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 8)
@@ -188,7 +476,7 @@ struct AllExpensesView: View {
                         .padding(.horizontal)
                     
                     // Expense list
-                    if filteredExpenses.isEmpty {
+                    if totalMatchCount == 0 && !isRecomputing {
                         emptyStateView
                             .opacity(animateContent ? 1 : 0)
                     } else {
@@ -217,17 +505,15 @@ struct AllExpensesView: View {
                     }
                 }
             }
-            .actionSheet(isPresented: $showingSortOptions) {
-                ActionSheet(
-                    title: Text("Sort Expenses"),
-                    buttons: SortOption.allCases.map { option in
-                        .default(Text("\(option.rawValue)")) {
-                            HapticManager.shared.selectionChanged()
-                            sortOption = option
-                            scrollToTop = true
-                        }
-                    } + [.cancel()]
-                )
+            .confirmationDialog("Sort Expenses", isPresented: $showingSortOptions, titleVisibility: .visible) {
+                ForEach(SortOption.allCases, id: \.self) { option in
+                    Button(option.rawValue) {
+                        HapticManager.shared.selectionChanged()
+                        sortOption = option
+                        scrollToTop = true
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
             }
             .onAppear {
                 withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.1)) {
@@ -235,42 +521,129 @@ struct AllExpensesView: View {
                 }
                 // Reset scroll to top flag
                 scrollToTop = false
+                recomputeResults(resetPagination: true)
+            }
+            .onReceive(viewModel.$expenses) { _ in
+                recomputeResults(resetPagination: false)
+            }
+            .onChange(of: sortOption) { _ in
+                recomputeResults(resetPagination: true)
+            }
+            .onChange(of: useDateRangeFilter) { _ in
+                recomputeResults(resetPagination: true)
+            }
+            .onChange(of: rangeStartDate) { _ in
+                recomputeResults(resetPagination: true)
+            }
+            .onChange(of: rangeEndDate) { _ in
+                recomputeResults(resetPagination: true)
+            }
+            .onChange(of: filterCategory) { _ in
+                recomputeResults(resetPagination: true)
+            }
+            .onChange(of: filterCustomCategoryId) { _ in
+                recomputeResults(resetPagination: true)
+            }
+            .onChange(of: showOnlySubscriptions) { _ in
+                recomputeResults(resetPagination: true)
+            }
+            .onChange(of: categoryViewModel.customCategories) { _ in
+                recomputeResults(resetPagination: false)
+            }
+            .onChange(of: searchText) { _ in
+                recomputeSearchDebounced()
             }
         }
         .if(isIPad) { view in
             view.navigationViewStyle(StackNavigationViewStyle())
         }
-        .sheet(isPresented: $showingEditSheet, onDismiss: {
-            // Reset selected expense when sheet is dismissed
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                selectedExpense = nil
-            }
-        }) {
-            if let expense = selectedExpense {
-                AddExpenseView(
-                    viewModel: viewModel,
-                    title: expense.title,
-                    amount: String(format: "%.2f", expense.amount),
-                    date: expense.date,
-                    selectedCategory: expense.category,
-                    selectedCustomCategoryId: expense.customCategoryId,
-                    notes: expense.notes ?? "",
-                    isEditing: true,
-                    expenseId: expense.id,
-                    onSave: { title, amount, date, category, customCategoryId, notes in
-                        // Update expense
-                        var updatedExpense = expense
-                        updatedExpense.title = title
-                        updatedExpense.amount = amount
-                        updatedExpense.date = date
-                        updatedExpense.category = category
-                        updatedExpense.customCategoryId = customCategoryId
-                        updatedExpense.notes = notes
-                        
-                        viewModel.updateExpense(updatedExpense)
+        .sheet(item: $selectedExpense) { expense in
+            AddExpenseView(
+                viewModel: viewModel,
+                title: expense.title,
+                amount: viewModel.formattedAmount(expense.amount),
+                date: expense.date,
+                selectedCategory: expense.category,
+                selectedCustomCategoryId: expense.customCategoryId,
+                notes: expense.notes ?? "",
+                isEditing: true,
+                expenseId: expense.id,
+                onSave: { title, amount, date, category, customCategoryId, notes in
+                    var updatedExpense = expense
+                    updatedExpense.title = title
+                    updatedExpense.amount = amount
+                    updatedExpense.date = date
+                    updatedExpense.category = category
+                    updatedExpense.customCategoryId = customCategoryId
+                    updatedExpense.notes = notes
+                    viewModel.updateExpense(updatedExpense)
+                }
+            )
+            .environmentObject(categoryViewModel)
+        }
+        .sheet(isPresented: $showingDateRangePicker) {
+            dateRangeSheet
+        }
+    }
+    
+    private var dateRangeSheet: some View {
+        NavigationView {
+            Form {
+                Toggle("Filter by date range", isOn: $useDateRangeFilter)
+                
+                DatePicker("Start", selection: $rangeStartDate, displayedComponents: [.date])
+                    .disabled(!useDateRangeFilter)
+                DatePicker("End", selection: $rangeEndDate, displayedComponents: [.date])
+                    .disabled(!useDateRangeFilter)
+                
+                if useDateRangeFilter {
+                    Button("Clear Date Filter") {
+                        HapticManager.shared.selectionChanged()
+                        useDateRangeFilter = false
                     }
-                )
-                .environmentObject(categoryViewModel)
+                    .foregroundColor(.red)
+                }
+            }
+            .navigationTitle("Date Range")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { showingDateRangePicker = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        if rangeEndDate < rangeStartDate {
+                            let tmp = rangeStartDate
+                            rangeStartDate = rangeEndDate
+                            rangeEndDate = tmp
+                        }
+                        showingDateRangePicker = false
+                        scrollToTop = true
+                    }
+                }
+            }
+        }
+        .onAppear {
+            guard !didApplyInitialFilter, let initialFilter else { return }
+            didApplyInitialFilter = true
+            
+            if initialFilter.useDateRangeFilter,
+               let start = initialFilter.rangeStartDate,
+               let end = initialFilter.rangeEndDate {
+                useDateRangeFilter = true
+                rangeStartDate = start
+                rangeEndDate = end
+            }
+            
+            showOnlySubscriptions = initialFilter.showOnlySubscriptions
+            
+            if let raw = initialFilter.filterCategoryRawValue,
+               let cat = Expense.Category(rawValue: raw) {
+                filterCategory = cat
+                filterCustomCategoryId = initialFilter.filterCustomCategoryId
+            } else {
+                filterCategory = nil
+                filterCustomCategoryId = nil
             }
         }
     }
@@ -370,8 +743,43 @@ struct AllExpensesView: View {
                 .id("top")
                 
                 LazyVStack(spacing: 16) {
-                    ForEach(Array(groupExpensesByDate().enumerated()), id: \.element.0) { index, dateGroup in
-                        dateGroupView(index: index, dateGroup: dateGroup)
+                    if isRecomputing && totalMatchCount == 0 {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Updating…")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 12)
+                    }
+                    
+                    if shouldGroupByDate {
+                        ForEach(Array(visibleDateGroups.enumerated()), id: \.element.0) { index, dateGroup in
+                            dateGroupView(index: index, dateGroup: dateGroup)
+                                .onAppear {
+                                    if index == max(0, visibleDateGroups.count - 1) {
+                                        loadMoreIfNeeded()
+                                    }
+                                }
+                        }
+                    } else {
+                        ForEach(Array(visibleExpenses.enumerated()), id: \.element.id) { idx, expense in
+                            ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+                                .equatable()
+                                .padding(.horizontal)
+                                .padding(.top, idx == 0 ? 12 : 0)
+                                .onTapGesture {
+                                    HapticManager.shared.impact(style: .light)
+                                    selectedExpense = expense
+                                }
+                                .onAppear {
+                                    if idx == max(0, visibleExpenses.count - 1) {
+                                        loadMoreIfNeeded()
+                                    }
+                                }
+                        }
                     }
                     
                     // Bottom padding
@@ -478,11 +886,6 @@ struct AllExpensesView: View {
         VStack(spacing: 1) {
             ForEach(Array(expenses.enumerated()), id: \.element.id) { expenseIndex, expense in
                 expenseRowView(expense: expense, groupIndex: groupIndex, expenseIndex: expenseIndex)
-                
-                if expenseIndex < expenses.count - 1 {
-                    Divider()
-                        .padding(.horizontal)
-                }
             }
         }
         .background(Color.systemBackground)
@@ -491,33 +894,25 @@ struct AllExpensesView: View {
     }
     
     private func expenseRowView(expense: Expense, groupIndex: Int, expenseIndex: Int) -> some View {
-        ExpenseCard(expense: expense)
-            .environmentObject(viewModel)
+        ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+            .equatable()
             .padding(.horizontal)
             .padding(.vertical, 8)
             .background(Color.systemBackground)
             .contentShape(Rectangle())
             .onTapGesture {
-                // Set the selected expense first and ensure it's fully saved before showing sheet
+                HapticManager.shared.impact(style: .light)
                 selectedExpense = expense
-                
-                // Use a slightly longer delay to ensure data is fully prepared
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    showingEditSheet = true
-                }
             }
             .contextMenu {
                 Button {
-                    // Edit expense
                     selectedExpense = expense
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        showingEditSheet = true
-                    }
                 } label: {
                     Label("Edit", systemImage: "pencil")
                 }
                 
                 Button(role: .destructive) {
+                    HapticManager.shared.impact(style: .medium)
                     deleteExpense(expense)
                 } label: {
                     Label("Delete", systemImage: "trash")
@@ -525,38 +920,23 @@ struct AllExpensesView: View {
             }
             .swipeActions(edge: .trailing) {
                 Button(role: .destructive) {
+                    HapticManager.shared.impact(style: .medium)
                     deleteExpense(expense)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
             }
             .opacity(animateContent ? 1 : 0)
-            .offset(y: animateContent ? 0 : 20)
+            .offset(y: animateContent ? 0 : 10)
+            // Simplified animation - only for initial appearance, not for every change
             .animation(
-                .spring(response: 0.6, dampingFraction: 0.8)
-                .delay(0.1 + Double(groupIndex) * 0.05 + Double(expenseIndex) * 0.03),
+                totalMatchCount <= 50
+                    ? .easeOut(duration: 0.25).delay(0.02 * Double(min(groupIndex * 3 + expenseIndex, 15)))
+                    : .none,
                 value: animateContent
             )
     }
-    
-    // Group expenses by date for sectioned display
-    private func groupExpensesByDate() -> [(Date, [Expense])] {
-        let calendar = Calendar.current
-        let grouped = Dictionary(grouping: filteredExpenses) { expense in
-            calendar.startOfDay(for: expense.date)
-        }
-        
-        // Sort by date according to current sort option
-        let sortedGroups = grouped.sorted { group1, group2 in
-            if sortOption == .dateAsc {
-                return group1.key < group2.key
-            } else {
-                return group1.key > group2.key
-            }
-        }
-        
-        return sortedGroups
-    }
+    // Grouping is precomputed in `recomputeResults` for date sorts; display limiting is applied by `visibleDateGroups`.
     
     // Delete an expense - using the safer method to prevent index-related crashes
     private func deleteExpense(_ expense: Expense) {
@@ -578,11 +958,16 @@ struct AllExpensesView: View {
             return formatter.string(from: date)
         }
     }
+
+    init(initialFilter: AllExpensesInitialFilter? = nil) {
+        self.initialFilter = initialFilter
+    }
 }
 
 struct AllExpensesView_Previews: PreviewProvider {
     static var previews: some View {
         AllExpensesView()
             .environmentObject(ExpenseViewModel())
+            .environmentObject(CategoryViewModel())
     }
 } 

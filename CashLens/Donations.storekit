@@ -1,0 +1,122 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "4645FA89",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "0.99",
+      "familyShareable" : false,
+      "internalID" : "FA479C57",
+      "localizations" : [
+        {
+          "description" : "Help fuel development with a coffee!",
+          "displayName" : "Coffee for the Coder\n",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.cashlens.donation.coffee",
+      "referenceName" : "Coffee for the Coder ",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "0CE91436",
+      "localizations" : [
+        {
+          "description" : "Helps power new features and timely updates.",
+          "displayName" : "Lunch for the Library\n",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.cashlens.donation.lunch",
+      "referenceName" : "Lunch for the Library ",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "8135B0F0",
+      "localizations" : [
+        {
+          "description" : "You’re propelling CashLens to new heights :)",
+          "displayName" : "Fuel the Feature Rocket\n",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.cashlens.donation.fuel",
+      "referenceName" : "Fuel the Feature Rocket ",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

@@ -2,16 +2,23 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
-    @StateObject private var categoryViewModel = CategoryViewModel()
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
     @State private var showingAddExpense = false
     @State private var showingProfile = false
     @State private var showingAllExpenses = false
     @State private var animateCards = false
     @State private var selectedExpense: Expense?
-    @State private var showingEditSheet = false
+    @State private var showingCustomizeSummary = false
+    @State private var showingManageCategories = false
+    @State private var showOnlySubscriptionsOnHome = false
+    @State private var showingSearch = false
     
     private var isIPad: Bool {
         return UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    private var isCompactPhone: Bool {
+        UIDevice.current.userInterfaceIdiom != .pad && UIScreen.main.bounds.height < 760
     }
     
     var body: some View {
@@ -38,46 +45,53 @@ struct HomeView: View {
         .sheet(isPresented: $showingAllExpenses) {
             AllExpensesView()
                 .environmentObject(viewModel)
-        }
-        .sheet(isPresented: $showingEditSheet, onDismiss: {
-            // Reset selected expense when sheet is dismissed
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                selectedExpense = nil
-            }
-        }) {
-            if let expense = selectedExpense {
-                AddExpenseView(
-                    viewModel: viewModel,
-                    title: expense.title,
-                    amount: String(format: "%.2f", expense.amount),
-                    date: expense.date,
-                    selectedCategory: expense.category,
-                    selectedCustomCategoryId: expense.customCategoryId,
-                    notes: expense.notes ?? "",
-                    isEditing: true,
-                    expenseId: expense.id,
-                    onSave: { title, amount, date, category, customCategoryId, notes in
-                        // Update expense
-                        var updatedExpense = expense
-                        updatedExpense.title = title
-                        updatedExpense.amount = amount
-                        updatedExpense.date = date
-                        updatedExpense.category = category
-                        updatedExpense.customCategoryId = customCategoryId
-                        updatedExpense.notes = notes
-                        
-                        viewModel.updateExpense(updatedExpense)
-                    }
-                )
                 .environmentObject(categoryViewModel)
-            }
+        }
+        .sheet(item: $selectedExpense) { expense in
+            AddExpenseView(
+                viewModel: viewModel,
+                title: expense.title,
+                amount: viewModel.formattedAmount(expense.amount),
+                date: expense.date,
+                selectedCategory: expense.category,
+                selectedCustomCategoryId: expense.customCategoryId,
+                notes: expense.notes ?? "",
+                isEditing: true,
+                expenseId: expense.id,
+                onSave: { title, amount, date, category, customCategoryId, notes in
+                    var updatedExpense = expense
+                    updatedExpense.title = title
+                    updatedExpense.amount = amount
+                    updatedExpense.date = date
+                    updatedExpense.category = category
+                    updatedExpense.customCategoryId = customCategoryId
+                    updatedExpense.notes = notes
+                    viewModel.updateExpense(updatedExpense)
+                }
+            )
+            .environmentObject(categoryViewModel)
+        }
+        .sheet(isPresented: $showingCustomizeSummary) {
+            SummaryCustomizationView()
+                .environmentObject(viewModel)
+                .environmentObject(categoryViewModel)
+        }
+        .sheet(isPresented: $showingManageCategories) {
+            ManageCategoriesView()
+                .environmentObject(categoryViewModel)
+                .environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showingSearch) {
+            QuickSearchView()
+                .environmentObject(viewModel)
+                .environmentObject(categoryViewModel)
         }
     }
     
     // MARK: - iPhone Layout
     private var iPhoneLayout: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: isCompactPhone ? 18 : 24) {
                 // Header
                 headerView
                 
@@ -109,7 +123,7 @@ struct HomeView: View {
                 }
             }
             .padding()
-            .padding(.bottom, 120) // Increased padding for the tab bar and add button
+            .padding(.bottom, isCompactPhone ? 104 : 120) // Slightly tighter on smaller phones
         }
     }
     
@@ -189,10 +203,7 @@ struct HomeView: View {
                                     
                                     Button(action: {
                                         HapticManager.shared.lightTap()
-                                        withAnimation(.spring()) {
-                                            viewModel.selectedCategory = nil
-                                            viewModel.selectedCustomCategoryId = nil
-                                        }
+                                        showingManageCategories = true
                                     }) {
                                         HStack(spacing: 4) {
                                             Text("See All")
@@ -209,14 +220,15 @@ struct HomeView: View {
                                 
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 20) {
-                                        // Standard categories
-                                        ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                                        // Standard categories (excluding deleted ones)
+                                        ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                                             CategoryItem(
                                                 category: category,
                                                 isSelected: viewModel.selectedCategory == category,
                                                 action: {
                                                     HapticManager.shared.mediumTap()
-                                                    withAnimation(.spring()) {
+                                                    // Fast animation for UI, data filtering is debounced
+                                                    withAnimation(.easeOut(duration: 0.15)) {
                                                         if viewModel.selectedCategory == category {
                                                             viewModel.selectedCategory = nil
                                                         } else {
@@ -229,14 +241,14 @@ struct HomeView: View {
                                         }
                                         
                                         // Custom categories
-                                        let customCategories = viewModel.getCustomCategories()
-                                        ForEach(customCategories) { category in
+                                        ForEach(categoryViewModel.customCategories) { category in
                                             CustomCategoryItem(
                                                 category: category,
                                                 isSelected: viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id,
                                                 action: {
                                                     HapticManager.shared.mediumTap()
-                                                    withAnimation(.spring()) {
+                                                    // Fast animation for UI, data filtering is debounced
+                                                    withAnimation(.easeOut(duration: 0.15)) {
                                                         if viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id {
                                                             viewModel.selectedCategory = nil
                                                             viewModel.selectedCustomCategoryId = nil
@@ -263,11 +275,30 @@ struct HomeView: View {
                         
                         // Summary Section
                         VStack(spacing: 16) {
-                            Text("Summary")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 20)
+                            HStack {
+                                Text("Summary")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    HapticManager.shared.lightTap()
+                                    showingCustomizeSummary = true
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Text("Customize")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        
+                                        Image(systemName: "slider.horizontal.3")
+                                            .font(.caption)
+                                    }
+                                    .foregroundColor(.appPrimary)
+                                }
+                                .buttonStyle(ScaleButtonStyle())
+                            }
+                            .padding(.horizontal, 20)
                             
                             // Summary cards in their own container with proper spacing
                             VStack(spacing: 16) {
@@ -284,11 +315,30 @@ struct HomeView: View {
                         
                         // Recent Expenses Section
                         VStack(spacing: 16) {
-                            Text("Recent Activity")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 20)
+                            HStack {
+                                Text("Recent Activity")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    HapticManager.shared.lightTap()
+                                    showingAllExpenses = true
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Text("See All")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption)
+                                    }
+                                    .foregroundColor(.appPrimary)
+                                }
+                                .buttonStyle(ScaleButtonStyle())
+                            }
+                            .padding(.horizontal, 20)
                             
                             // Recent expenses in their own container
                             recentExpensesContent
@@ -323,9 +373,29 @@ struct HomeView: View {
                     .opacity(animateCards ? 1 : 0)
                     .offset(x: animateCards ? 0 : -20)
                     .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
+                
+                Text(homeRangeLabel())
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
             
             Spacer()
+            
+            // Search Button
+            Button(action: {
+                HapticManager.shared.lightTap()
+                showingSearch = true
+            }) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundColor(Color.mauve)
+                    .shadow(color: Color.mauve.opacity(0.3), radius: 4, x: 0, y: 2)
+            }
+            .opacity(animateCards ? 1 : 0)
+            .scaleEffect(animateCards ? 1 : 0.5)
+            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
+            .padding(.trailing, 8)
             
             // Theme Toggle Button
             Button(action: {
@@ -333,7 +403,7 @@ struct HomeView: View {
                 toggleAppearanceMode()
             }) {
                 Image(systemName: viewModel.appearanceMode == .dark ? "sun.max.fill" : "moon.fill")
-                    .font(.system(size: 28))
+                    .font(.system(size: 24))
                     .foregroundColor(Color.mauve)
                     .shadow(color: Color.mauve.opacity(0.3), radius: 4, x: 0, y: 2)
             }
@@ -347,7 +417,7 @@ struct HomeView: View {
                 showingProfile = true
             }) {
                 Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 32))
+                    .font(.system(size: 28))
                     .foregroundColor(Color.mauve)
                     .shadow(color: Color.mauve.opacity(0.3), radius: 4, x: 0, y: 2)
             }
@@ -356,6 +426,25 @@ struct HomeView: View {
             .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.3), value: animateCards)
         }
         .padding(.top, 8)
+    }
+
+    private func homeRangeLabel() -> String {
+        let tf = viewModel.selectedTimeFrame
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        
+        if tf == .all {
+            return "All time"
+        }
+        
+        let range = tf.dateRange(referenceDate: Date())
+        let start = formatter.string(from: range.start)
+        // end is exclusive; show inclusive label
+        let endInclusive = Calendar.current.date(byAdding: .day, value: -1, to: range.end) ?? range.end
+        let end = formatter.string(from: endInclusive)
+        
+        if start == end { return start }
+        return "\(start) – \(end)"
     }
     
     // Toggle between light and dark mode
@@ -371,72 +460,48 @@ struct HomeView: View {
     // MARK: - Summary Cards View
     private var summaryCardsView: some View {
         VStack(spacing: 16) {
+            HStack {
             Text("Summary")
                 .font(.title3)
                 .fontWeight(.bold)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                Spacer()
+                
+                Button(action: {
+                    HapticManager.shared.lightTap()
+                    showingCustomizeSummary = true
+                }) {
+                    HStack(spacing: 4) {
+                        Text("Customize")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.appPrimary)
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
             
             // Adaptive grid for different screen sizes
             AdaptiveGrid {
+                ForEach(Array(viewModel.getSummaryCardsData().enumerated()), id: \.offset) { index, cardData in
                 SummaryCard(
-                    title: "Total Expenses",
-                    amount: viewModel.totalExpenses(),
-                    icon: "creditcard.fill",
-                    color: .mauve,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
+                        title: cardData.title,
+                        amount: cardData.amount,
+                        icon: cardData.icon,
+                        color: cardData.color,
                     action: {
                         HapticManager.shared.lightTap()
-                        // Show all expenses
-                        viewModel.selectedCategory = nil
+                            // Set category filter or clear for total
+                            viewModel.selectedCategory = cardData.category
+                            viewModel.selectedCustomCategoryId = cardData.customCategoryId
                     }
                 )
                 .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1), value: animateCards)
-                
-                SummaryCard(
-                    title: "Food & Drinks",
-                    amount: viewModel.totalExpenses(for: .food),
-                    icon: "fork.knife",
-                    color: .champagnePink,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
-                    action: {
-                        HapticManager.shared.lightTap()
-                        // Filter by food category
-                        viewModel.selectedCategory = .food
-                    }
-                )
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
-                
-                SummaryCard(
-                    title: "Shopping",
-                    amount: viewModel.totalExpenses(for: .shopping),
-                    icon: "bag.fill",
-                    color: .teaRose,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
-                    action: {
-                        HapticManager.shared.lightTap()
-                        // Filter by shopping category
-                        viewModel.selectedCategory = .shopping
-                    }
-                )
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.3), value: animateCards)
-                
-                SummaryCard(
-                    title: "Transportation",
-                    amount: viewModel.totalExpenses(for: .transportation),
-                    icon: "car.fill",
-                    color: .nonPhotoBlue,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
-                    action: {
-                        HapticManager.shared.lightTap()
-                        // Filter by transportation category
-                        viewModel.selectedCategory = .transportation
-                    }
-                )
-                .transition(.scale.combined(with: .opacity))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.4), value: animateCards)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index + 1)), value: animateCards)
+                }
             }
         }
     }
@@ -525,10 +590,7 @@ struct HomeView: View {
                 
                 Button(action: {
                     HapticManager.shared.lightTap()
-                    withAnimation(.spring()) {
-                        viewModel.selectedCategory = nil
-                        viewModel.selectedCustomCategoryId = nil
-                    }
+                    showingManageCategories = true
                 }) {
                     HStack(spacing: 4) {
                         Text("See All")
@@ -545,14 +607,16 @@ struct HomeView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
-                    // Standard categories
-                    ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                    // Standard categories (excluding deleted ones)
+                    ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         CategoryItem(
                             category: category,
                             isSelected: viewModel.selectedCategory == category,
                             action: {
                                 HapticManager.shared.mediumTap()
-                                withAnimation(.spring()) {
+                                // Fast animation ONLY for the selection state
+                                // Data filtering happens in background via debounced pipeline
+                                withAnimation(.easeOut(duration: 0.15)) {
                                     if viewModel.selectedCategory == category {
                                         viewModel.selectedCategory = nil
                                     } else {
@@ -564,24 +628,21 @@ struct HomeView: View {
                         )
                     }
                     
-                    // Custom categories - force a fresh fetch to ensure latest data
-                    let customCategories = viewModel.getCustomCategories()
-                    ForEach(customCategories) { category in
+                    // Custom categories
+                    ForEach(categoryViewModel.customCategories) { category in
                         CustomCategoryItem(
                             category: category,
                             isSelected: viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id,
                             action: {
                                 HapticManager.shared.mediumTap()
-                                withAnimation(.spring()) {
+                                // Fast animation ONLY for the selection state
+                                withAnimation(.easeOut(duration: 0.15)) {
                                     if viewModel.selectedCategory == .custom && viewModel.selectedCustomCategoryId == category.id {
                                         viewModel.selectedCategory = nil
                                         viewModel.selectedCustomCategoryId = nil
                                     } else {
-                                        // First set the category ID, then the category type to ensure proper filtering
                                         viewModel.selectedCustomCategoryId = category.id
                                         viewModel.selectedCategory = .custom
-                                        
-                                        print("Selected custom category: \(category.name) with ID: \(category.id)")
                                     }
                                 }
                             }
@@ -592,7 +653,7 @@ struct HomeView: View {
                 .padding(.horizontal, 4)
             }
         }
-        .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.6), value: animateCards)
+        .animation(.easeOut(duration: 0.25), value: animateCards)
     }
     
     // MARK: - Recent Expenses View
@@ -621,8 +682,77 @@ struct HomeView: View {
                 }
                 .buttonStyle(ScaleButtonStyle())
             }
+
+            // Quick filter (composes with existing time frame + category filters)
+            HStack(spacing: 10) {
+                Button {
+                    HapticManager.shared.selectionChanged()
+                    withAnimation(.spring()) {
+                        showOnlySubscriptionsOnHome = false
+                    }
+                } label: {
+                    Text("All")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(showOnlySubscriptionsOnHome ? .primary : .white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            Group {
+                                if showOnlySubscriptionsOnHome {
+                                    Color.secondarySystemBackground
+                                } else {
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                }
+                            }
+                        )
+                        .cornerRadius(14)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Button {
+                    HapticManager.shared.selectionChanged()
+                    withAnimation(.spring()) {
+                        showOnlySubscriptionsOnHome = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Subscriptions")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(showOnlySubscriptionsOnHome ? .white : .primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Group {
+                            if showOnlySubscriptionsOnHome {
+                                LinearGradient(
+                                    gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            } else {
+                                Color.secondarySystemBackground
+                            }
+                        }
+                    )
+                    .cornerRadius(14)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Spacer()
+            }
             
-            if viewModel.filteredExpenses.isEmpty {
+            let list = showOnlySubscriptionsOnHome ? viewModel.filteredExpenses.filter { $0.isFromSubscription } : viewModel.filteredExpenses
+            
+            if list.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.system(size: 48))
@@ -632,7 +762,7 @@ struct HomeView: View {
                         .font(.headline)
                         .foregroundColor(.secondary)
                     
-                    Text("Add your first expense by tapping the + button")
+                    Text(showOnlySubscriptionsOnHome ? "No subscription expenses in this period" : "Add your first expense by tapping the + button")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -640,26 +770,24 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
             } else {
+                // Use LazyVStack with optimized ExpenseCards
                 LazyVStack(spacing: 16) {
-                    ForEach(Array(viewModel.filteredExpenses.prefix(5).enumerated()), id: \.element.id) { index, expense in
-                        ExpenseCard(expense: expense)
-                            .environmentObject(viewModel)
-                            .transition(.slide)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index)), value: animateCards)
+                    ForEach(Array(list.prefix(5).enumerated()), id: \.element.id) { index, expense in
+                        // Use the optimized initializer to prevent unnecessary re-renders
+                        ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+                            .equatable() // Tell SwiftUI to use our Equatable implementation
                             .onTapGesture {
-                                // First set the selected expense
+                                HapticManager.shared.impact(style: .light)
                                 selectedExpense = expense
-                                // No need to explicitly reload categories here - they're already loaded
-                                // Then show the sheet after a very slight delay
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                    showingEditSheet = true
-                                }
                             }
+                            .opacity(animateCards ? 1 : 0)
+                            .offset(y: animateCards ? 0 : 10)
                     }
                 }
+                .animation(.easeOut(duration: 0.3), value: animateCards)
             }
         }
-        .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.7), value: animateCards)
+        // Removed heavy spring animation - data changes should not trigger view animations
     }
     
     // MARK: - Empty State View
@@ -725,65 +853,22 @@ struct HomeView: View {
     private var summaryCardsContent: some View {
         // Adaptive grid for different screen sizes
         AdaptiveGrid {
+            ForEach(Array(viewModel.getSummaryCardsData(customCategories: categoryViewModel.customCategories).enumerated()), id: \.offset) { index, cardData in
             SummaryCard(
-                title: "Total Expenses",
-                amount: viewModel.totalExpenses(),
-                icon: "creditcard.fill",
-                color: .mauve,
-                currencySymbol: viewModel.selectedCurrency.symbol,
+                    title: cardData.title,
+                    amount: cardData.amount,
+                    icon: cardData.icon,
+                    color: cardData.color,
                 action: {
                     HapticManager.shared.lightTap()
-                    // Show all expenses
-                    viewModel.selectedCategory = nil
+                        // Set category filter or clear for total
+                        viewModel.selectedCategory = cardData.category
+                        viewModel.selectedCustomCategoryId = cardData.customCategoryId
                 }
             )
             .transition(.scale.combined(with: .opacity))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1), value: animateCards)
-            
-            SummaryCard(
-                title: "Food & Drinks",
-                amount: viewModel.totalExpenses(for: .food),
-                icon: "fork.knife",
-                color: .champagnePink,
-                currencySymbol: viewModel.selectedCurrency.symbol,
-                action: {
-                    HapticManager.shared.lightTap()
-                    // Filter by food category
-                    viewModel.selectedCategory = .food
-                }
-            )
-            .transition(.scale.combined(with: .opacity))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.2), value: animateCards)
-            
-            SummaryCard(
-                title: "Shopping",
-                amount: viewModel.totalExpenses(for: .shopping),
-                icon: "bag.fill",
-                color: .teaRose,
-                currencySymbol: viewModel.selectedCurrency.symbol,
-                action: {
-                    HapticManager.shared.lightTap()
-                    // Filter by shopping category
-                    viewModel.selectedCategory = .shopping
-                }
-            )
-            .transition(.scale.combined(with: .opacity))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.3), value: animateCards)
-            
-            SummaryCard(
-                title: "Transportation",
-                amount: viewModel.totalExpenses(for: .transportation),
-                icon: "car.fill",
-                color: .nonPhotoBlue,
-                currencySymbol: viewModel.selectedCurrency.symbol,
-                action: {
-                    HapticManager.shared.lightTap()
-                    // Filter by transportation category
-                    viewModel.selectedCategory = .transportation
-                }
-            )
-            .transition(.scale.combined(with: .opacity))
-            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.4), value: animateCards)
+                .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index + 1)), value: animateCards)
+            }
         }
     }
     
@@ -809,23 +894,23 @@ struct HomeView: View {
             } else {
                 LazyVStack(spacing: 16) {
                     ForEach(Array(viewModel.filteredExpenses.prefix(5).enumerated()), id: \.element.id) { index, expense in
-                        ExpenseCard(expense: expense)
-                            .environmentObject(viewModel)
-                            .transition(.slide)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1 * Double(index)), value: animateCards)
+                        ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+                            .equatable()
                             .onTapGesture {
-                                // First set the selected expense
+                                HapticManager.shared.impact(style: .light)
                                 selectedExpense = expense
-                                // Then show the sheet after a very slight delay
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                    showingEditSheet = true
-                                }
                             }
+                            .opacity(animateCards ? 1 : 0)
+                            .offset(y: animateCards ? 0 : 10)
                     }
                 }
+                .animation(.easeOut(duration: 0.3), value: animateCards)
             }
         }
     }
+    
+    // MARK: - Automation Banner
+    // (Automation banner removed in core-only build)
     
     // MARK: - Haptic Feedback (Deprecated - Using HapticManager instead)
     private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {
@@ -837,5 +922,6 @@ struct HomeView_Previews: PreviewProvider {
     static var previews: some View {
         HomeView()
             .environmentObject(ExpenseViewModel())
+            .environmentObject(CategoryViewModel())
     }
 }

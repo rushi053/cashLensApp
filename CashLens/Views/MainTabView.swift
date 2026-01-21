@@ -2,14 +2,15 @@ import SwiftUI
 
 struct MainTabView: View {
     @StateObject var viewModel: ExpenseViewModel
+    @EnvironmentObject private var categoryViewModel: CategoryViewModel
+    @StateObject private var feedbackManager = FeedbackManager.shared
     @State private var selectedTab: Tab = .home
     @State private var showingAddExpense = false
     @State private var showingCurrencyPicker = false
+    @State private var showingFeedbackRequest = false
     
     // Tab bar configuration
-    private let tabBarHeight: CGFloat = 50
-    private let addButtonSize: CGFloat = 56
-    private let addButtonYOffset: CGFloat = -20
+    private let tabBarHeight: CGFloat = 60
     
     init(viewModel: ExpenseViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -55,42 +56,59 @@ struct MainTabView: View {
     
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .bottom) {
+            ZStack {
                 // Main content
                 TabView(selection: $selectedTab) {
                     HomeView()
                         .environmentObject(viewModel)
                         .tag(Tab.home)
                     
+                    SubscriptionsView(expenseViewModel: viewModel)
+                        .tag(Tab.subscriptions)
+                    
                     StatisticsView()
                         .environmentObject(viewModel)
                         .tag(Tab.statistics)
                 }
                 
-                // Custom tab bar - adapted for iPad
-                VStack(spacing: 0) {
+                // Floating Add Button - only visible on Home tab
+                if selectedTab == .home {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            FloatingAddButton(
+                                action: { showingAddExpense = true },
+                                isIPad: isIPad(geometry)
+                            )
+                            .padding(.trailing, isIPad(geometry) ? 30 : 20)
+                            .padding(.bottom, tabBarHeight + geometry.safeAreaInsets.bottom + (isIPad(geometry) ? 20 : 10))
+                        }
+                    }
+                }
+                
+                // Custom tab bar
+                VStack {
                     Spacer()
                     
-                    // Tab bar with background
-                    ZStack {
+                    // Tab bar background and items
+                    VStack(spacing: 0) {
                         // Tab bar background
-                        VStack(spacing: 0) {
                             Rectangle()
                                 .fill(Color.systemBackground)
-                                .frame(height: tabBarHeight + (isIPad(geometry) ? 10 : 0)) // Taller tab bar on iPad
-                                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: -2)
+                            .frame(height: tabBarHeight)
+                            .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: -4)
                             
-                            // This rectangle extends to fill the bottom safe area
+                        // Bottom safe area background
                             Rectangle()
                                 .fill(Color.systemBackground)
                                 .frame(height: geometry.safeAreaInsets.bottom)
                         }
-                        
+                    .overlay(
                         // Tab items
                         VStack(spacing: 0) {
-                            HStack {
+                            HStack(spacing: 0) {
                                 // Home tab
-                                Spacer()
                                 TabButton(
                                     icon: "house.fill",
                                     label: "Home",
@@ -102,13 +120,17 @@ struct MainTabView: View {
                                     isIPad: isIPad(geometry)
                                 )
                                 
-                                // Spacer for add button - wider on iPad
-                                Spacer()
-                                if isIPad(geometry) {
-                                    Spacer()
-                                    Spacer()
-                                }
-                                Spacer()
+                                // Subscriptions tab
+                                TabButton(
+                                    icon: "creditcard.and.123",
+                                    label: "Subscriptions",
+                                    isSelected: selectedTab == .subscriptions,
+                                    action: {
+                                        selectedTab = .subscriptions
+                                        HapticManager.shared.selectionChanged()
+                                    },
+                                    isIPad: isIPad(geometry)
+                                )
                                 
                                 // Statistics tab
                                 TabButton(
@@ -121,28 +143,28 @@ struct MainTabView: View {
                                     },
                                     isIPad: isIPad(geometry)
                                 )
-                                Spacer()
                             }
-                            .padding(.top, isIPad(geometry) ? 10 : 6) // More padding on iPad
+                            .padding(.top, isIPad(geometry) ? 12 : 8)
                             
-                            // Add spacer to push content up from bottom safe area
                             Spacer()
-                                .frame(height: geometry.safeAreaInsets.bottom)
                         }
-                        
-                        // Add button - larger on iPad
-                        AddButton(
-                            action: { showingAddExpense = true },
-                            isIPad: isIPad(geometry)
                         )
-                        .offset(y: addButtonYOffset)
-                    }
                 }
-                .ignoresSafeArea(.keyboard)
+                
+                // Feedback Request Modal
+                if showingFeedbackRequest {
+                    FeedbackRequestView()
+                        .transition(.asymmetric(
+                            insertion: .scale.combined(with: .opacity),
+                            removal: .scale.combined(with: .opacity)
+                        ))
+                        .zIndex(100) // Ensure it appears above everything
+                }
             }
             .ignoresSafeArea(.all, edges: .bottom)
             .sheet(isPresented: $showingAddExpense) {
                 AddExpenseView(viewModel: viewModel)
+                    .environmentObject(categoryViewModel)
             }
             .sheet(isPresented: $showingCurrencyPicker) {
                 CurrencyPickerView(viewModel: viewModel)
@@ -150,17 +172,20 @@ struct MainTabView: View {
             .onAppear {
                 checkAndShowCurrencyPicker()
             }
+            .onReceive(feedbackManager.$shouldShowFeedbackRequest) { shouldShow in
+                showingFeedbackRequest = shouldShow
+            }
         }
     }
     
     private func checkAndShowCurrencyPicker() {
         // Only show currency picker if onboarding has been completed
-        let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+        let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
         
         if !viewModel.hasShownCurrencyPicker && hasCompletedOnboarding {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 showingCurrencyPicker = true
-                UserDefaults.standard.set(true, forKey: "hasShownCurrencyPicker")
+                UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasShownCurrencyPicker)
                 viewModel.hasShownCurrencyPicker = true
             }
         }
@@ -190,22 +215,24 @@ struct TabButton: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: isIPad ? 8 : 6) {
+            VStack(spacing: isIPad ? 6 : 4) {
                 Image(systemName: icon)
-                    .font(.system(size: isIPad ? 26 : 22))
+                    .font(.system(size: isIPad ? 24 : 20, weight: .medium))
                 
                 Text(label)
-                    .font(.system(size: isIPad ? 12 : 10, weight: .semibold))
+                    .font(.system(size: isIPad ? 11 : 9, weight: .medium))
+                    .lineLimit(1)
             }
             .foregroundColor(isSelected ? .mauve : .secondary)
-            .frame(width: isIPad ? 90 : 70, height: isIPad ? 56 : 44)
+            .frame(maxWidth: .infinity)
+            .frame(height: isIPad ? 50 : 40)
         }
         .buttonStyle(PlainButtonStyle())
     }
 }
 
 enum Tab: String {
-    case home, statistics
+    case home, subscriptions, statistics
 }
 
 struct MainTabView_Previews: PreviewProvider {

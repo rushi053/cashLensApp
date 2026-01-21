@@ -13,6 +13,8 @@ extension ExpenseEntity {
         entity.category = expense.category.rawValue
         entity.notes = expense.notes
         entity.customCategoryId = expense.customCategoryId
+        entity.isFromSubscription = expense.isFromSubscription
+        entity.subscriptionId = expense.subscriptionId
         return entity
     }
     
@@ -26,7 +28,9 @@ extension ExpenseEntity {
             date: self.date ?? Date(),
             category: Expense.Category(rawValue: self.category ?? "Other") ?? .other,
             notes: self.notes,
-            customCategoryId: self.customCategoryId
+            customCategoryId: self.customCategoryId,
+            isFromSubscription: self.isFromSubscription,
+            subscriptionId: self.subscriptionId
         )
     }
 }

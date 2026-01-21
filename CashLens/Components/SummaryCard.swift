@@ -5,15 +5,19 @@ struct SummaryCard: View {
     let amount: Double
     let icon: String
     let color: Color
-    let currencySymbol: String
+    @EnvironmentObject var viewModel: ExpenseViewModel
     var action: () -> Void
     
-    init(title: String, amount: Double, icon: String, color: Color, currencySymbol: String = "$", action: @escaping () -> Void = {}) {
+    private var cardHeight: CGFloat {
+        // Keep cards visually consistent even when text is long (e.g., very large amounts).
+        UIDevice.current.userInterfaceIdiom == .pad ? 170 : 150
+    }
+    
+    init(title: String, amount: Double, icon: String, color: Color, action: @escaping () -> Void = {}) {
         self.title = title
         self.amount = amount
         self.icon = icon
         self.color = color
-        self.currencySymbol = currencySymbol
         self.action = action
     }
     
@@ -35,16 +39,22 @@ struct SummaryCard: View {
                 Text(title)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.9)
                 
                 // Amount
-                Text("\(currencySymbol)\(String(format: "%.2f", amount))")
-                    .font(.system(size: 24, weight: .bold))
+                Text(viewModel.formattedAmount(amount))
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundColor(.primary)
+                    .lineLimit(1)                 // Prevent wrapping that changes card height
+                    .minimumScaleFactor(0.55)     // Shrink font for very long numbers
+                    .allowsTightening(true)
             }
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: cardHeight, alignment: .topLeading)
             .background(Color.secondarySystemBackground)
-            .cornerRadius(20)
+            .cornerRadius(16)
             .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
         }
         .buttonStyle(ScaleButtonStyle())

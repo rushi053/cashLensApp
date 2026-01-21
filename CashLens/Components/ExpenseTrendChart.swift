@@ -11,15 +11,26 @@ struct ExpenseTrendChart: View {
         return UIDevice.current.userInterfaceIdiom == .pad
     }
     
-    // Computed properties for chart data
-    private var dateRange: [Date] {
+    // MARK: - Chart Data (Performance Optimized)
+    // Pre-grouped expense data for O(n) instead of O(n×m) complexity
+    
+    private var chartData: (dates: [Date], values: [Double]) {
         let calendar = Calendar.current
         let now = Date()
+        
+        // First, pre-group all expenses by their bucket key (single pass through expenses)
+        var groupedAmounts: [String: Double] = [:]
+        
+        for expense in expenses {
+            let key = bucketKey(for: expense.date, timeFrame: timeFrame, calendar: calendar)
+            groupedAmounts[key, default: 0] += expense.amount
+        }
+        
+        // Generate date range
         var dates: [Date] = []
         
         switch timeFrame {
         case .day:
-            // For day, show hourly data
             let startOfDay = calendar.startOfDay(for: now)
             for hour in 0..<24 {
                 if let date = calendar.date(byAdding: .hour, value: hour, to: startOfDay) {
@@ -27,15 +38,12 @@ struct ExpenseTrendChart: View {
                 }
             }
         case .week:
-            // For week, show daily data for the past 7 days
-            for day in 0..<7 {
+            for day in (0..<7).reversed() {
                 if let date = calendar.date(byAdding: .day, value: -day, to: now) {
                     dates.append(calendar.startOfDay(for: date))
                 }
             }
-            dates.reverse()
         case .month:
-            // For month, show data for each day of the current month
             if let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)),
                let range = calendar.range(of: .day, in: .month, for: now) {
                 for day in 1...range.count {
@@ -45,7 +53,6 @@ struct ExpenseTrendChart: View {
                 }
             }
         case .year:
-            // For year, show monthly data
             if let startOfYear = calendar.date(from: calendar.dateComponents([.year], from: now)) {
                 for month in 0..<12 {
                     if let date = calendar.date(byAdding: .month, value: month, to: startOfYear) {
@@ -54,9 +61,8 @@ struct ExpenseTrendChart: View {
                 }
             }
         case .all:
-            // For all, group by months for the available data
             if let oldestExpense = expenses.min(by: { $0.date < $1.date })?.date {
-                var current = calendar.startOfDay(for: oldestExpense)
+                var current = calendar.date(from: calendar.dateComponents([.year, .month], from: oldestExpense)) ?? calendar.startOfDay(for: oldestExpense)
                 let endDate = calendar.startOfDay(for: now)
                 
                 while current <= endDate {
@@ -70,48 +76,39 @@ struct ExpenseTrendChart: View {
             }
         }
         
-        return dates
+        // Map dates to values using pre-grouped data (O(1) lookup per date)
+        let values = dates.map { date -> Double in
+            let key = bucketKey(for: date, timeFrame: timeFrame, calendar: calendar)
+            return groupedAmounts[key, default: 0]
+        }
+        
+        return (dates, values)
+    }
+    
+    /// Generate a unique bucket key for grouping expenses
+    private func bucketKey(for date: Date, timeFrame: ExpenseViewModel.TimeFrame, calendar: Calendar) -> String {
+        switch timeFrame {
+        case .day:
+            let day = calendar.component(.day, from: date)
+            let hour = calendar.component(.hour, from: date)
+            return "\(day)-\(hour)"
+        case .week, .month:
+            let year = calendar.component(.year, from: date)
+            let day = calendar.ordinality(of: .day, in: .year, for: date) ?? 0
+            return "\(year)-\(day)"
+        case .year, .all:
+            let year = calendar.component(.year, from: date)
+            let month = calendar.component(.month, from: date)
+            return "\(year)-\(month)"
+        }
+    }
+    
+    private var dateRange: [Date] {
+        chartData.dates
     }
     
     private var dataPoints: [Double] {
-        let calendar = Calendar.current
-        
-        return dateRange.map { date in
-            let filteredExpenses: [Expense]
-            
-            switch timeFrame {
-            case .day:
-                // Group by hour
-                filteredExpenses = expenses.filter {
-                    calendar.component(.day, from: $0.date) == calendar.component(.day, from: date) &&
-                    calendar.component(.hour, from: $0.date) == calendar.component(.hour, from: date)
-                }
-            case .week:
-                // Group by day
-                filteredExpenses = expenses.filter {
-                    calendar.isDate($0.date, inSameDayAs: date)
-                }
-            case .month:
-                // Group by day
-                filteredExpenses = expenses.filter {
-                    calendar.isDate($0.date, inSameDayAs: date)
-                }
-            case .year:
-                // Group by month
-                filteredExpenses = expenses.filter {
-                    calendar.component(.year, from: $0.date) == calendar.component(.year, from: date) &&
-                    calendar.component(.month, from: $0.date) == calendar.component(.month, from: date)
-                }
-            case .all:
-                // Group by month
-                filteredExpenses = expenses.filter {
-                    calendar.component(.year, from: $0.date) == calendar.component(.year, from: date) &&
-                    calendar.component(.month, from: $0.date) == calendar.component(.month, from: date)
-                }
-            }
-            
-            return filteredExpenses.reduce(0) { $0 + $1.amount }
-        }
+        chartData.values
     }
     
     private var maxValue: Double {
@@ -184,116 +181,20 @@ struct ExpenseTrendChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if hasData {
-                // Summary indicators at the top - with adaptive sizing for iPad
-                HStack(spacing: isIPad ? 36 : 24) {
-                    // Total expenses indicator
-                    VStack(alignment: .leading) {
-                        Text("Total")
-                            .font(isIPad ? .subheadline : .caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text(formatCurrency(dataPoints.reduce(0, +)))
-                            .font(isIPad ? .headline : .subheadline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
-                    }
-                    
-                    // Average indicator
-                    VStack(alignment: .leading) {
-                        Text("Avg")
-                            .font(isIPad ? .subheadline : .caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text(formatCurrency(average))
-                            .font(isIPad ? .headline : .subheadline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
-                    }
-                    
-                    // Max indicator
-                    VStack(alignment: .leading) {
-                        Text("Max")
-                            .font(isIPad ? .subheadline : .caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text(formatCurrency(maxValue))
-                            .font(isIPad ? .headline : .subheadline)
-                            .fontWeight(.bold)
-                            .foregroundColor(.primary)
-                    }
-                    
-                    Spacer()
-                    
-                    // Trend indicator - larger on iPad
-                    HStack(spacing: 6) {
-                        Image(systemName: trend.icon)
-                            .font(.system(size: isIPad ? 12 : 10, weight: .semibold))
-                            .foregroundColor(.white)
-                        
-                        Text(trend.description)
-                            .font(.system(size: isIPad ? 12 : 10, weight: .semibold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .fixedSize()
-                    }
-                    .padding(.horizontal, isIPad ? 12 : 8)
-                    .padding(.vertical, isIPad ? 6 : 4)
-                    .background(trend.color)
-                    .cornerRadius(isIPad ? 8 : 6)
-                }
-                .padding(.horizontal, isIPad ? 16 : 8)
-                
                 // Chart
                 GeometryReader { geometry in
                     ZStack(alignment: .bottom) {
                         // Background grid
                         VStack(spacing: 0) {
-                            ForEach(0..<4) { i in
+                            ForEach(0..<3) { i in
                                 Divider()
                                     .background(Color.secondary.opacity(0.2))
                                 
-                                // Y-axis labels (right side)
-                                if maxValue > 0 {
-                                    HStack {
-                                        // Add left-side labels for wider screens
-                                        if isIPad {
-                                            Text(formatCurrency(maxValue * Double(4 - i) / 4))
-                                                .font(.system(size: 10))
-                                                .foregroundColor(.secondary.opacity(0.8))
-                                                .padding(.leading, 4)
-                                                .frame(width: 80, alignment: .leading)
-                                        }
-                                        
-                                        Spacer()
-                                        
-                                        Text(formatCurrency(maxValue * Double(4 - i) / 4))
-                                            .font(.system(size: isIPad ? 10 : 8))
-                                            .foregroundColor(.secondary.opacity(0.8))
-                                    }
-                                }
-                                
                                 Spacer()
-                                    .frame(height: geometry.size.height / 4)
+                                    .frame(height: geometry.size.height / 3)
                             }
                             Divider()
                                 .background(Color.secondary.opacity(0.2))
-                        }
-                        
-                        // Average line - enhanced for iPad
-                        if average > 0 {
-                            Rectangle()
-                                .fill(Color.orange.opacity(0.6))
-                                .frame(height: isIPad ? 1.5 : 1)
-                                .offset(y: -CGFloat(average) / CGFloat(maxValue) * geometry.size.height)
-                                .overlay(
-                                    Text("Average")
-                                        .font(.system(size: isIPad ? 11 : 8, weight: .medium))
-                                        .foregroundColor(.orange)
-                                        .padding(.horizontal, 4)
-                                        .background(Color.white.opacity(0.7))
-                                        .cornerRadius(2)
-                                        .offset(x: -geometry.size.width / 2 + (isIPad ? 40 : 12), y: isIPad ? -14 : -10)
-                                )
                         }
                         
                         // Fill area under the curve
@@ -360,19 +261,33 @@ struct ExpenseTrendChart: View {
                             let x = stepWidth * CGFloat(index)
                             let y = height - (CGFloat(point) / CGFloat(maxValue) * height)
                             
-                            // Limit tooltip density on iPad - show fewer tooltips
-                            let shouldShowTooltip = isIPad ? 
-                                // On iPad, only show every other significant point to avoid overlap
-                                (index % 2 == 0 || point == maxValue) : 
-                                // On iPhone, use the original logic
-                                true
+                            // Limit tooltip density to prevent overlap
+                            let shouldShowTooltip: Bool = {
+                                if isIPad {
+                                    // On iPad, show fewer tooltips - only max, min, and every 3rd significant point
+                                    return (point == maxValue || 
+                                           (point > 0 && index == dataPoints.count - 1) || 
+                                           index % 3 == 0) && point > average * 0.8
+                                } else {
+                                    // On iPhone, be even more restrictive
+                                    let dataPointCount = dataPoints.count
+                                    if dataPointCount <= 7 {
+                                        // For small datasets, show max and last non-zero
+                                        return point == maxValue || (point > 0 && index == dataPoints.count - 1)
+                                    } else {
+                                        // For larger datasets, only show max value and a few key points
+                                        return point == maxValue || 
+                                               (index == dataPoints.count - 1 && point > 0) ||
+                                               (index % (dataPointCount / 3) == 0 && point > average * 1.5)
+                                    }
+                                }
+                            }()
                             
-                            // Only show tooltip for points above average or max/min
+                            // Only show tooltip for significant points that meet spacing requirements
                             let isSignificant = maxValue > 0 && (
-                                point > average * 1.2 || 
-                                point == maxValue ||
+                                point == maxValue || 
                                 (point > 0 && index == dataPoints.count - 1) || // Last non-zero point
-                                (index > 0 && point > dataPoints[index-1] * 1.5) // Significant jump
+                                point > average * 1.5 // Only very high points
                             )
                             
                             ZStack {
@@ -403,9 +318,6 @@ struct ExpenseTrendChart: View {
                         }
                     }
                 }
-                .frame(height: 200)
-                .padding(.top, 20)
-                .padding(.bottom, 10)
                 .frame(height: isIPad ? 300 : 200)
                 
                 // X-axis labels with adaptive spacing for different screen sizes

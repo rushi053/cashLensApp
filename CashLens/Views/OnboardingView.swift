@@ -4,32 +4,43 @@ struct OnboardingView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @Binding var showOnboarding: Bool
     @State private var currentPage = 0
-    @State private var showingCurrencyPicker = false
     
     private let pages: [OnboardingPage] = [
         OnboardingPage(
             title: "Welcome to CashLens",
-            description: "Your personal expense tracker designed to help you manage and visualize your spending habits.",
+            description: "Track spending, understand patterns, and stay on top of subscriptions—without sacrificing simplicity.",
             imageName: "creditcard.fill",
             backgroundColor: .appPrimary
         ),
         OnboardingPage(
             title: "Track Expenses",
-            description: "Easily add and categorize your expenses to keep track of where your money goes.",
+            description: "Add expenses fast, use categories (including custom ones), and filter by time frames to stay organized.",
             imageName: "plus.circle.fill",
             backgroundColor: .teaRose
         ),
         OnboardingPage(
+            title: "Track Subscriptions",
+            description: "Never miss a payment. Track recurring bills with reminders and a clear monthly spending estimate.",
+            imageName: "creditcard.and.123",
+            backgroundColor: .pinkLavender
+        ),
+        OnboardingPage(
             title: "View Statistics",
-            description: "Get insights into your spending patterns with beautiful visualizations and breakdowns.",
+            description: "See where your money goes with charts, category share, heatmaps, and flexible date ranges.",
             imageName: "chart.pie.fill",
             backgroundColor: .jordyBlue
         ),
         OnboardingPage(
-            title: "Personalize",
-            description: "Create custom categories that match your unique spending habits and lifestyle.",
+            title: "Make it yours",
+            description: "Customize your Home summary cards, create custom categories with icons, and choose your default time frame.",
             imageName: "slider.horizontal.3",
             backgroundColor: .champagnePink
+        ),
+        OnboardingPage(
+            title: "Helpful reminders (opt‑in)",
+            description: "Enable weekly/monthly digests and backup reminders anytime in Profile. Notifications are always optional.",
+            imageName: "bell.badge.fill",
+            backgroundColor: .mauve
         )
     ]
     
@@ -124,9 +135,6 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.light) // Force light mode for better visual appeal
-        .sheet(isPresented: $showingCurrencyPicker) {
-            CurrencyPickerView(viewModel: viewModel)
-        }
     }
     
     private func pageView(for page: OnboardingPage) -> some View {
@@ -161,21 +169,16 @@ struct OnboardingView: View {
     
     private func finishOnboarding() {
         // Mark onboarding as completed
-        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+        UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasCompletedOnboarding)
         
         // Default to light mode
         if viewModel.appearanceMode == .system {
             viewModel.appearanceMode = .light
         }
         
-        // Show currency picker immediately after onboarding
+        // Dismiss onboarding - currency picker will be shown from CashLensApp
         withAnimation {
             showOnboarding = false
-            
-            // Show currency picker with a slight delay to allow for smooth transition
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                showingCurrencyPicker = true
-            }
         }
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     
@@ -16,6 +17,13 @@ struct AddExpenseView: View {
     @State private var showingManageCategories: Bool
     @State private var showingDatePicker: Bool
     
+    @FocusState private var focusedField: Field?
+    private enum Field: Hashable {
+        case amount
+        case title
+        case notes
+    }
+    
     // Animation states
     @State private var animateCircle: Bool
     @State private var showForm: Bool
@@ -27,6 +35,12 @@ struct AddExpenseView: View {
     var onSave: ((String, Double, Date, Expense.Category, UUID?, String?) -> Void)?
     var expenseId: UUID?
     @State private var showingDeleteConfirmation = false
+    @State private var showingDraftRestored = false
+    @State private var showingDuplicateConfirmation = false
+    @State private var pendingAmountValue: Double = 0
+    
+    // Draft state key
+    private let draftKey = UserDefaultsKeys.expenseDraft
     
     // Date formatter
     private let dateFormatter: DateFormatter = {
@@ -41,13 +55,17 @@ struct AddExpenseView: View {
         self.isEditing = false
         self.onSave = nil
         
+        // Try to restore draft state for new expenses
+        let draftData = UserDefaults.standard.data(forKey: UserDefaultsKeys.expenseDraft)
+        let draft = draftData.flatMap { try? JSONDecoder().decode(ExpenseDraft.self, from: $0) }
+        
         // Initialize state
-        _title = State(initialValue: "")
-        _amount = State(initialValue: "")
-        _date = State(initialValue: Date())
-        _selectedCategory = State(initialValue: .food)
-        _selectedCustomCategoryId = State(initialValue: nil)
-        _notes = State(initialValue: "")
+        _title = State(initialValue: draft?.title ?? "")
+        _amount = State(initialValue: draft?.amount ?? "")
+        _date = State(initialValue: draft?.date ?? Date())
+        _selectedCategory = State(initialValue: draft?.selectedCategory ?? .food)
+        _selectedCustomCategoryId = State(initialValue: draft?.selectedCustomCategoryId)
+        _notes = State(initialValue: draft?.notes ?? "")
         _showingKeyboard = State(initialValue: false)
         _showingManageCategories = State(initialValue: false)
         _showingDatePicker = State(initialValue: false)
@@ -55,6 +73,7 @@ struct AddExpenseView: View {
         _showForm = State(initialValue: false)
         _animateButton = State(initialValue: false)
         _isSaving = State(initialValue: false)
+        _showingDraftRestored = State(initialValue: draft != nil && (!draft!.title.isEmpty || !draft!.amount.isEmpty || !draft!.notes.isEmpty))
     }
     
     // Initialize for editing existing expense
@@ -94,26 +113,29 @@ struct AddExpenseView: View {
     
     var body: some View {
         ZStack {
-            // Background
-            Color.systemBackground.edgesIgnoringSafeArea(.all)
+            // Background - modernized
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header
+                // Header - modernized
+                VStack(spacing: 16) {
+                    // Navigation bar
                 HStack {
                     Button(action: {
+                            // Clear draft if it's a new expense being dismissed
+                            if !isEditing {
+                                clearDraft()
+                            }
                         dismiss()
                     }) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 20))
-                            .foregroundColor(.primary)
-                    }
-                    .padding()
-                    
-                    Spacer()
-                    
-                    Text(isEditing ? "Edit Expense" : "Add Expense")
-                        .font(.title3)
-                        .fontWeight(.bold)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.secondary)
+                                .frame(width: 32, height: 32)
+                                .background(Color(.systemGray6))
+                                .clipShape(Circle())
+                        }
                     
                     Spacer()
                     
@@ -123,21 +145,60 @@ struct AddExpenseView: View {
                             showingDeleteConfirmation = true
                         }) {
                             Image(systemName: "trash")
-                                .font(.system(size: 20))
+                                    .font(.system(size: 18, weight: .semibold))
                                 .foregroundColor(.red)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.red.opacity(0.1))
+                                    .clipShape(Circle())
+                            }
                         }
-                        .padding()
-                    } else {
-                        // Empty view for balance when not in edit mode
-                        Color.clear
-                            .frame(width: 20, height: 20)
-                            .padding()
+                        }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 20)
+                    
+                    // Title
+                    VStack(spacing: 8) {
+                        Text(isEditing ? "Edit Expense" : "Add Expense")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                        
+                        Text(isEditing ? "Update your expense details" : "Track a new expense")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
                 }
+                .padding(.bottom, 8)
                 
                 // Form
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 30) {
+                    VStack(spacing: 28) {
+                        // Draft restored notification
+                        if showingDraftRestored && !isEditing {
+                            HStack {
+                                Image(systemName: "doc.text.fill")
+                                    .foregroundColor(.appPrimary)
+                                
+                                Text("Previous draft restored")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.primary)
+                                
+                                Spacer()
+                                
+                                Button("Dismiss") {
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        showingDraftRestored = false
+                                    }
+                                }
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.appPrimary)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(Color.appPrimary.opacity(0.1))
+                            .cornerRadius(12)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+
                         // Amount field first
                         amountField
                         
@@ -153,7 +214,7 @@ struct AddExpenseView: View {
                         // Notes field last
                         notesField
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 24)
                     .padding(.top, 10)
                     .padding(.bottom, 40)
                     .onAppear {
@@ -164,15 +225,12 @@ struct AddExpenseView: View {
                     }
                 }
                 
-                // Save button
+                // Save button - modernized
                 saveButton
             }
         }
         .navigationBarHidden(true)
         .onAppear {
-            // Load categories immediately when view appears
-            categoryViewModel.loadCustomCategories()
-            
             // Skip animation delay when editing to avoid blank form
             if isEditing {
                 // Instantly show the form when editing
@@ -188,6 +246,18 @@ struct AddExpenseView: View {
                 }
             }
         }
+        .confirmationDialog("Possible duplicate", isPresented: $showingDuplicateConfirmation, titleVisibility: .visible) {
+            Button("Save anyway", role: .destructive) {
+                HapticManager.shared.warning()
+                isSaving = true
+                addExpense()
+            }
+            Button("Review", role: .cancel) {
+                isSaving = false
+            }
+        } message: {
+            Text("A similar expense (same title + amount) was added around the same time. Do you want to save anyway?")
+        }
         // Delete confirmation alert
         .alert(isPresented: $showingDeleteConfirmation) {
             Alert(
@@ -200,24 +270,113 @@ struct AddExpenseView: View {
                 secondaryButton: .cancel()
             )
         }
+        // Auto-save draft functionality for new expenses
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background && !isEditing {
+                saveDraft()
+            }
+        }
+        .onChange(of: title) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: amount) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: selectedCategory) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: selectedCustomCategoryId) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: notes) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
+        .onChange(of: date) { _, _ in
+            if !isEditing {
+                saveDraftWithDelay()
+            }
+        }
     }
     
     // MARK: - View Components
     
     private var titleField: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack {
             Text("Title")
-                .font(.headline)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
+                Spacer()
+            }
             
             TextField("Expense title", text: $title)
+                .font(.system(size: 17, weight: .medium))
+                .focused($focusedField, equals: .title)
+                .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .padding(.horizontal, 16)
-                .background(Color.secondarySystemBackground)
+                .background(Color(.secondarySystemBackground))
                 .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                 .onTapGesture {
                     showingKeyboard = true
+                    focusedField = .title
                 }
+            
+            if !isEditing {
+                // Only show suggestions while typing in the title field (avoid taking space by default)
+                if focusedField == .title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    titleSuggestions
+                }
+            }
+        }
+    }
+
+    private var titleSuggestions: some View {
+        let suggestions = filteredTitleSuggestions()
+        
+        return VStack(alignment: .leading, spacing: 8) {
+            if !suggestions.isEmpty {
+                Text("Suggestions")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                VStack(spacing: 8) {
+                    ForEach(suggestions, id: \.self) { suggestion in
+                        Button {
+                            HapticManager.shared.selectionChanged()
+                            title = suggestion
+                            showingKeyboard = false
+                            focusedField = nil
+                        } label: {
+                            HStack {
+                                Text(suggestion)
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Image(systemName: "arrow.up.left")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+            }
         }
     }
     
@@ -225,57 +384,94 @@ struct AddExpenseView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Amount")
-                    .font(.headline)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
-                
                 Spacer()
-                
-                Text(viewModel.selectedCurrency.symbol)
-                    .font(.headline)
-                    .foregroundColor(.appPrimary)
             }
+                
+            HStack(spacing: 16) {
+                Text(viewModel.selectedCurrency.symbol)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(.appPrimary)
             
             TextField("0.00", text: $amount)
-                .font(.system(size: 32, weight: .medium))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
                 .keyboardType(.decimalPad)
-                .multilineTextAlignment(.center)
-                .foregroundColor(Color(.systemGray))
+                .focused($focusedField, equals: .amount)
+            }
+            .padding(.horizontal, 20)
                 .padding(.vertical, 16)
-                .background(Color.secondarySystemBackground)
+            .background(Color(.secondarySystemBackground))
                 .cornerRadius(16)
+            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                 .onTapGesture {
                     showingKeyboard = true
+                    focusedField = .amount
                 }
         }
     }
     
     private var datePickerField: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Date")
-                .font(.headline)
-                .foregroundColor(.primary)
-            
             HStack {
+            Text("Date")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                Spacer()
+            }
+            
+            Button(action: {
+                focusedField = nil
+                showingDatePicker = true
+            }) {
+                HStack(spacing: 16) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.appPrimary.opacity(0.15))
+                            .frame(width: 48, height: 48)
+                        
                 Image(systemName: "calendar")
+                            .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.appPrimary)
-                    .padding(.leading, 8)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Selected Date")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
                 
                 Text(dateFormatter.string(from: date))
+                            .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(.primary)
+                    }
                 
                 Spacer()
                 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
+                        .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
-                    .padding(.trailing, 8)
             }
+                .padding(.horizontal, 20)
             .padding(.vertical, 16)
-            .padding(.horizontal, 8)
-            .background(Color.secondarySystemBackground)
+                .background(Color(.secondarySystemBackground))
             .cornerRadius(16)
-            .onTapGesture {
-                showingDatePicker = true
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Quick date shortcuts (safe, optional)
+            HStack(spacing: 10) {
+                quickDateChip(title: "Today") {
+                    HapticManager.shared.selectionChanged()
+                    date = Date()
+                }
+                
+                quickDateChip(title: "Yesterday") {
+                    HapticManager.shared.selectionChanged()
+                    date = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+                }
+                
+                Spacer()
             }
         }
         .sheet(isPresented: $showingDatePicker) {
@@ -288,19 +484,33 @@ struct AddExpenseView: View {
                 Button("Done") {
                     showingDatePicker = false
                 }
-                .font(.headline)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(.appPrimary)
                 .padding()
             }
-            .presentationBackground(Color.secondarySystemBackground)
+            .presentationBackground(Color(.systemGroupedBackground))
         }
     }
     
+    private func quickDateChip(title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.appPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.appPrimary.opacity(0.12))
+                .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
     private var categoryPickerField: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Category")
-                    .font(.headline)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                 
                 Spacer()
@@ -317,12 +527,13 @@ struct AddExpenseView: View {
                             .foregroundColor(.appPrimary)
                     }
                 }
+                .font(.system(size: 15, weight: .semibold))
             }
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
-                    // Standard categories
-                    ForEach(Expense.Category.allCases.filter { $0 != .custom }, id: \.self) { category in
+                    // Standard categories (excluding deleted ones)
+                    ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         categoryButton(category)
                     }
                     
@@ -332,65 +543,79 @@ struct AddExpenseView: View {
                     }
                 }
                 .padding(.vertical, 8)
+                .padding(.horizontal, 4)
             }
         }
-        .sheet(isPresented: $showingManageCategories, onDismiss: {
-            // Reload custom categories when returning from manage categories
-            categoryViewModel.loadCustomCategories()
-        }) {
+        .sheet(isPresented: $showingManageCategories) {
             ManageCategoriesView()
                 .environmentObject(categoryViewModel)
-        }
-        .onAppear {
-            // Make sure we have the latest custom categories
-            categoryViewModel.loadCustomCategories()
+                .environmentObject(viewModel)
         }
     }
     
     private var notesField: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Notes (Optional)")
-                .font(.headline)
+            HStack {
+                Text("Notes")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
             
-            ZStack(alignment: .topLeading) {
-                if notes.isEmpty {
-                    Text("Add details here...")
+                Text("(Optional)")
+                    .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.secondary)
-                        .padding(.top, 16)
-                        .padding(.leading, 16)
+                
+                Spacer()
                 }
                 
-                TextEditor(text: $notes)
-                    .frame(height: 120)
-                    .padding(.top, 8)
-                    .padding(.horizontal, 8)
-                    .background(Color.clear)
-                    .scrollContentBackground(.hidden)
+            TextField("Add details about this expense...", text: $notes, axis: .vertical)
+                .font(.system(size: 16, weight: .medium))
+                .focused($focusedField, equals: .notes)
+                .lineLimit(3, reservesSpace: true)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(16)
+                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
                     .onTapGesture {
                         showingKeyboard = true
+                        focusedField = .notes
                     }
-            }
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(16)
         }
     }
     
     // Computed property to check if form is valid
     private var isFormValid: Bool {
-        !title.isEmpty && 
-        !amount.isEmpty && 
-        (Double(amount) ?? 0) > 0
+        if isEditing {
+            // For editing, we only need a non-empty title and a valid amount
+            let parsedAmount = viewModel.parseAmount(amount)
+            // In edit mode, don't require the amount to be positive, just valid
+            return !title.isEmpty && parsedAmount != nil
+        } else {
+            // For new expenses, we need a non-empty title and a positive amount
+            return !title.isEmpty && 
+                   !amount.isEmpty && 
+                   (viewModel.parseAmount(amount) ?? 0) > 0
+        }
     }
     
     private var saveButton: some View {
-        Button(action: {
-            guard let amountValue = Double(amount) else { return }
+        VStack(spacing: 0) {
+            // Gradient overlay to fade content
+            LinearGradient(
+                colors: [Color.clear, Color(.systemGroupedBackground)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 20)
             
-            // Start saving animation
-            isSaving = true
+            // Save button
+        Button(action: {
+            guard let amountValue = viewModel.parseAmount(amount) else { return }
+            pendingAmountValue = amountValue
             
             if let onSave = onSave {
+                // Start saving animation
+                isSaving = true
                 // Enhanced haptic feedback for edit operation
                 HapticManager.shared.mediumTap()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -411,52 +636,50 @@ struct AddExpenseView: View {
                     dismiss()
                 }
             } else {
-                addExpense()
+                // Duplicate guard for new expenses (safe, confirm-only)
+                if isPotentialDuplicate(amountValue: amountValue) {
+                    showingDuplicateConfirmation = true
+                } else {
+                    isSaving = true
+                    addExpense()
+                }
             }
         }) {
+                HStack {
             if isSaving {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(30)
-                    .shadow(color: Color.appPrimary.opacity(0.3), radius: 4, x: 0, y: 2)
+                            .scaleEffect(0.9)
             } else {
                 Text(isEditing ? "Update Expense" : "Add Expense")
-                    .font(.headline)
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                    }
+                }
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
+                .frame(height: 56)
                     .background(
-                        isFormValid ?
                         LinearGradient(
-                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ) :
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.gray.opacity(0.6), Color.gray.opacity(0.4)]),
+                        colors: isFormValid ? 
+                            [Color.appPrimary, Color.appPrimary.opacity(0.8)] : 
+                            [Color.gray, Color.gray.opacity(0.8)],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                     )
-                    .cornerRadius(30)
+                .cornerRadius(16)
                     .shadow(
-                        color: isFormValid ? Color.appPrimary.opacity(0.3) : Color.clear,
-                        radius: 4, x: 0, y: 2
+                    color: isFormValid ? Color.appPrimary.opacity(0.4) : Color.gray.opacity(0.2),
+                    radius: 12,
+                    x: 0,
+                    y: 6
                     )
-            }
         }
-        .disabled(isSaving || !isFormValid)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 20)
+            .disabled(!isFormValid || isSaving)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 40)
+            .background(Color(.systemGroupedBackground))
+        }
     }
     
     // MARK: - Helper Views
@@ -535,7 +758,7 @@ struct AddExpenseView: View {
     // MARK: - Actions
     
     private func addExpense() {
-        guard let amountValue = Double(amount) else { return }
+        guard let amountValue = viewModel.parseAmount(amount) else { return }
         
         // Enhanced haptic feedback sequence
         HapticManager.shared.mediumTap()
@@ -557,8 +780,98 @@ struct AddExpenseView: View {
         // Add to view model
         viewModel.addExpense(newExpense)
         
+        // Clear draft when expense is successfully added
+        clearDraft()
+        
         // Dismiss the view
         dismiss()
+    }
+    
+    private func isPotentialDuplicate(amountValue: Double) -> Bool {
+        // Only for new expenses; edits should not be blocked.
+        guard !isEditing else { return false }
+        
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return false }
+        
+        let window: TimeInterval = 5 * 60
+        let targetDate = date
+        
+        return viewModel.expenses.contains { existing in
+            let existingTitle = existing.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard existingTitle.caseInsensitiveCompare(trimmedTitle) == .orderedSame else { return false }
+            guard abs(existing.amount - amountValue) < 0.0001 else { return false }
+            return abs(existing.date.timeIntervalSince(targetDate)) <= window
+        }
+    }
+    
+    private func recentTitles(limit: Int = 12) -> [String] {
+        let titles = viewModel.expenses
+            .sorted { $0.date > $1.date }
+            .map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        
+        var seen = Set<String>()
+        var result: [String] = []
+        for t in titles {
+            let key = t.lowercased()
+            if !seen.contains(key) {
+                seen.insert(key)
+                result.append(t)
+            }
+            if result.count >= limit { break }
+        }
+        return result
+    }
+    
+    private func filteredTitleSuggestions() -> [String] {
+        let input = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let all = recentTitles()
+        guard !input.isEmpty else { return [] }
+        
+        let lower = input.lowercased()
+        return Array(all.filter { $0.lowercased().contains(lower) }.prefix(5))
+    }
+    
+    // MARK: - Draft Management
+    
+    @State private var draftSaveTimer: Timer?
+    
+    private func saveDraftWithDelay() {
+        // Debounce the save operation to avoid excessive UserDefaults writes
+        draftSaveTimer?.invalidate()
+        draftSaveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { _ in
+            saveDraft()
+        }
+    }
+    
+    private func saveDraft() {
+        // Only save draft if there's meaningful content and it's a new expense
+        guard !isEditing && (!title.isEmpty || !amount.isEmpty || !notes.isEmpty) else {
+            return
+        }
+        
+        let draft = ExpenseDraft(
+            title: title,
+            amount: amount,
+            date: date,
+            selectedCategory: selectedCategory,
+            selectedCustomCategoryId: selectedCustomCategoryId,
+            notes: notes
+        )
+        
+        if let encoded = try? JSONEncoder().encode(draft) {
+            UserDefaults.standard.set(encoded, forKey: draftKey)
+        }
+    }
+    
+    private func clearDraft() {
+        UserDefaults.standard.removeObject(forKey: draftKey)
+        draftSaveTimer?.invalidate()
+    }
+    
+    private func hasDraft() -> Bool {
+        return UserDefaults.standard.data(forKey: draftKey) != nil
     }
     
     // MARK: - Delete Expense

@@ -1,9 +1,14 @@
 import SwiftUI
 
-struct CategoryItem: View {
+struct CategoryItem: View, Equatable {
     let category: Expense.Category
     let isSelected: Bool
     let action: () -> Void
+    
+    // Equatable conformance - ignore action closure
+    static func == (lhs: CategoryItem, rhs: CategoryItem) -> Bool {
+        lhs.category == rhs.category && lhs.isSelected == rhs.isSelected
+    }
     
     var body: some View {
         Button(action: action) {
@@ -17,17 +22,16 @@ struct CategoryItem: View {
                         .font(.system(size: 24))
                         .foregroundColor(Color.forCategory(category.color))
                 }
+                .drawingGroup() // Rasterize icon for better scroll performance
+                // Selection ring as overlay (outside drawingGroup to prevent clipping)
                 .overlay(
                     Circle()
-                        .stroke(isSelected ? 
-                               Color.forCategory(category.color).opacity(0.9) : 
-                               Color.clear, 
-                               lineWidth: 3)
+                        .stroke(isSelected ? Color.forCategory(category.color).opacity(0.9) : Color.clear,
+                                lineWidth: 3)
                 )
-                .shadow(color: isSelected ? 
-                       Color.forCategory(category.color).opacity(0.3) : 
-                       Color.clear, 
-                       radius: 4, x: 0, y: 0)
+                // Single lightweight shadow
+                .shadow(color: isSelected ? Color.forCategory(category.color).opacity(0.2) : Color.black.opacity(0.04),
+                        radius: isSelected ? 4 : 2, x: 0, y: 1)
                 
                 Text(category.rawValue.capitalized)
                     .font(.caption)
@@ -35,6 +39,7 @@ struct CategoryItem: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
+        .animation(.easeOut(duration: 0.15), value: isSelected)
     }
 }
 
