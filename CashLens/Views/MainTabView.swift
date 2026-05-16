@@ -1,5 +1,31 @@
 import SwiftUI
 
+/// v2 information architecture — see `redesign/v2` notes in
+/// the project README and the audit canvases.
+///
+/// Old tabs (v1): Home / Subscriptions / Statistics, with Profile
+/// hidden behind a header icon on Home only.
+///
+/// New tabs (v2): **Today / Activity / Insights / You**.
+///
+/// Why the change (from the IA audit):
+///
+///   • The ledger (`AllExpensesView`) — the app's most capable
+///     screen, with search, calendar, bulk select, filters — used
+///     to live in a sheet two taps from Home. It earns top-level
+///     promotion as **Activity**.
+///   • **Subscriptions** as a top-level tab over-indexed for the
+///     median user. Most users have 5–10 subs and glance at them
+///     weekly. The screen still exists (reachable from `You` →
+///     Subscriptions) and recurring expenses show as a filter chip
+///     inside Activity, but the tab itself is gone.
+///   • **Profile** held high-stakes utilities (currency, export,
+///     backup, themes, budgets) and yet had no stable home —
+///     it was a sheet you could only reach from Home's header.
+///     Promoted to **You** so it's always one tap away.
+///   • The new **Today** tab is built around answering "am I OK?"
+///     in two seconds — verdict hero + 7-day spark + recent + one
+///     insight. No browsing controls; this is a status screen.
 struct MainTabView: View {
     @StateObject var viewModel: ExpenseViewModel
     @EnvironmentObject private var categoryViewModel: CategoryViewModel
@@ -9,14 +35,14 @@ struct MainTabView: View {
     /// to re-evaluate the body and the tint visually lags behind.
     @EnvironmentObject private var themeStore: ThemeStore
     @StateObject private var feedbackManager = FeedbackManager.shared
-    @State private var selectedTab: Tab = .home
+    @State private var selectedTab: Tab = .today
     @State private var showingAddExpense = false
     @State private var showingCurrencyPicker = false
     @State private var showingFeedbackRequest = false
-    
-    // Tab bar configuration
+
+    // Tab bar configuration (legacy custom tab bar only)
     private let tabBarHeight: CGFloat = 60
-    
+
     init(viewModel: ExpenseViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
 
@@ -81,6 +107,16 @@ struct MainTabView: View {
         .saveErrorBannerHost()
     }
 
+    /// FAB shows on every tab except `You`. The v1 app hid the FAB
+    /// behind Home only — the IA audit caught this as a tap-cost
+    /// problem (users on Stats had to flip back to Home just to log
+    /// the expense they just thought of). v2 keeps the FAB present
+    /// anywhere the user is thinking about money. The settings tab
+    /// (`You`) is the only place where it would feel like noise.
+    private var shouldShowFAB: Bool {
+        selectedTab != .you
+    }
+
     // MARK: - iOS 26+ native Liquid Glass tab bar
 
     @available(iOS 26.0, *)
@@ -93,26 +129,34 @@ struct MainTabView: View {
         let themeId = themeStore.currentTheme.id
 
         return TabView(selection: $selectedTab) {
-            SwiftUI.Tab("Home", systemImage: "house.fill", value: Tab.home) {
-                HomeView()
+            SwiftUI.Tab("Today", systemImage: "sun.max.fill", value: Tab.today) {
+                TodayView(onSeeAllActivity: { selectedTab = .activity })
                     .environmentObject(viewModel)
-                    .id("home-\(themeId)")
+                    .id("today-\(themeId)")
             }
 
-            SwiftUI.Tab("Subscriptions", systemImage: "creditcard.and.123", value: Tab.subscriptions) {
-                SubscriptionsView(expenseViewModel: viewModel)
-                    .id("subs-\(themeId)")
+            SwiftUI.Tab("Activity", systemImage: "list.bullet.rectangle.fill", value: Tab.activity) {
+                AllExpensesView(isRootTab: true)
+                    .environmentObject(viewModel)
+                    .environmentObject(categoryViewModel)
+                    .id("activity-\(themeId)")
             }
 
-            SwiftUI.Tab("Statistics", systemImage: "chart.bar.fill", value: Tab.statistics) {
+            SwiftUI.Tab("Insights", systemImage: "chart.bar.xaxis", value: Tab.insights) {
                 StatisticsView()
                     .environmentObject(viewModel)
-                    .id("stats-\(themeId)")
+                    .id("insights-\(themeId)")
+            }
+
+            SwiftUI.Tab("You", systemImage: "person.crop.circle.fill", value: Tab.you) {
+                ProfileView(isRootTab: true)
+                    .environmentObject(viewModel)
+                    .id("you-\(themeId)")
             }
         }
         .tint(.appPrimary)
         .overlay(alignment: .bottomTrailing) {
-            if selectedTab == .home {
+            if shouldShowFAB {
                 let isPad = UIDevice.current.userInterfaceIdiom == .pad
                 FloatingAddButton(
                     action: { showingAddExpense = true },
@@ -169,23 +213,30 @@ struct MainTabView: View {
             ZStack {
                 // Main content
                 TabView(selection: $selectedTab) {
-                    HomeView()
+                    TodayView(onSeeAllActivity: { selectedTab = .activity })
                         .environmentObject(viewModel)
-                        .tag(Tab.home)
-                        .id("home-\(themeId)")
-                    
-                    SubscriptionsView(expenseViewModel: viewModel)
-                        .tag(Tab.subscriptions)
-                        .id("subs-\(themeId)")
-                    
+                        .tag(Tab.today)
+                        .id("today-\(themeId)")
+
+                    AllExpensesView(isRootTab: true)
+                        .environmentObject(viewModel)
+                        .environmentObject(categoryViewModel)
+                        .tag(Tab.activity)
+                        .id("activity-\(themeId)")
+
                     StatisticsView()
                         .environmentObject(viewModel)
-                        .tag(Tab.statistics)
-                        .id("stats-\(themeId)")
+                        .tag(Tab.insights)
+                        .id("insights-\(themeId)")
+
+                    ProfileView(isRootTab: true)
+                        .environmentObject(viewModel)
+                        .tag(Tab.you)
+                        .id("you-\(themeId)")
                 }
-                
-                // Floating Add Button - only visible on Home tab
-                if selectedTab == .home {
+
+                // Floating Add Button - visible on Today + Activity
+                if shouldShowFAB {
                     VStack {
                         Spacer()
                         HStack {
@@ -199,71 +250,76 @@ struct MainTabView: View {
                         }
                     }
                 }
-                
+
                 // Custom tab bar
                 VStack {
                     Spacer()
-                    
+
                     // Tab bar background and items
                     VStack(spacing: 0) {
-                        // Tab bar background
-                            Rectangle()
-                                .fill(Color.systemBackground)
+                        Rectangle()
+                            .fill(Color.systemBackground)
                             .frame(height: tabBarHeight)
                             .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: -4)
-                            
-                        // Bottom safe area background
-                            Rectangle()
-                                .fill(Color.systemBackground)
-                                .frame(height: geometry.safeAreaInsets.bottom)
-                        }
+
+                        Rectangle()
+                            .fill(Color.systemBackground)
+                            .frame(height: geometry.safeAreaInsets.bottom)
+                    }
                     .overlay(
-                        // Tab items
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
-                                // Home tab
                                 TabButton(
-                                    icon: "house.fill",
-                                    label: "Home",
-                                    isSelected: selectedTab == .home,
+                                    icon: "sun.max.fill",
+                                    label: "Today",
+                                    isSelected: selectedTab == .today,
                                     action: {
-                                        selectedTab = .home
+                                        selectedTab = .today
                                         HapticManager.shared.selectionChanged()
                                     },
                                     isIPad: isIPad(geometry)
                                 )
-                                
-                                // Subscriptions tab
+
                                 TabButton(
-                                    icon: "creditcard.and.123",
-                                    label: "Subscriptions",
-                                    isSelected: selectedTab == .subscriptions,
+                                    icon: "list.bullet.rectangle.fill",
+                                    label: "Activity",
+                                    isSelected: selectedTab == .activity,
                                     action: {
-                                        selectedTab = .subscriptions
+                                        selectedTab = .activity
                                         HapticManager.shared.selectionChanged()
                                     },
                                     isIPad: isIPad(geometry)
                                 )
-                                
-                                // Statistics tab
+
                                 TabButton(
-                                    icon: "chart.bar.fill",
-                                    label: "Statistics",
-                                    isSelected: selectedTab == .statistics,
+                                    icon: "chart.bar.xaxis",
+                                    label: "Insights",
+                                    isSelected: selectedTab == .insights,
                                     action: {
-                                        selectedTab = .statistics
+                                        selectedTab = .insights
+                                        HapticManager.shared.selectionChanged()
+                                    },
+                                    isIPad: isIPad(geometry)
+                                )
+
+                                TabButton(
+                                    icon: "person.crop.circle.fill",
+                                    label: "You",
+                                    isSelected: selectedTab == .you,
+                                    action: {
+                                        selectedTab = .you
                                         HapticManager.shared.selectionChanged()
                                     },
                                     isIPad: isIPad(geometry)
                                 )
                             }
                             .padding(.top, isIPad(geometry) ? 12 : 8)
-                            
+
                             Spacer()
                         }
-                        )
+                    )
                 }
-                
+
                 // Feedback Request Modal
                 if showingFeedbackRequest {
                     FeedbackRequestView()
@@ -271,7 +327,7 @@ struct MainTabView: View {
                             insertion: .scale.combined(with: .opacity),
                             removal: .scale.combined(with: .opacity)
                         ))
-                        .zIndex(100) // Ensure it appears above everything
+                        .zIndex(100)
                 }
             }
             .ignoresSafeArea(.all, edges: .bottom)
@@ -296,11 +352,10 @@ struct MainTabView: View {
             }
         }
     }
-    
+
     private func checkAndShowCurrencyPicker() {
-        // Only show currency picker if onboarding has been completed
         let hasCompletedOnboarding = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding)
-        
+
         if !viewModel.hasShownCurrencyPicker && hasCompletedOnboarding {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 showingCurrencyPicker = true
@@ -310,20 +365,19 @@ struct MainTabView: View {
         }
     }
 
-    // Helper to detect if we're on iPad
     private func isIPad(_ geometry: GeometryProxy) -> Bool {
         return geometry.size.width > 768 || UIDevice.current.userInterfaceIdiom == .pad
     }
 }
 
-// Custom Tab Button
+// Custom Tab Button (used by legacy iOS 18-25 path)
 struct TabButton: View {
     let icon: String
     let label: String
     let isSelected: Bool
     let action: () -> Void
     let isIPad: Bool
-    
+
     init(icon: String, label: String, isSelected: Bool, action: @escaping () -> Void, isIPad: Bool = false) {
         self.icon = icon
         self.label = label
@@ -331,13 +385,13 @@ struct TabButton: View {
         self.action = action
         self.isIPad = isIPad
     }
-    
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: isIPad ? 6 : 4) {
                 Image(systemName: icon)
                     .font(.system(size: isIPad ? 24 : 20, weight: .medium))
-                
+
                 Text(label)
                     .font(.system(size: isIPad ? 11 : 9, weight: .medium))
                     .lineLimit(1)
@@ -350,8 +404,11 @@ struct TabButton: View {
     }
 }
 
+/// v2 tab identity. Legacy raw values (`home`, `subscriptions`,
+/// `statistics`) are gone — any persisted last-selected-tab state
+/// would have been per-launch only, so this is a safe rename.
 enum Tab: String {
-    case home, subscriptions, statistics
+    case today, activity, insights, you
 }
 
 struct MainTabView_Previews: PreviewProvider {
@@ -359,4 +416,4 @@ struct MainTabView_Previews: PreviewProvider {
         let previewViewModel = ExpenseViewModel()
         return MainTabView(viewModel: previewViewModel)
     }
-} 
+}

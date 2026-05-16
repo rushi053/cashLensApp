@@ -20,6 +20,17 @@ import UserNotifications
 /// `Appearance` and `Default Time Frame` use `Menu` instead of inline accordion
 /// pickers — fewer taps, no layout glitches, more iOS-native.
 struct ProfileView: View {
+    /// v2: when ProfileView is the You tab root (not the legacy
+    /// sheet-from-Home presentation), there's no presenter to dismiss
+    /// back to — so the leading "X" close button must disappear.
+    /// Legacy sheet call sites pass `false` (default) and keep
+    /// their existing dismiss UX.
+    let isRootTab: Bool
+
+    init(isRootTab: Bool = false) {
+        self.isRootTab = isRootTab
+    }
+
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
@@ -34,6 +45,7 @@ struct ProfileView: View {
 
     @State private var showingPaywall = false
     @State private var showingBudgetList = false
+    @State private var showingSubscriptions = false
     @State private var showingCurrencyPicker = false
     @State private var showingAboutSheet = false
     @State private var showingExportSheet = false
@@ -124,17 +136,21 @@ struct ProfileView: View {
                 .padding()
                 .padding(.bottom, Theme.Spacing.xl)
             }
-            .navigationTitle("Profile")
+            .navigationTitle(isRootTab ? "You" : "Profile")
             .navigationBarItems(
-                leading: Button(action: {
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.primary)
-                        .padding(Theme.Spacing.sm)
-                        .background(Color.secondarySystemBackground)
-                        .clipShape(Circle())
+                leading: Group {
+                    if !isRootTab {
+                        Button(action: {
+                            presentationMode.wrappedValue.dismiss()
+                        }) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.primary)
+                                .padding(Theme.Spacing.sm)
+                                .background(Color.secondarySystemBackground)
+                                .clipShape(Circle())
+                        }
+                    }
                 }
             )
             .background(Color.systemBackground)
@@ -483,6 +499,7 @@ struct ProfileView: View {
             appearanceMenuRow
             timeFrameMenuRow
             budgetManagementRow
+            subscriptionsRow
         }
         .sectionContainer()
         .sheet(isPresented: $showingBudgetList) {
@@ -491,6 +508,26 @@ struct ProfileView: View {
                 .environmentObject(viewModel)
                 .environmentObject(categoryViewModel)
                 .environmentObject(proManager)
+        }
+        .sheet(isPresented: $showingSubscriptions) {
+            NavigationView {
+                SubscriptionsView(expenseViewModel: viewModel)
+            }
+        }
+    }
+
+    /// v2: Subscriptions used to be a top-level tab. After the IA
+    /// audit it's been demoted — most users glance at recurring bills
+    /// weekly, not daily, so it doesn't earn 25% of the tab bar.
+    /// It now lives under "You → Subscriptions" (manage list) and
+    /// is also reachable as a filter chip inside the Activity tab.
+    private var subscriptionsRow: some View {
+        SettingsRow(icon: "creditcard.and.123", title: "Subscriptions") {
+            EmptyView()
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            showingSubscriptions = true
         }
     }
 

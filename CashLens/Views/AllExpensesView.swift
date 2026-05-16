@@ -6,6 +6,12 @@ struct AllExpensesView: View {
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var proManager: ProManager
     let initialFilter: AllExpensesInitialFilter?
+    /// v2: when AllExpensesView is the Activity tab root (not pushed
+    /// from a Home sheet), there's no presenter to dismiss back to —
+    /// so the leading "Back" button must disappear. The legacy
+    /// sheet-presented call sites pass `false` (default) and keep
+    /// their existing behavior.
+    let isRootTab: Bool
     @State private var sortOption: SortOption = .dateDesc
     @State private var animateContent = false
     @State private var scrollToTop = false  // Track when to scroll to top
@@ -616,22 +622,24 @@ struct AllExpensesView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .navigationTitle(isIPad ? "" : "All Expenses")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(isIPad ? "" : (isRootTab ? "Activity" : "All Expenses"))
+            .navigationBarTitleDisplayMode(isRootTab ? .large : .inline)
             .navigationBarHidden(isIPad) // Hide navigation bar on iPad
             .toolbar {
                 if !isIPad {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(action: {
-                            dismiss()
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Back")
-                                    .fontWeight(.medium)
+                    if !isRootTab {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button(action: {
+                                dismiss()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("Back")
+                                        .fontWeight(.medium)
+                                }
+                                .foregroundColor(.appPrimary)
                             }
-                            .foregroundColor(.appPrimary)
                         }
                     }
 
@@ -1491,8 +1499,9 @@ struct AllExpensesView: View {
         }
     }
 
-    init(initialFilter: AllExpensesInitialFilter? = nil) {
+    init(initialFilter: AllExpensesInitialFilter? = nil, isRootTab: Bool = false) {
         self.initialFilter = initialFilter
+        self.isRootTab = isRootTab
     }
 }
 
