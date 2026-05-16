@@ -122,9 +122,9 @@ struct OnboardingView: View {
                                 .foregroundColor(pages[currentPage].backgroundColor)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding()
+                        .padding(Theme.Spacing.lg)
                         .background(
-                            RoundedRectangle(cornerRadius: 16)
+                            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                                 .fill(Color.white)
                         )
                         .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)

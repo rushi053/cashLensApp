@@ -62,8 +62,16 @@ struct ExpenseRow: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(12)
+        // Clean white row to match the new card system across the app.
+        // Hairline border keeps the row edge visible against white parents.
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(uiColor: .systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+        )
     }
     
     private func formattedDate(_ date: Date) -> String {

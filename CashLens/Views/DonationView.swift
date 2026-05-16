@@ -10,13 +10,9 @@ struct DonationView: View {
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [Color.appPrimary.opacity(0.15), Color.appSecondary.opacity(0.10)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Solid tinted background — no gradient.
+            Color.appPrimary.opacity(0.08)
+                .ignoresSafeArea()
             
             ScrollView {
                 VStack(spacing: 28) {
@@ -24,11 +20,7 @@ struct DonationView: View {
                     VStack(spacing: 12) {
                         ZStack {
                             Circle()
-                                .fill(LinearGradient(
-                                    gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ))
+                                .fill(Color.appPrimary)
                                 .frame(width: 70, height: 70)
                                 .shadow(color: Color.appPrimary.opacity(0.18), radius: 10, x: 0, y: 5)
                             Image(systemName: "heart.fill")

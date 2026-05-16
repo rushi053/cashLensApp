@@ -4,9 +4,27 @@ import CoreData
 extension ExpenseViewModel {
     // MARK: - Maintenance / Health
     
+    /// Reload data on foreground / `scenePhase == .active`.
+    ///
+    /// PERF (round 1): Previously this called both `loadExpenses()`
+    /// **and** `updateFilteredExpenses()`. The second call did the
+    /// filter **synchronously on the main thread** — and the off-main
+    /// pipeline fired a moment later off the back of `loadExpenses()`'s
+    /// `$expenses` publish, doing the same filter again. We removed
+    /// the synchronous half.
+    ///
+    /// PERF (round 2): The remaining `loadExpenses()` still hit Core
+    /// Data + mapped every entity on the main thread on every
+    /// foreground — a 50–100 ms stall at scale for data that almost
+    /// never actually changes (the app is the sole writer of its
+    /// own SQLite store, so a foreground transition can't have made
+    /// the in-memory state stale). We now use `loadExpensesAsync()`
+    /// so the fetch + mapping happen on a background context; the
+    /// main-actor reassignment of `expenses` still fires the
+    /// downstream pipeline exactly once but doesn't block the
+    /// scene-phase transition.
     func refreshData() {
-        loadExpenses()
-        updateFilteredExpenses()
+        loadExpensesAsync()
     }
     
     func checkDataExists() -> String {

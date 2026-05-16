@@ -6,12 +6,9 @@ struct SplashScreenView: View {
     
     var body: some View {
         ZStack {
-            LinearGradient(
-                gradient: Gradient(colors: [Color.mauve, Color.jordyBlue]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .edgesIgnoringSafeArea(.all)
+            // Solid brand background — no gradient.
+            Color.appPrimary
+                .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 30) {
                 // App logo

@@ -1,146 +1,55 @@
 import SwiftUI
 
 struct ExpenseTrendChart: View {
-    let expenses: [Expense]
+    /// Pre-bucketed dates (one per chart x-tick).
+    /// Built off-main in `recomputeStatsNow` and handed in here so the chart
+    /// view body stays declarative — the audit caught the old in-body
+    /// `chartData` recompute as a P1 hot path.
+    let chartDates: [Date]
+    /// Pre-bucketed values aligned to `chartDates`.
+    let chartValues: [Double]
     let timeFrame: ExpenseViewModel.TimeFrame
     let categoryColor: Color
     @EnvironmentObject var viewModel: ExpenseViewModel
-    
+
     // Computed property to check for iPad
     private var isIPad: Bool {
         return UIDevice.current.userInterfaceIdiom == .pad
     }
-    
-    // MARK: - Chart Data (Performance Optimized)
-    // Pre-grouped expense data for O(n) instead of O(n×m) complexity
-    
-    private var chartData: (dates: [Date], values: [Double]) {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        // First, pre-group all expenses by their bucket key (single pass through expenses)
-        var groupedAmounts: [String: Double] = [:]
-        
-        for expense in expenses {
-            let key = bucketKey(for: expense.date, timeFrame: timeFrame, calendar: calendar)
-            groupedAmounts[key, default: 0] += expense.amount
-        }
-        
-        // Generate date range
-        var dates: [Date] = []
-        
-        switch timeFrame {
-        case .day:
-            let startOfDay = calendar.startOfDay(for: now)
-            for hour in 0..<24 {
-                if let date = calendar.date(byAdding: .hour, value: hour, to: startOfDay) {
-                    dates.append(date)
-                }
-            }
-        case .week:
-            for day in (0..<7).reversed() {
-                if let date = calendar.date(byAdding: .day, value: -day, to: now) {
-                    dates.append(calendar.startOfDay(for: date))
-                }
-            }
-        case .month:
-            if let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)),
-               let range = calendar.range(of: .day, in: .month, for: now) {
-                for day in 1...range.count {
-                    if let date = calendar.date(byAdding: .day, value: day - 1, to: startOfMonth) {
-                        dates.append(date)
-                    }
-                }
-            }
-        case .year:
-            if let startOfYear = calendar.date(from: calendar.dateComponents([.year], from: now)) {
-                for month in 0..<12 {
-                    if let date = calendar.date(byAdding: .month, value: month, to: startOfYear) {
-                        dates.append(date)
-                    }
-                }
-            }
-        case .all:
-            if let oldestExpense = expenses.min(by: { $0.date < $1.date })?.date {
-                var current = calendar.date(from: calendar.dateComponents([.year, .month], from: oldestExpense)) ?? calendar.startOfDay(for: oldestExpense)
-                let endDate = calendar.startOfDay(for: now)
-                
-                while current <= endDate {
-                    dates.append(current)
-                    if let nextMonth = calendar.date(byAdding: .month, value: 1, to: current) {
-                        current = nextMonth
-                    } else {
-                        break
-                    }
-                }
-            }
-        }
-        
-        // Map dates to values using pre-grouped data (O(1) lookup per date)
-        let values = dates.map { date -> Double in
-            let key = bucketKey(for: date, timeFrame: timeFrame, calendar: calendar)
-            return groupedAmounts[key, default: 0]
-        }
-        
-        return (dates, values)
-    }
-    
-    /// Generate a unique bucket key for grouping expenses
-    private func bucketKey(for date: Date, timeFrame: ExpenseViewModel.TimeFrame, calendar: Calendar) -> String {
-        switch timeFrame {
-        case .day:
-            let day = calendar.component(.day, from: date)
-            let hour = calendar.component(.hour, from: date)
-            return "\(day)-\(hour)"
-        case .week, .month:
-            let year = calendar.component(.year, from: date)
-            let day = calendar.ordinality(of: .day, in: .year, for: date) ?? 0
-            return "\(year)-\(day)"
-        case .year, .all:
-            let year = calendar.component(.year, from: date)
-            let month = calendar.component(.month, from: date)
-            return "\(year)-\(month)"
-        }
-    }
-    
-    private var dateRange: [Date] {
-        chartData.dates
-    }
-    
-    private var dataPoints: [Double] {
-        chartData.values
-    }
-    
+
+    private var dateRange: [Date] { chartDates }
+    private var dataPoints: [Double] { chartValues }
+
     private var maxValue: Double {
         dataPoints.max() ?? 0
     }
-    
+
     private var hasData: Bool {
-        return !expenses.isEmpty && dataPoints.contains { $0 > 0 }
+        return dataPoints.contains { $0 > 0 }
     }
-    
+
     private var average: Double {
         let nonZeroPoints = dataPoints.filter { $0 > 0 }
         return nonZeroPoints.isEmpty ? 0 : nonZeroPoints.reduce(0, +) / Double(nonZeroPoints.count)
     }
-    
+
     private var trend: TrendDirection {
         if dataPoints.count < 2 {
             return .neutral
         }
-        
+
         // Calculate a simple trend by comparing first and last points
         let nonZeroPoints = dataPoints.filter { $0 > 0 }
         if nonZeroPoints.count < 2 {
             return .neutral
         }
-        
+
         let firstHalf = Array(nonZeroPoints.prefix(nonZeroPoints.count / 2))
         let secondHalf = Array(nonZeroPoints.suffix(nonZeroPoints.count / 2))
-        
+
         let firstAvg = firstHalf.reduce(0, +) / Double(firstHalf.count)
         let secondAvg = secondHalf.reduce(0, +) / Double(secondHalf.count)
-        
+
         if secondAvg > firstAvg * 1.05 {
             return .increasing
         } else if secondAvg < firstAvg * 0.95 {
@@ -243,11 +152,7 @@ struct ExpenseTrendChart: View {
                         }
                         .trim(from: 0, to: 1)
                         .stroke(
-                            LinearGradient(
-                                gradient: Gradient(colors: [categoryColor.opacity(0.7), categoryColor]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
+                            categoryColor,
                             style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
                         )
                         .shadow(color: categoryColor.opacity(0.3), radius: 4, x: 0, y: 2)
@@ -389,6 +294,132 @@ struct ExpenseTrendChart: View {
         formatter.maximumFractionDigits = 0 // No decimal places for better readability in small space
         
         return formatter.string(from: NSNumber(value: value)) ?? "$0"
+    }
+}
+
+// MARK: - Pre-aggregation helper
+//
+// Static helper that does the bucket math the view body used to do per
+// redraw. `nonisolated` so the StatisticsView recompute can call it from
+// `Task.detached` and hand the result into the new pre-built initializer.
+
+extension ExpenseTrendChart {
+    /// Convenience initializer that pre-builds the chart series eagerly.
+    /// Use this in previews and any path where the caller doesn't have
+    /// pre-aggregated data — production paths in StatisticsView should
+    /// compute the series off-main and use the primary initializer.
+    init(
+        expenses: [Expense],
+        timeFrame: ExpenseViewModel.TimeFrame,
+        categoryColor: Color
+    ) {
+        let series = ExpenseTrendChart.buildChartData(
+            expenses: expenses,
+            timeFrame: timeFrame,
+            referenceDate: Date()
+        )
+        self.init(
+            chartDates: series.dates,
+            chartValues: series.values,
+            timeFrame: timeFrame,
+            categoryColor: categoryColor
+        )
+    }
+
+    /// Pure value-type bucket-builder. Safe to call from any context — the
+    /// audit flagged the old body-side computation as P1 because it ran
+    /// every time the parent invalidated. Now `recomputeStatsNow` calls
+    /// this once per recompute on the background task.
+    nonisolated static func buildChartData(
+        expenses: [Expense],
+        timeFrame: ExpenseViewModel.TimeFrame,
+        referenceDate: Date
+    ) -> (dates: [Date], values: [Double]) {
+        let calendar = Calendar.current
+        let now = referenceDate
+
+        // Single-pass bucket aggregation.
+        var groupedAmounts: [String: Double] = [:]
+        for expense in expenses {
+            let key = bucketKey(for: expense.date, timeFrame: timeFrame, calendar: calendar)
+            groupedAmounts[key, default: 0] += expense.signedAmount
+        }
+
+        var dates: [Date] = []
+        switch timeFrame {
+        case .day:
+            let startOfDay = calendar.startOfDay(for: now)
+            for hour in 0..<24 {
+                if let date = calendar.date(byAdding: .hour, value: hour, to: startOfDay) {
+                    dates.append(date)
+                }
+            }
+        case .week:
+            for day in (0..<7).reversed() {
+                if let date = calendar.date(byAdding: .day, value: -day, to: now) {
+                    dates.append(calendar.startOfDay(for: date))
+                }
+            }
+        case .month:
+            if let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)),
+               let range = calendar.range(of: .day, in: .month, for: now) {
+                for day in 1...range.count {
+                    if let date = calendar.date(byAdding: .day, value: day - 1, to: startOfMonth) {
+                        dates.append(date)
+                    }
+                }
+            }
+        case .year:
+            if let startOfYear = calendar.date(from: calendar.dateComponents([.year], from: now)) {
+                for month in 0..<12 {
+                    if let date = calendar.date(byAdding: .month, value: month, to: startOfYear) {
+                        dates.append(date)
+                    }
+                }
+            }
+        case .all:
+            if let oldestExpense = expenses.min(by: { $0.date < $1.date })?.date {
+                var current = calendar.date(from: calendar.dateComponents([.year, .month], from: oldestExpense)) ?? calendar.startOfDay(for: oldestExpense)
+                let endDate = calendar.startOfDay(for: now)
+
+                while current <= endDate {
+                    dates.append(current)
+                    if let nextMonth = calendar.date(byAdding: .month, value: 1, to: current) {
+                        current = nextMonth
+                    } else {
+                        break
+                    }
+                }
+            }
+        }
+
+        let values = dates.map { date -> Double in
+            let key = bucketKey(for: date, timeFrame: timeFrame, calendar: calendar)
+            return groupedAmounts[key, default: 0]
+        }
+        return (dates, values)
+    }
+
+    /// Generate a unique bucket key for grouping expenses.
+    nonisolated private static func bucketKey(
+        for date: Date,
+        timeFrame: ExpenseViewModel.TimeFrame,
+        calendar: Calendar
+    ) -> String {
+        switch timeFrame {
+        case .day:
+            let day = calendar.component(.day, from: date)
+            let hour = calendar.component(.hour, from: date)
+            return "\(day)-\(hour)"
+        case .week, .month:
+            let year = calendar.component(.year, from: date)
+            let day = calendar.ordinality(of: .day, in: .year, for: date) ?? 0
+            return "\(year)-\(day)"
+        case .year, .all:
+            let year = calendar.component(.year, from: date)
+            let month = calendar.component(.month, from: date)
+            return "\(year)-\(month)"
+        }
     }
 }
 

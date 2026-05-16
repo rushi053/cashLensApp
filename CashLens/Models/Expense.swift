@@ -11,6 +11,123 @@ struct Expense: Identifiable, Codable {
     var customCategoryId: UUID?
     var isFromSubscription: Bool = false
     var subscriptionId: UUID?
+    var tags: [String]?
+
+    /// `true` when this row represents a refund / money returned. Storage stays
+    /// always-positive in `amount`; the semantic flag tells aggregators to
+    /// subtract instead of add. See `signedAmount` and the
+    /// `Sequence<Expense>.netTotal()` helper.
+    ///
+    /// Default `false` keeps every existing call-site, every existing backup
+    /// file, and every Core Data row safe — they all behave exactly as
+    /// before until somebody flips this on.
+    var isRefund: Bool = false
+
+    /// Optional payment instrument used for this expense (Cash, Credit,
+    /// Debit, UPI, …). `nil` means the user didn't pick one — that's the
+    /// default for every legacy row, every imported foreign CSV, and any
+    /// new entry where the picker is left untouched.
+    ///
+    /// Aggregations on the Statistics screen quietly skip rows where this
+    /// is `nil`, so missing values never poison the breakdown.
+    var paymentMethod: PaymentMethod?
+
+    /// Filename (not the full path) of an attached receipt image stored in
+    /// the app's Documents/Receipts directory. We persist only the filename
+    /// — never an absolute path — so iCloud restores, sandbox UUID changes
+    /// across iOS upgrades, and Documents migrations don't break the
+    /// reference. `ReceiptStorage` resolves the full URL on demand.
+    ///
+    /// `nil` means "no receipt attached" — the default for every legacy
+    /// row, every imported backup, and any new expense where the user
+    /// didn't attach one. The Pro gate lives in `AddExpenseView`'s receipt
+    /// section, not in this model — capturing the field is free so a
+    /// downgraded Pro user keeps viewing receipts they already attached.
+    var receiptImagePath: String?
+
+    /// Refund-aware amount: positive for normal expenses, negative for
+    /// refunds. Always use this when summing or averaging anything that
+    /// the user thinks of as "spent". `amount` itself stays positive in
+    /// storage so it's still safe to display as `$25.00` with a minus
+    /// glyph supplied by the UI when needed.
+    var signedAmount: Double {
+        isRefund ? -amount : amount
+    }
+
+    // MARK: - Codable (backward-compatible)
+    //
+    // We override `init(from:)` so JSON backups created before the
+    // `isRefund` field existed still decode cleanly. The auto-synthesized
+    // decoder would refuse to decode any `Bool` field that's missing from
+    // the JSON; using `decodeIfPresent` with a `false` default keeps every
+    // pre-existing file readable. `encode(to:)` is still auto-synthesized
+    // and will write the new key going forward.
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, amount, currency, date, category, notes
+        case customCategoryId, isFromSubscription, subscriptionId, tags, isRefund
+        case paymentMethod, receiptImagePath
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.title = try c.decode(String.self, forKey: .title)
+        self.amount = try c.decode(Double.self, forKey: .amount)
+        self.currency = try c.decode(Currency.self, forKey: .currency)
+        self.date = try c.decode(Date.self, forKey: .date)
+        self.category = try c.decode(Category.self, forKey: .category)
+        self.notes = try c.decodeIfPresent(String.self, forKey: .notes)
+        self.customCategoryId = try c.decodeIfPresent(UUID.self, forKey: .customCategoryId)
+        self.isFromSubscription = try c.decodeIfPresent(Bool.self, forKey: .isFromSubscription) ?? false
+        self.subscriptionId = try c.decodeIfPresent(UUID.self, forKey: .subscriptionId)
+        self.tags = try c.decodeIfPresent([String].self, forKey: .tags)
+        self.isRefund = try c.decodeIfPresent(Bool.self, forKey: .isRefund) ?? false
+        // `paymentMethod` was added after the original schema. Use
+        // `tolerant(from:)` so an unknown raw value (older app version that
+        // wrote a now-removed case, or a human-edited backup) decodes as
+        // `.other` instead of failing the whole row.
+        let pmRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethod)
+        self.paymentMethod = PaymentMethod.tolerant(from: pmRaw)
+        // `receiptImagePath` was added in v2.0 alongside the Receipt
+        // Scanner. `decodeIfPresent` keeps every pre-existing JSON backup
+        // valid; a missing key resolves to `nil` (no attached receipt).
+        self.receiptImagePath = try c.decodeIfPresent(String.self, forKey: .receiptImagePath)
+    }
+
+    /// Memberwise initialiser kept explicit because we now own a custom
+    /// Codable `init(from:)` (which suppresses the auto one).
+    init(
+        id: UUID = UUID(),
+        title: String,
+        amount: Double,
+        currency: Currency,
+        date: Date,
+        category: Category,
+        notes: String? = nil,
+        customCategoryId: UUID? = nil,
+        isFromSubscription: Bool = false,
+        subscriptionId: UUID? = nil,
+        tags: [String]? = nil,
+        isRefund: Bool = false,
+        paymentMethod: PaymentMethod? = nil,
+        receiptImagePath: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.amount = amount
+        self.currency = currency
+        self.date = date
+        self.category = category
+        self.notes = notes
+        self.customCategoryId = customCategoryId
+        self.isFromSubscription = isFromSubscription
+        self.subscriptionId = subscriptionId
+        self.tags = tags
+        self.isRefund = isRefund
+        self.paymentMethod = paymentMethod
+        self.receiptImagePath = receiptImagePath
+    }
     
     enum Currency: String, CaseIterable, Codable {
         case usd = "USD"
@@ -176,6 +293,53 @@ struct Expense: Identifiable, Codable {
         var name: String {
             return CurrencyData.getCurrencyData(for: rawValue)?.name ?? rawValue
         }
+
+        /// Country/region flag emoji for this currency, derived from the
+        /// ISO 4217 code's 2-letter prefix (which is almost always the
+        /// ISO 3166 country code: USD→US, INR→IN, EUR→EU, JPY→JP, …).
+        ///
+        /// A handful of supranational codes (XAF/XOF/XPF/XCD) and any code
+        /// that doesn't follow the convention fall back to a globe so we
+        /// never render a broken flag glyph.
+        var flag: String {
+            switch rawValue {
+            case "XAF", "XOF", "XPF", "XCD": return "🌐"
+            default: break
+            }
+            let prefix = rawValue.prefix(2).uppercased()
+            guard prefix.count == 2 else { return "🌐" }
+            // Regional Indicator Symbol Letter A starts at U+1F1E6 (= 65 + 127397).
+            let base: UInt32 = 127_397
+            var s = ""
+            for v in prefix.unicodeScalars {
+                guard (65...90).contains(v.value),
+                      let scalar = UnicodeScalar(base + v.value) else { return "🌐" }
+                s.append(Character(scalar))
+            }
+            return s.isEmpty ? "🌐" : s
+        }
+
+        /// ISO 4217 minor unit count — how many decimal places this currency
+        /// natively uses. Drives the formatter so Japanese/Korean/Indonesian
+        /// users don't see the awkward "¥1,234.00" and Bahraini/Kuwaiti
+        /// users see the proper 3-decimal representation.
+        var fractionDigits: Int {
+            switch rawValue {
+            // Zero-decimal currencies
+            case "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW",
+                 "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+                 "HUF", "IDR":
+                return 0
+            // Three-decimal currencies (mostly Gulf)
+            case "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND":
+                return 3
+            // Mauritanian ouguiya & Malagasy ariary use 1 decimal officially
+            case "MGA", "MRU":
+                return 1
+            default:
+                return 2
+            }
+        }
         
         static var allCases: [Currency] {
             return CurrencyData.allCurrencies.compactMap { currencyData in
@@ -286,6 +450,21 @@ extension Expense {
         if let subscriptionIdString = json["subscriptionId"] as? String {
             self.subscriptionId = UUID(uuidString: subscriptionIdString)
         }
+
+        if let rawTags = json["tags"] as? [String] {
+            let cleaned = rawTags.compactMap { Tag.normalize($0) }
+            self.tags = cleaned.isEmpty ? nil : cleaned
+        }
+
+        // Optional and additive — pre-2.x backups don't have this key, which
+        // safely falls through to `false`.
+        self.isRefund = (json["isRefund"] as? Bool) ?? false
+
+        // Optional and additive — older backups simply omit this key and the
+        // expense restores with no payment method, exactly as before.
+        if let pm = json["paymentMethod"] as? String {
+            self.paymentMethod = PaymentMethod.tolerant(from: pm)
+        }
     }
     
     init(fromCSV line: String) throws {
@@ -355,8 +534,46 @@ extension Expense {
         
         let notes = parseCSVField(fields[7]) // Notes is now field 7
         self.notes = notes.isEmpty ? nil : notes
-        
+
+        // Tags are an optional 9th field (semicolon-separated). Backward-compatible
+        // with older exports that only have 8 fields.
+        if fields.count >= 9 {
+            let raw = parseCSVField(fields[8])
+            if !raw.isEmpty {
+                let parsed = raw
+                    .split(separator: ";", omittingEmptySubsequences: true)
+                    .compactMap { Tag.normalize(String($0)) }
+                self.tags = parsed.isEmpty ? nil : parsed
+            }
+        }
+
+        // Refund flag — optional 10th field (`true` / `false` / `1` / `0`).
+        // Backward compatible: older CSVs simply skip it and the row stays
+        // a normal expense.
+        if fields.count >= 10 {
+            let raw = parseCSVField(fields[9]).lowercased()
+            self.isRefund = (raw == "true" || raw == "1" || raw == "yes")
+        }
+
+        // Payment method — optional 11th field. Backward compatible: older
+        // exports stop at field 10 and the expense restores with no
+        // payment method.
+        if fields.count >= 11 {
+            let raw = parseCSVField(fields[10])
+            self.paymentMethod = PaymentMethod.tolerant(from: raw)
+        }
+
         self.isFromSubscription = false
         self.subscriptionId = nil
     }
-} 
+}
+
+// MARK: - Refund-aware aggregation
+extension Sequence where Element == Expense {
+    /// Sum that respects refunds — refunds are subtracted. Use this anywhere
+    /// the user thinks of the result as "how much I spent". For raw "how
+    /// much money moved" totals (rare) sum `.amount` directly.
+    func netTotal() -> Double {
+        reduce(0) { $0 + $1.signedAmount }
+    }
+}

@@ -121,22 +121,36 @@ struct Subscription: Identifiable, Codable {
         return components.day ?? 0
     }
     
-    // Formatted next due date
+    // PERF: Both of these formatters used to be allocated fresh on
+    // every property read — and SwiftUI reads them on every body
+    // re-render of every row that displays a subscription. Hoisting
+    // them to file-private statics removes the per-row allocation and
+    // setup cost (which is the dominant cost of NumberFormatter /
+    // DateFormatter), making subscription list scrolling appreciably
+    // smoother.
+
     var formattedNextDueDate: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        return formatter.string(from: nextDueDate)
+        Self.dueDateFormatter.string(from: nextDueDate)
     }
-    
-    // Formatted amount with currency
+
     var formattedAmount: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        let formatted = formatter.string(from: NSNumber(value: amount)) ?? "0.00"
+        let formatted = Self.amountFormatter.string(from: NSNumber(value: amount)) ?? "0.00"
         return "\(currency.symbol)\(formatted)"
     }
+
+    private static let dueDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f
+    }()
+
+    private static let amountFormatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 2
+        return f
+    }()
 }
 
 // Sample data for previews

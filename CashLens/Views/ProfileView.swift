@@ -3,31 +3,56 @@ import Foundation
 import StoreKit
 import UserNotifications
 
+/// Profile / Settings hub.
+///
+/// **Information architecture (top → bottom):**
+///   1. Compact profile header (small avatar + tap-to-edit name with pencil chip).
+///   2. Pro card (active or upgrade).
+///   3. **Backup warning banner** — only shown when backup health is not `.good`,
+///      so the most critical signal can't be missed at the bottom of the scroll.
+///   4. Preferences (currency / appearance / time frame / budgets).
+///   5. Reminders (weekly digest / monthly digest / backup reminder + schedule rows).
+///   6. Data (export / import / backup health card / clear all data).
+///   7. About (about / support the app / community icon row / version footer).
+///
+/// **Design intent:** Settings is for persistent preferences, so action-shaped rows
+/// like "Support the App" were moved out into the bottom About section.
+/// `Appearance` and `Default Time Frame` use `Menu` instead of inline accordion
+/// pickers — fewer taps, no layout glitches, more iOS-native.
 struct ProfileView: View {
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
+    @EnvironmentObject var proManager: ProManager
+    @EnvironmentObject var budgetViewModel: BudgetViewModel
+    @EnvironmentObject var themeStore: ThemeStore
+    @EnvironmentObject var appIconStore: AppIconStore
+
     @State private var isEditingName = false
+    @FocusState private var nameFieldFocused: Bool
     @State private var tempUserName = ""
+
+    @State private var showingPaywall = false
+    @State private var showingBudgetList = false
     @State private var showingCurrencyPicker = false
-    @State private var showingAppearancePicker = false
-    @State private var showingDefaultTimeFramePicker = false
     @State private var showingAboutSheet = false
     @State private var showingExportSheet = false
     @State private var showingDonationSheet = false
     @State private var showingImportSheet = false
-    
-    // Weekly summary notifications (opt-in)
+    @State private var showingThemePicker = false
+    @State private var showingAppIconPicker = false
+
+    // Weekly summary
     @AppStorage(UserDefaultsKeys.weeklySummaryEnabled) private var weeklySummaryEnabled: Bool = false
     @AppStorage(UserDefaultsKeys.weeklySummaryWeekday) private var weeklySummaryWeekday: Int = 2 // Monday
     @AppStorage(UserDefaultsKeys.weeklySummaryHour) private var weeklySummaryHour: Int = 9
     @AppStorage(UserDefaultsKeys.weeklySummaryMinute) private var weeklySummaryMinute: Int = 0
-    
+
     @State private var showingWeeklySummarySchedule = false
-    @State private var showingNotificationPermissionAlert = false
     @State private var scheduleTempWeekday: Int = 2
     @State private var scheduleTempTime: Date = Date()
 
-    // Monthly digest (opt-in)
+    // Monthly digest
     @AppStorage(UserDefaultsKeys.monthlyDigestEnabled) private var monthlyDigestEnabled: Bool = false
     @AppStorage(UserDefaultsKeys.monthlyDigestDayOfMonth) private var monthlyDigestDayOfMonth: Int = 1
     @AppStorage(UserDefaultsKeys.monthlyDigestHour) private var monthlyDigestHour: Int = 9
@@ -35,8 +60,8 @@ struct ProfileView: View {
     @State private var showingMonthlyDigestSchedule = false
     @State private var monthlyTempDayOfMonth: Int = 1
     @State private var monthlyTempTime: Date = Date()
-    
-    // Backup reminder (opt-in)
+
+    // Backup reminder
     @AppStorage(UserDefaultsKeys.backupReminderEnabled) private var backupReminderEnabled: Bool = false
     @AppStorage(UserDefaultsKeys.backupReminderDayOfMonth) private var backupReminderDayOfMonth: Int = 1
     @AppStorage(UserDefaultsKeys.backupReminderHour) private var backupReminderHour: Int = 9
@@ -44,6 +69,21 @@ struct ProfileView: View {
     @State private var showingBackupReminderSchedule = false
     @State private var backupTempDayOfMonth: Int = 1
     @State private var backupTempTime: Date = Date()
+
+    // Smart Insights (Pro). No schedule sub-row — by design it fires Sunday
+    // 10 AM in the user's local time and only when the engine has something
+    // genuinely interesting to say. Surface area is one toggle so the
+    // setting never feels noisy or fiddly.
+    @AppStorage(UserDefaultsKeys.smartInsightsEnabled) private var smartInsightsEnabled: Bool = false
+
+    /// Backup metadata is held in `@State` (not read inline from UserDefaults)
+    /// so SwiftUI knows to re-render the backup banner + Backup Health card
+    /// the moment a successful export writes new values. The two reload
+    /// triggers wired up in `body` (`.onChange(of: showingExportSheet)` and
+    /// `UserDefaults.didChangeNotification`) keep this in sync without
+    /// requiring the user to leave and re-enter Profile.
+    @State private var lastBackupDate: Date? = nil
+    @State private var totalBackupCount: Int = 0
 
     private enum ActiveAlert: Identifiable {
         case clearAllData
@@ -58,40 +98,31 @@ struct ProfileView: View {
     }
 
     @State private var activeAlert: ActiveAlert?
-    
-    // Get version and build from Info.plist
+
     private var versionString: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
         return "\(version) (\(build))"
     }
-    
+
+    // MARK: - Body
+
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 24) {
-                    // Profile Header
+                VStack(spacing: Theme.Spacing.xxl) {
                     profileHeader
-                    
-                    // Settings Section
-                    settingsSection
-                    
-                    // Notifications Section
-                    notificationsSection
-                    
-                    // App Info Section
-                    appInfoSection
-                    
-                    // Community Section
-                    communitySection
-                    
-                    // Data Management Section
-                    dataManagementSection
-                    
-                    // Backup Health Section
-                    backupHealthSection
+                    proSection
+                    backupBanner
+                    preferencesSection
+                    personalizationSection
+                    remindersSection
+                    dataSection
+                    aboutSection
+                    versionFooter
                 }
                 .padding()
+                .padding(.bottom, Theme.Spacing.xl)
             }
             .navigationTitle("Profile")
             .navigationBarItems(
@@ -101,7 +132,7 @@ struct ProfileView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.primary)
-                        .padding(8)
+                        .padding(Theme.Spacing.sm)
                         .background(Color.secondarySystemBackground)
                         .clipShape(Circle())
                 }
@@ -117,7 +148,7 @@ struct ProfileView: View {
                             withAnimation {
                                 viewModel.clearAllData()
                             }
-                            hapticFeedback(style: .heavy)
+                            HapticManager.shared.heavyTap()
                         },
                         secondaryButton: .cancel()
                     )
@@ -130,168 +161,577 @@ struct ProfileView: View {
                 }
             }
             .onAppear {
-                // Initialize the temporary user name with the current value
                 tempUserName = viewModel.userName
-                
-                // Initialize schedule editor state
                 scheduleTempWeekday = weeklySummaryWeekday
                 scheduleTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
+                reloadBackupMetadata()
+            }
+            .onChange(of: showingExportSheet) { _, _ in
+                reloadBackupMetadata()
+            }
+            // PERF: Previously this listened to **every**
+            // `UserDefaults.didChangeNotification` app-wide. Any
+            // unrelated default write — currency change, theme bump,
+            // draft autosave on AddExpense, draft autosave on
+            // QuickSearch recents, summary preferences toggle, smart
+            // insight history, even the digest scheduler's last-fire
+            // timestamp — caused a full re-read of backup metadata
+            // from UserDefaults while Profile was mounted. We use
+            // `backupMetadataDidChange` (posted explicitly by
+            // `BackupExporter` / `BackupImporter` whenever they touch
+            // the backup keys) so only meaningful events trigger a
+            // refresh.
+            .onReceive(NotificationCenter.default.publisher(for: .backupMetadataDidChange)) { _ in
+                reloadBackupMetadata()
             }
             .sheet(isPresented: $showingCurrencyPicker) {
                 CurrencyPickerView(viewModel: viewModel)
             }
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView()
+            }
+            .sheet(isPresented: $showingThemePicker) {
+                ThemePickerView()
+                    .environmentObject(themeStore)
+                    .environmentObject(proManager)
+            }
+            .sheet(isPresented: $showingAppIconPicker) {
+                AppIconPickerView()
+                    .environmentObject(appIconStore)
+                    .environmentObject(proManager)
+            }
         }
     }
-    
+
+    /// Pulls the latest backup metadata into `@State` so the banner + Backup
+    /// Health card re-render. Called from `.onAppear`, `.onChange` of the
+    /// export sheet, and on every `UserDefaults.didChangeNotification`.
+    /// Updates are gated to avoid a no-op state assignment that would still
+    /// invalidate the view tree.
+    private func reloadBackupMetadata() {
+        let newDate = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date
+        let newCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.totalBackupCount)
+        let priorCount = totalBackupCount
+        let dateChanged = newDate != lastBackupDate
+        let countChanged = newCount != totalBackupCount
+        guard dateChanged || countChanged else { return }
+        withAnimation(Theme.Motion.snappy) {
+            if dateChanged { lastBackupDate = newDate }
+            if countChanged { totalBackupCount = newCount }
+        }
+        if newCount > priorCount {
+            HapticManager.shared.success()
+        }
+    }
+
     // MARK: - Profile Header
+
+    /// Compact header: 72 pt avatar, tappable name with inline pencil chip.
+    /// In-place edit uses `@FocusState` so the keyboard auto-presents and a Done
+    /// chip replaces the pencil. No more "Edit Profile" pill — the name itself is
+    /// the affordance.
     private var profileHeader: some View {
-        VStack(spacing: 16) {
-            // Profile Image
+        VStack(spacing: Theme.Spacing.md) {
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 100, height: 100)
-                    .shadow(color: Color.appPrimary.opacity(0.3), radius: 10, x: 0, y: 5)
-                
-                Text(String(viewModel.userName.prefix(1)))
-                    .font(.system(size: 40, weight: .bold))
+                    .fill(LinearGradient.appPrimaryDiagonal)
+                    .frame(width: 72, height: 72)
+                    .primaryGlow(strength: 0.25)
+
+                Text(String(viewModel.userName.prefix(1)).uppercased())
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
             }
-            .padding(.bottom, 8)
-            
-            // User Name
+
             if isEditingName {
-                TextField("Your Name", text: $tempUserName)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .multilineTextAlignment(.center)
-                    .padding()
-                    .background(Color.secondarySystemBackground)
-                    .cornerRadius(10)
-                    .padding(.horizontal, 40)
-                    .onSubmit {
-                        saveName()
+                HStack(spacing: Theme.Spacing.sm) {
+                    TextField("Your Name", text: $tempUserName)
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm + 2)
+                        .background(Color.secondarySystemBackground)
+                        .clipShape(Capsule())
+                        .focused($nameFieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit { saveName() }
+
+                    Button(action: saveName) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Color.appPrimary)
+                            .clipShape(Circle())
                     }
-                
-                // Save button
-                Button(action: saveName) {
-                    Text("Save")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 8)
-                        .background(
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .cornerRadius(16)
+                    .buttonStyle(ScaleButtonStyle())
                 }
-                .buttonStyle(ScaleButtonStyle())
-                .padding(.top, 8)
+                .padding(.horizontal, Theme.Spacing.xl)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
-                Text(viewModel.userName)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .onTapGesture {
-                        isEditingName = true
+                Button(action: beginEditingName) {
+                    HStack(spacing: 6) {
+                        Text(viewModel.userName)
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+
+                        Image(systemName: "pencil")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.appPrimary)
+                            .padding(5)
+                            .background(Color.appPrimary.opacity(0.12))
+                            .clipShape(Circle())
                     }
-                
-                // Edit Button
-                Button(action: {
-                    isEditingName = true
-                }) {
-                    Text("Edit Profile")
-                        .font(.subheadline)
-                        .foregroundColor(.appPrimary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .stroke(Color.appPrimary, lineWidth: 1)
-                        )
                 }
-                .buttonStyle(ScaleButtonStyle())
+                .buttonStyle(.plain)
+                .transition(.opacity)
             }
         }
-        .padding()
-        .cornerRadius(20)
+        .padding(.top, Theme.Spacing.sm)
+        .animation(Theme.Motion.snappy, value: isEditingName)
     }
-    
-    // Save the user name
+
+    private func beginEditingName() {
+        HapticManager.shared.lightTap()
+        tempUserName = viewModel.userName
+        isEditingName = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            nameFieldFocused = true
+        }
+    }
+
     private func saveName() {
-        if !tempUserName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            viewModel.userName = tempUserName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = tempUserName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            viewModel.userName = trimmed
         } else {
-            // If empty, revert to the previous name
             tempUserName = viewModel.userName
         }
+        nameFieldFocused = false
         isEditingName = false
-        hapticFeedback(style: .medium)
+        HapticManager.shared.mediumTap()
     }
-    
-    // MARK: - Settings Section
-    private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Settings")
-                .font(.title3)
+
+    // MARK: - Pro Section
+
+    @ViewBuilder
+    private var proSection: some View {
+        if proManager.isPro {
+            proActiveCard
+        } else {
+            proUpgradeCard
+        }
+    }
+
+    private var proActiveCard: some View {
+        HStack(spacing: Theme.Spacing.md + 2) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient.appPrimaryDiagonal)
+                    .frame(width: 44, height: 44)
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+            }
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("CashLens Pro")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Text("All features unlocked")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Text("Active")
+                .font(.caption)
                 .fontWeight(.bold)
-                .padding(.bottom, 4)
-            
-            currencyRow
-            
-            appearanceRow
-            appearancePicker // Appears directly below appearance row
-            
-            defaultTimeFrameRow
-            defaultTimeFramePicker // Appears directly below time frame row
-            
-            donationRow
+                .foregroundColor(.appPrimary)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.xs + 2)
+                .background(Color.appPrimary.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
-        .sheet(isPresented: $showingDonationSheet) {
-            NavigationView {
-                DonationView()
+        .cardSurface(
+            radius: Theme.Radius.hero,
+            fill: Color.secondarySystemBackground.opacity(0.5)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.hero, style: .continuous)
+                .stroke(Color.appPrimary.opacity(0.4), lineWidth: Theme.Stroke.medium)
+        )
+    }
+
+    private var proUpgradeCard: some View {
+        Button {
+            HapticManager.shared.mediumTap()
+            showingPaywall = true
+        } label: {
+            HStack(spacing: Theme.Spacing.md + 2) {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient.appPrimaryDiagonal)
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.white)
+                }
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("Upgrade to Pro")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text("Budgets, tags, PDF reports & more")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.appPrimary)
+            }
+            .padding()
+            .cardSurface(
+                radius: Theme.Radius.hero,
+                fill: LinearGradient.appPrimarySoft
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.hero, style: .continuous)
+                    .stroke(Color.appPrimary.opacity(0.3), lineWidth: Theme.Stroke.medium
+                    )
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+
+    // MARK: - Backup warning banner
+
+    /// Slim contextual banner shown only when backup health is not `.good`.
+    /// Surfaces the most critical signal at the top of Settings instead of
+    /// burying it at the bottom; tap → opens the export sheet directly.
+    @ViewBuilder
+    private var backupBanner: some View {
+        let status = backupHealthStatus
+        if status != .good {
+            Button(action: {
+                HapticManager.shared.mediumTap()
+                showingExportSheet = true
+            }) {
+                HStack(spacing: Theme.Spacing.md) {
+                    ZStack {
+                        Circle()
+                            .fill(status.color.opacity(0.18))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: status.icon)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(status.color)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(status.title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text(status.subtitle)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Text("Backup")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(status.color)
+                        .clipShape(Capsule())
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm + 2)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                        .fill(status.color.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                        .stroke(status.color.opacity(0.25), lineWidth: 1)
+                )
+            }
+            .buttonStyle(ScaleButtonStyle())
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    // MARK: - Preferences
+
+    /// Persistent preferences only (currency, appearance, time frame, budgets).
+    /// "Support the App" was moved to the About section since it's an action,
+    /// not a preference.
+    private var preferencesSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            SectionHeader("Preferences")
+                .padding(.bottom, Theme.Spacing.xs)
+
+            currencyRow
+            appearanceMenuRow
+            timeFrameMenuRow
+            budgetManagementRow
+        }
+        .sectionContainer()
+        .sheet(isPresented: $showingBudgetList) {
+            BudgetListView()
+                .environmentObject(budgetViewModel)
+                .environmentObject(viewModel)
+                .environmentObject(categoryViewModel)
+                .environmentObject(proManager)
+        }
+    }
+
+    private var currencyRow: some View {
+        SettingsRow(icon: "dollarsign.circle.fill", title: "Default Currency") {
+            SettingsRowValue(text: "\(viewModel.selectedCurrency.symbol) \(viewModel.selectedCurrency.rawValue)")
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            showingCurrencyPicker.toggle()
+        }
+    }
+
+    /// Appearance picker — uses `Menu` so iOS owns the dropdown.
+    /// Replaces the prior inline accordion which added ~50 lines and felt
+    /// non-native.
+    private var appearanceMenuRow: some View {
+        Menu {
+            ForEach(ExpenseViewModel.AppearanceMode.allCases, id: \.self) { mode in
+                Button {
+                    HapticManager.shared.lightTap()
+                    viewModel.appearanceMode = mode
+                } label: {
+                    if viewModel.appearanceMode == mode {
+                        Label(mode.rawValue, systemImage: "checkmark")
+                    } else {
+                        Text(mode.rawValue)
+                    }
+                }
+            }
+        } label: {
+            SettingsRow(icon: "moon.fill", title: "Appearance", showsChevron: false) {
+                HStack(spacing: 4) {
+                    SettingsRowValue(text: viewModel.appearanceMode.rawValue)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
             }
         }
     }
-    
-    // MARK: - Notifications Section
-    private var notificationsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Notifications")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.bottom, 4)
-            
+
+    /// Default time frame picker via `Menu` (same rationale as appearance).
+    private var timeFrameMenuRow: some View {
+        Menu {
+            ForEach(ExpenseViewModel.TimeFrame.allCases, id: \.self) { timeFrame in
+                Button {
+                    HapticManager.shared.lightTap()
+                    viewModel.defaultHomeTimeFrame = timeFrame
+                } label: {
+                    if viewModel.defaultHomeTimeFrame == timeFrame {
+                        Label(timeFrame.rawValue, systemImage: "checkmark")
+                    } else {
+                        Text(timeFrame.rawValue)
+                    }
+                }
+            }
+        } label: {
+            SettingsRow(icon: "calendar.badge.clock", title: "Default Time Frame", showsChevron: false) {
+                HStack(spacing: 4) {
+                    SettingsRowValue(text: viewModel.defaultHomeTimeFrame.rawValue)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    private var budgetManagementRow: some View {
+        SettingsRow(icon: "target", title: "Manage Budgets") {
+            if !budgetViewModel.activeBudgets.isEmpty {
+                Text("\(budgetViewModel.activeBudgets.count) active")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            if proManager.isPro {
+                showingBudgetList = true
+            } else {
+                showingPaywall = true
+            }
+        }
+    }
+
+    // MARK: - Personalization
+
+    /// Pro-gated personalization controls (theme + app icon). Lives between
+    /// Preferences and Reminders so it reads as "your visual identity"
+    /// without competing with the system-level appearance toggle that stays
+    /// in Preferences.
+    private var personalizationSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            SectionHeader("Personalization")
+                .padding(.bottom, Theme.Spacing.xs)
+
+            colorThemeRow
+            appIconRow
+        }
+        .sectionContainer()
+    }
+
+    /// Color Theme row. Trailing slot shows a circular swatch in the active
+    /// theme's primary color so the user can see what's applied at a glance,
+    /// plus the theme name for clarity. Free users see a "Pro" pill instead.
+    private var colorThemeRow: some View {
+        SettingsRow(icon: "paintpalette.fill", title: "Color Theme", showsChevron: true) {
+            HStack(spacing: Theme.Spacing.sm) {
+                if proManager.isPro {
+                    Text(themeStore.currentTheme.displayName)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Circle()
+                        .fill(themeStore.currentTheme.primaryColor)
+                        .frame(width: 18, height: 18)
+                        .overlay(
+                            Circle().stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                        )
+                } else {
+                    proLockChip
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            // Open the picker for everyone — free users can preview themes
+            // and discover the Pro upsell from inside the picker, which is
+            // a higher-converting moment than dropping them straight into
+            // the paywall.
+            showingThemePicker = true
+        }
+    }
+
+    /// App Icon row. Trailing slot shows a tiny rounded preview of the active
+    /// icon plus its name so the user can spot-check at a glance. Hidden
+    /// entirely on devices that don't support alternate icons (vanishingly
+    /// rare, but `supportsAlternateIcons` is the official guard).
+    @ViewBuilder
+    private var appIconRow: some View {
+        if UIApplication.shared.supportsAlternateIcons {
+            SettingsRow(icon: "app.badge.fill", title: "App Icon", showsChevron: true) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    if proManager.isPro {
+                        Text(appIconStore.currentIcon.displayName)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        if let ui = UIImage(named: appIconStore.currentIcon.previewAssetName) {
+                            Image(uiImage: ui)
+                                .resizable()
+                                .interpolation(.high)
+                                .frame(width: 22, height: 22)
+                                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                                )
+                        }
+                    } else {
+                        proLockChip
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                HapticManager.shared.lightTap()
+                showingAppIconPicker = true
+            }
+        }
+    }
+
+    /// Reusable Pro lock chip used by both Personalization rows so the
+    /// non-Pro state stays visually consistent.
+    private var proLockChip: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 10, weight: .bold))
+            Text("Pro")
+                .font(.system(size: 11, weight: .bold))
+        }
+        .foregroundColor(.appPrimary)
+        .padding(.horizontal, Theme.Spacing.sm)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(Color.appPrimary.opacity(0.14)))
+    }
+
+    // MARK: - Reminders
+
+    /// Notifications grouped under the friendlier label "Reminders".
+    /// Schedule rows now use a consistent "Schedule" label (instead of mixed
+    /// "Schedule" / "Monthly Schedule" / "Backup Schedule"), and shorter
+    /// subtitles to reduce visual weight.
+    private var remindersSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            SectionHeader("Reminders")
+                .padding(.bottom, Theme.Spacing.xs)
+
             weeklySummaryToggleRow
             if weeklySummaryEnabled {
-                weeklySummaryScheduleRow
+                scheduleRow(
+                    label: "Schedule",
+                    value: weeklySummaryScheduleText(),
+                    enabled: weeklySummaryEnabled
+                ) {
+                    scheduleTempWeekday = weeklySummaryWeekday
+                    scheduleTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
+                    showingWeeklySummarySchedule = true
+                }
             }
-            
+
             monthlyDigestToggleRow
             if monthlyDigestEnabled {
-                monthlyDigestScheduleRow
+                scheduleRow(
+                    label: "Schedule",
+                    value: monthlyDigestScheduleText(),
+                    enabled: monthlyDigestEnabled
+                ) {
+                    monthlyTempDayOfMonth = monthlyDigestDayOfMonth
+                    monthlyTempTime = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
+                    showingMonthlyDigestSchedule = true
+                }
             }
-            
+
             backupReminderToggleRow
             if backupReminderEnabled {
-                backupReminderScheduleRow
+                scheduleRow(
+                    label: "Schedule",
+                    value: backupReminderScheduleText(),
+                    enabled: backupReminderEnabled
+                ) {
+                    backupTempDayOfMonth = backupReminderDayOfMonth
+                    backupTempTime = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
+                    showingBackupReminderSchedule = true
+                }
             }
+
+            smartInsightsToggleRow
         }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
+        .sectionContainer()
         .sheet(isPresented: $showingWeeklySummarySchedule) {
             weeklySummaryScheduleSheet
         }
@@ -302,29 +742,36 @@ struct ProfileView: View {
             backupReminderScheduleSheet
         }
     }
-    
+
+    /// Shared schedule row helper — was previously three near-duplicate `var`s.
+    private func scheduleRow(
+        label: String,
+        value: String,
+        enabled: Bool,
+        onTap: @escaping () -> Void
+    ) -> some View {
+        SettingsRow(icon: "calendar.badge.clock", title: label) {
+            SettingsRowValue(text: value)
+        }
+        .opacity(enabled ? 1.0 : 0.5)
+        .onTapGesture {
+            guard enabled else { return }
+            HapticManager.shared.lightTap()
+            onTap()
+        }
+    }
+
     private var weeklySummaryToggleRow: some View {
-        HStack {
-            Image(systemName: "bell.badge.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Weekly Digest")
-                    .foregroundColor(.primary)
-                Text("A weekly spending summary. Tap to open your expenses for that week.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            
-            Spacer()
-            
+        SettingsRow(
+            icon: "bell.badge.fill",
+            title: "Weekly Digest",
+            subtitle: "Spending summary every week.",
+            showsChevron: false
+        ) {
             Toggle("", isOn: Binding(
                 get: { weeklySummaryEnabled },
                 set: { newValue in
-                    hapticFeedback(style: .light)
+                    HapticManager.shared.lightTap()
                     Task {
                         if newValue {
                             let ok = await NotificationScheduler.ensureAuthorized()
@@ -335,56 +782,78 @@ struct ProfileView: View {
                         } else {
                             await MainActor.run { weeklySummaryEnabled = false }
                         }
-                        
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
+                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
                     }
                 }
             ))
             .labelsHidden()
-            .tint(.mauve)
+            .tint(.appPrimary)
         }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
     }
-    
-    private var weeklySummaryScheduleRow: some View {
-        let scheduleText = weeklySummaryScheduleText()
-        
-        return HStack {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 22))
+
+    /// Pro-gated Smart Insights toggle. When the user is not Pro the row
+    /// stays visible (so the existence of the feature is discoverable) but
+    /// taps route into the paywall instead of flipping the switch — that's
+    /// a much better acquisition surface than a hidden setting.
+    private var smartInsightsToggleRow: some View {
+        SettingsRow(
+            icon: "sparkles",
+            title: "Smart Insights",
+            subtitle: proManager.isPro
+                ? "One push only when something interesting happens."
+                : "Unlock weekly highlights powered by your data.",
+            showsChevron: false
+        ) {
+            if proManager.isPro {
+                Toggle("", isOn: Binding(
+                    get: { smartInsightsEnabled },
+                    set: { newValue in
+                        HapticManager.shared.lightTap()
+                        Task {
+                            if newValue {
+                                let ok = await NotificationScheduler.ensureAuthorized()
+                                await MainActor.run {
+                                    smartInsightsEnabled = ok
+                                    if !ok { activeAlert = .notificationPermission }
+                                }
+                            } else {
+                                await MainActor.run { smartInsightsEnabled = false }
+                            }
+                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(
+                                viewModel: viewModel,
+                                isPro: proManager.isPro
+                            )
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .tint(.appPrimary)
+            } else {
+                // Compact "Pro" pill that visually mirrors the Statistics
+                // teaser. Tapping anywhere on the row opens the paywall.
+                HStack(spacing: 4) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Pro")
+                        .font(.system(size: 11, weight: .bold))
+                }
                 .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Schedule")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(scheduleText)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
+                .padding(.horizontal, Theme.Spacing.sm)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.appPrimary.opacity(0.14)))
+            }
         }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
         .contentShape(Rectangle())
-        .opacity(weeklySummaryEnabled ? 1.0 : 0.5)
         .onTapGesture {
-            guard weeklySummaryEnabled else { return }
-            hapticFeedback(style: .light)
-            scheduleTempWeekday = weeklySummaryWeekday
-            scheduleTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
-            showingWeeklySummarySchedule = true
+            // Free users opening the paywall via a row tap is the most
+            // common entry point in the rest of the app — keep parity here.
+            if !proManager.isPro {
+                HapticManager.shared.lightTap()
+                showingPaywall = true
+            }
         }
     }
-    
+
     private var weeklySummaryScheduleSheet: some View {
         NavigationView {
             Form {
@@ -393,7 +862,7 @@ struct ProfileView: View {
                         Text(weekdayName(weekday)).tag(weekday)
                     }
                 }
-                
+
                 DatePicker("Time", selection: $scheduleTempTime, displayedComponents: [.hourAndMinute])
             }
             .navigationTitle("Weekly Digest")
@@ -409,9 +878,9 @@ struct ProfileView: View {
                         weeklySummaryHour = comps.hour ?? 9
                         weeklySummaryMinute = comps.minute ?? 0
                         showingWeeklySummarySchedule = false
-                        
+
                         Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
+                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
                         }
                     }
                 }
@@ -420,27 +889,16 @@ struct ProfileView: View {
     }
 
     private var monthlyDigestToggleRow: some View {
-        HStack {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Monthly Digest")
-                    .foregroundColor(.primary)
-                Text("A monthly recap. Tap to open your expenses for that month.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            
-            Spacer()
-            
+        SettingsRow(
+            icon: "calendar.badge.clock",
+            title: "Monthly Digest",
+            subtitle: "Recap of last month's spending.",
+            showsChevron: false
+        ) {
             Toggle("", isOn: Binding(
                 get: { monthlyDigestEnabled },
                 set: { newValue in
-                    hapticFeedback(style: .light)
+                    HapticManager.shared.lightTap()
                     Task {
                         if newValue {
                             let ok = await NotificationScheduler.ensureAuthorized()
@@ -451,55 +909,15 @@ struct ProfileView: View {
                         } else {
                             await MainActor.run { monthlyDigestEnabled = false }
                         }
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
+                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
                     }
                 }
             ))
             .labelsHidden()
-            .tint(.mauve)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-    }
-    
-    private var monthlyDigestScheduleRow: some View {
-        let scheduleText = monthlyDigestScheduleText()
-        
-        return HStack {
-            Image(systemName: "calendar")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Monthly Schedule")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(scheduleText)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .opacity(monthlyDigestEnabled ? 1.0 : 0.5)
-        .onTapGesture {
-            guard monthlyDigestEnabled else { return }
-            hapticFeedback(style: .light)
-            monthlyTempDayOfMonth = monthlyDigestDayOfMonth
-            monthlyTempTime = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
-            showingMonthlyDigestSchedule = true
+            .tint(.appPrimary)
         }
     }
-    
+
     private var monthlyDigestScheduleSheet: some View {
         NavigationView {
             Form {
@@ -523,45 +941,27 @@ struct ProfileView: View {
                         monthlyDigestHour = comps.hour ?? 9
                         monthlyDigestMinute = comps.minute ?? 0
                         showingMonthlyDigestSchedule = false
-                        
+
                         Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
+                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
                         }
                     }
                 }
             }
         }
     }
-    
-    private func monthlyDigestScheduleText() -> String {
-        let time = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return "Day \(max(1, min(28, monthlyDigestDayOfMonth))) • \(df.string(from: time))"
-    }
-    
+
     private var backupReminderToggleRow: some View {
-        HStack {
-            Image(systemName: "externaldrive.fill.badge.timemachine")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Backup Reminder")
-                    .foregroundColor(.primary)
-                Text("A monthly reminder to export your data to Files.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            
-            Spacer()
-            
+        SettingsRow(
+            icon: "externaldrive.fill.badge.timemachine",
+            title: "Backup Reminder",
+            subtitle: "Monthly nudge to export to Files.",
+            showsChevron: false
+        ) {
             Toggle("", isOn: Binding(
                 get: { backupReminderEnabled },
                 set: { newValue in
-                    hapticFeedback(style: .light)
+                    HapticManager.shared.lightTap()
                     Task {
                         if newValue {
                             let ok = await NotificationScheduler.ensureAuthorized()
@@ -572,55 +972,15 @@ struct ProfileView: View {
                         } else {
                             await MainActor.run { backupReminderEnabled = false }
                         }
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
+                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
                     }
                 }
             ))
             .labelsHidden()
-            .tint(.mauve)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-    }
-    
-    private var backupReminderScheduleRow: some View {
-        let scheduleText = backupReminderScheduleText()
-        
-        return HStack {
-            Image(systemName: "clock")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Backup Schedule")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(scheduleText)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .opacity(backupReminderEnabled ? 1.0 : 0.5)
-        .onTapGesture {
-            guard backupReminderEnabled else { return }
-            hapticFeedback(style: .light)
-            backupTempDayOfMonth = backupReminderDayOfMonth
-            backupTempTime = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
-            showingBackupReminderSchedule = true
+            .tint(.appPrimary)
         }
     }
-    
+
     private var backupReminderScheduleSheet: some View {
         NavigationView {
             Form {
@@ -644,37 +1004,350 @@ struct ProfileView: View {
                         backupReminderHour = comps.hour ?? 9
                         backupReminderMinute = comps.minute ?? 0
                         showingBackupReminderSchedule = false
-                        
+
                         Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
+                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
                         }
                     }
                 }
             }
         }
     }
-    
-    private func backupReminderScheduleText() -> String {
-        let time = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return "Day \(max(1, min(28, backupReminderDayOfMonth))) • \(df.string(from: time))"
+
+    // MARK: - Data section
+
+    /// Combines export / import / clear-all + the full Backup Health card +
+    /// info note. Backup-related settings now live together in one place
+    /// instead of being split across two sections.
+    private var dataSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            SectionHeader("Data") {
+                backupHealthBadge
+            }
+            .padding(.bottom, Theme.Spacing.xs)
+
+            backupHealthCard
+
+            SettingsRow(icon: "square.and.arrow.up.fill", title: "Export Data")
+                .onTapGesture {
+                    HapticManager.shared.lightTap()
+                    showingExportSheet = true
+                }
+
+            SettingsRow(icon: "square.and.arrow.down.fill", title: "Import Data")
+                .onTapGesture {
+                    HapticManager.shared.lightTap()
+                    showingImportSheet = true
+                }
+
+            SettingsRowDestructive(icon: "trash.fill", title: "Clear All Data")
+                .onTapGesture {
+                    HapticManager.shared.mediumTap()
+                    activeAlert = .clearAllData
+                }
+
+            HStack(alignment: .top, spacing: Theme.Spacing.sm + 2) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+
+                Text("Your data lives only on this device. Regular exports keep your history safe.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, Theme.Spacing.xs)
+            .padding(.top, Theme.Spacing.xs)
+        }
+        .sectionContainer()
+        .sheet(isPresented: $showingExportSheet) {
+            ExportDataView()
+                .environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showingImportSheet) {
+            ImportDataView()
+                .environmentObject(viewModel)
+        }
     }
-    
+
+    // MARK: - About section
+
+    /// Bottom-of-page about: support / about / community as a single-row icon
+    /// strip. Replaces the previous 3 full-width social tiles which dominated
+    /// the screen, and absorbs the "Support the App" row that previously lived
+    /// in Settings.
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            SectionHeader("About")
+                .padding(.bottom, Theme.Spacing.xs)
+
+            SettingsRow(icon: "heart.fill", iconTint: .pink, title: "Support the App")
+                .onTapGesture {
+                    HapticManager.shared.lightTap()
+                    showingDonationSheet = true
+                }
+
+            SettingsRow(icon: "doc.text.fill", title: "About CashLens")
+                .onTapGesture {
+                    HapticManager.shared.lightTap()
+                    showingAboutSheet = true
+                }
+
+            communityIconRow
+        }
+        .sectionContainer()
+        .sheet(isPresented: $showingAboutSheet) {
+            AboutView()
+        }
+        .sheet(isPresented: $showingDonationSheet) {
+            NavigationView { DonationView() }
+        }
+    }
+
+    /// Compact 3-up community icon row. Way less visual real estate than the
+    /// previous stacked tiles, but still discoverable + brand-tinted.
+    private var communityIconRow: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("Join the community")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, Theme.Spacing.xs)
+
+            HStack(spacing: Theme.Spacing.md) {
+                communityCircleButton(
+                    icon: "camera.fill",
+                    title: "Instagram",
+                    background: AnyShapeStyle(Color.pink)
+                ) { openSocialMedia(.instagram) }
+
+                communityCircleButton(
+                    icon: "bird.fill",
+                    title: "X",
+                    background: AnyShapeStyle(Color.black)
+                ) { openSocialMedia(.twitter) }
+
+                communityCircleButton(
+                    icon: "bubble.left.and.bubble.right.fill",
+                    title: "Reddit",
+                    background: AnyShapeStyle(Color.orange)
+                ) { openSocialMedia(.reddit) }
+            }
+        }
+    }
+
+    private func communityCircleButton(
+        icon: String,
+        title: String,
+        background: AnyShapeStyle,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: {
+            HapticManager.shared.lightTap()
+            action()
+        }) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(background)
+                        .frame(width: 52, height: 52)
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+
+    enum SocialPlatform {
+        case instagram, twitter, reddit
+    }
+
+    private func openSocialMedia(_ platform: SocialPlatform) {
+        let urlString: String
+        switch platform {
+        case .instagram: urlString = "https://instagram.com/cashlensapp"
+        case .twitter:   urlString = "https://x.com/cashlensapp"
+        case .reddit:    urlString = "https://www.reddit.com/r/cashlens/s/Z36oUPfZ3j"
+        }
+
+        if let url = URL(string: urlString) {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    // MARK: - Version footer
+
+    /// Tiny footer text — replaces the previous full "Version" settings row which
+    /// wasted a tappable-row slot on a non-tappable label.
+    private var versionFooter: some View {
+        HStack {
+            Spacer()
+            Text("CashLens · v\(versionString)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.7))
+            Spacer()
+        }
+        .padding(.top, Theme.Spacing.sm)
+    }
+
+    // MARK: - Backup Health card
+
+    private var backupHealthBadge: some View {
+        let status = backupHealthStatus
+
+        return HStack(spacing: Theme.Spacing.xs) {
+            Circle()
+                .fill(status.color)
+                .frame(width: 8, height: 8)
+
+            Text(status.label)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(status.color)
+        }
+        .padding(.horizontal, Theme.Spacing.sm + 2)
+        .padding(.vertical, Theme.Spacing.xs + 1)
+        .background(status.color.opacity(0.15))
+        .clipShape(Capsule())
+    }
+
+    private var backupHealthCard: some View {
+        let status = backupHealthStatus
+        let lastBackup = lastBackupDate
+        let backupCount = totalBackupCount
+
+        return VStack(spacing: Theme.Spacing.lg) {
+            HStack(spacing: Theme.Spacing.xl) {
+                ZStack {
+                    Circle()
+                        .stroke(status.color.opacity(0.3), lineWidth: 4)
+                        .frame(width: 60, height: 60)
+
+                    Circle()
+                        .trim(from: 0, to: status.ringProgress)
+                        .stroke(status.color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 60, height: 60)
+                        .rotationEffect(.degrees(-90))
+
+                    Image(systemName: status.icon)
+                        .font(.system(size: 24))
+                        .foregroundColor(status.color)
+                }
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs + 2) {
+                    Text(status.title)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Text(status.subtitle)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+
+            Divider()
+
+            HStack(spacing: 0) {
+                backupStatCell(
+                    title: "Last Backup",
+                    value: lastBackup.map(formatBackupDate) ?? "Never",
+                    isCritical: lastBackup == nil
+                )
+
+                backupStatDivider
+
+                backupStatCell(title: "Total Backups", value: "\(backupCount)")
+
+                backupStatDivider
+
+                backupStatCell(title: "Expenses", value: "\(viewModel.expenses.count)")
+            }
+
+            if status != .good {
+                Button(action: {
+                    HapticManager.shared.mediumTap()
+                    showingExportSheet = true
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.clockwise.icloud")
+                            .font(.system(size: 16, weight: .semibold))
+
+                        Text("Backup Now")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, Theme.Spacing.xl)
+                    .padding(.vertical, Theme.Spacing.sm + 2)
+                    .background(Color.appPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
+                }
+                .buttonStyle(ScaleButtonStyle())
+            }
+        }
+        .padding()
+        .cardSurface(radius: Theme.Radius.chip)
+    }
+
+    private func backupStatCell(title: String, value: String, isCritical: Bool = false) -> some View {
+        VStack(spacing: Theme.Spacing.xs) {
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
+
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(isCritical ? .red : .primary)
+                .contentTransition(.numericText())
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var backupStatDivider: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.3))
+            .frame(width: 1, height: 30)
+    }
+
+    // MARK: - Schedule helpers
+
     private func weeklySummaryScheduleText() -> String {
         let time = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
         let df = DateFormatter()
         df.timeStyle = .short
         return "\(weekdayName(weeklySummaryWeekday)) • \(df.string(from: time))"
     }
-    
+
+    private func monthlyDigestScheduleText() -> String {
+        let time = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
+        let df = DateFormatter()
+        df.timeStyle = .short
+        return "Day \(max(1, min(28, monthlyDigestDayOfMonth))) • \(df.string(from: time))"
+    }
+
+    private func backupReminderScheduleText() -> String {
+        let time = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
+        let df = DateFormatter()
+        df.timeStyle = .short
+        return "Day \(max(1, min(28, backupReminderDayOfMonth))) • \(df.string(from: time))"
+    }
+
     private func weekdayName(_ weekday: Int) -> String {
-        // Calendar weekday: 1=Sunday...7=Saturday
         let symbols = Calendar.current.weekdaySymbols
         let index = max(1, min(7, weekday)) - 1
         return symbols[index]
     }
-    
+
     private func makeTimeDate(hour: Int, minute: Int) -> Date {
         var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
         comps.hour = hour
@@ -682,730 +1355,14 @@ struct ProfileView: View {
         return Calendar.current.date(from: comps) ?? Date()
     }
 
-    // MARK: - Settings Subviews (kept separate to avoid type-check timeouts)
-    
-    private var currencyRow: some View {
-        HStack {
-            Image(systemName: "dollarsign.circle.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Default Currency")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text("\(viewModel.selectedCurrency.symbol) \(viewModel.selectedCurrency.rawValue)")
-                .foregroundColor(.secondary)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            hapticFeedback(style: .light)
-            showingCurrencyPicker.toggle()
-        }
-    }
-    
-    private var appearanceRow: some View {
-        HStack {
-            Image(systemName: "moon.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Appearance")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(viewModel.appearanceMode.rawValue)
-                .foregroundColor(.secondary)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            hapticFeedback(style: .light)
-            showingAppearancePicker.toggle()
-        }
-    }
-    
-    private var defaultTimeFrameRow: some View {
-        HStack {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Default Time Frame")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(viewModel.defaultHomeTimeFrame.rawValue)
-                .foregroundColor(.secondary)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            hapticFeedback(style: .light)
-            showingDefaultTimeFramePicker.toggle()
-        }
-    }
-    
-    private var donationRow: some View {
-        HStack {
-            Image(systemName: "heart.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.pink)
-                .frame(width: 30)
-            
-            Text("Support the App")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            hapticFeedback(style: .light)
-            showingDonationSheet = true
-        }
-    }
-    
-    @ViewBuilder
-    private var appearancePicker: some View {
-        if showingAppearancePicker {
-            VStack(spacing: 0) {
-                ForEach(ExpenseViewModel.AppearanceMode.allCases, id: \.self) { mode in
-                    HStack {
-                        Text(mode.rawValue)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        if viewModel.appearanceMode == mode {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.appPrimary)
-                        }
-                    }
-                    .padding()
-                    .background(
-                        viewModel.appearanceMode == mode ?
-                        Color.appPrimary.opacity(0.1) :
-                        Color.clear
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        hapticFeedback(style: .medium)
-                        withAnimation(.spring()) {
-                            viewModel.appearanceMode = mode
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showingAppearancePicker = false
-                            }
-                        }
-                    }
-                    
-                    if mode != ExpenseViewModel.AppearanceMode.allCases.last {
-                        Divider()
-                            .padding(.horizontal)
-                    }
-                }
-            }
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.mauve.opacity(0.3), lineWidth: 1)
-            )
-            .padding(.top, -8) // Reduce spacing to appear connected to the row above
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
-        }
-    }
-    
-    @ViewBuilder
-    private var defaultTimeFramePicker: some View {
-        if showingDefaultTimeFramePicker {
-            VStack(spacing: 0) {
-                ForEach(ExpenseViewModel.TimeFrame.allCases, id: \.self) { timeFrame in
-                    HStack {
-                        Text(timeFrame.rawValue)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        if viewModel.defaultHomeTimeFrame == timeFrame {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.appPrimary)
-                        }
-                    }
-                    .padding()
-                    .background(
-                        viewModel.defaultHomeTimeFrame == timeFrame ?
-                        Color.appPrimary.opacity(0.1) :
-                        Color.clear
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        hapticFeedback(style: .medium)
-                        withAnimation(.spring()) {
-                            viewModel.defaultHomeTimeFrame = timeFrame
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showingDefaultTimeFramePicker = false
-                            }
-                        }
-                    }
-                    
-                    if timeFrame != ExpenseViewModel.TimeFrame.allCases.last {
-                        Divider()
-                            .padding(.horizontal)
-                    }
-                }
-            }
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.mauve.opacity(0.3), lineWidth: 1)
-            )
-            .padding(.top, -8) // Reduce spacing to appear connected to the row above
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
-        }
-    }
-    
-    // MARK: - App Info Section
-    private var appInfoSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("App Info")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.bottom, 4)
-            
-            // Version Info
-            HStack {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.appPrimary)
-                    .frame(width: 30)
-                
-                Text("Version")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Text(versionString)
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            
-            // About
-            HStack {
-                Image(systemName: "doc.text.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.appPrimary)
-                    .frame(width: 30)
-                
-                Text("About CashLens")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .light)
-                showingAboutSheet = true
-            }
-            .sheet(isPresented: $showingAboutSheet) {
-                AboutView()
-            }
-        }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
-    }
-    
-    // MARK: - Community Section
-    private var communitySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Community")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                
-                Text("Join our community for tips, feedback, and updates!")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 4)
-            
-            // Social Media Buttons
-            VStack(spacing: 12) {
-                // Instagram
-                Button(action: {
-                    hapticFeedback(style: .light)
-                    openSocialMedia(.instagram)
-                }) {
-                    HStack {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white)
-                            .frame(width: 30)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Instagram")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            Text("Daily tips & app updates")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(
-                        LinearGradient(
-                            colors: [Color.pink, Color.purple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .cornerRadius(12)
-                }
-                .buttonStyle(ScaleButtonStyle())
-                
-                // X (Twitter)
-                Button(action: {
-                    hapticFeedback(style: .light)
-                    openSocialMedia(.twitter)
-                }) {
-                    HStack {
-                        Image(systemName: "bird.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white)
-                            .frame(width: 30)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("X (Twitter)")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            Text("Quick updates & announcements")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(Color.black)
-                    .cornerRadius(12)
-                }
-                .buttonStyle(ScaleButtonStyle())
-                
-                // Reddit
-                Button(action: {
-                    hapticFeedback(style: .light)
-                    openSocialMedia(.reddit)
-                }) {
-                    HStack {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white)
-                            .frame(width: 30)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Reddit")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            Text("Community discussions & support")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(
-                        LinearGradient(
-                            colors: [Color.orange, Color.red],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .cornerRadius(12)
-                }
-                .buttonStyle(ScaleButtonStyle())
-            }
-        }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
-    }
-    
-    // MARK: - Social Media Handling
-    enum SocialPlatform {
-        case instagram, twitter, reddit
-    }
-    
-    private func openSocialMedia(_ platform: SocialPlatform) {
-        let urlString: String
-        
-        switch platform {
-        case .instagram:
-            urlString = "https://instagram.com/cashlensapp"
-        case .twitter:
-            urlString = "https://x.com/cashlensapp"
-        case .reddit:
-            urlString = "https://www.reddit.com/r/cashlens/s/Z36oUPfZ3j"
-        }
-        
-        if let url = URL(string: urlString) {
-            UIApplication.shared.open(url)
-        }
-    }
-    
-    // MARK: - Data Management Section
-    private var dataManagementSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Data Management")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.bottom, 4)
-            
-            // Export Data
-            HStack {
-                Image(systemName: "square.and.arrow.up.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.appPrimary)
-                    .frame(width: 30)
-                
-                Text("Export Data")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .light)
-                showingExportSheet = true
-            }
-            .sheet(isPresented: $showingExportSheet) {
-                ExportDataView()
-                    .environmentObject(viewModel)
-            }
-            
-            // Import Data
-            HStack {
-                Image(systemName: "square.and.arrow.down.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.appPrimary)
-                    .frame(width: 30)
-                
-                Text("Import Data")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .light)
-                showingImportSheet = true
-            }
-            .sheet(isPresented: $showingImportSheet) {
-                ImportDataView()
-                    .environmentObject(viewModel)
-            }
-            
-            // Clear Data
-            HStack {
-                Image(systemName: "trash.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.red)
-                    .frame(width: 30)
-                
-                Text("Clear All Data")
-                    .foregroundColor(.red)
-                
-                Spacer()
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .medium)
-                activeAlert = .clearAllData
-            }
-        }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
-    }
-    
-    // MARK: - Backup Health Section
-    private var backupHealthSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Backup Health")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                // Health status badge
-                backupHealthBadge
-            }
-            .padding(.bottom, 4)
-            
-            // Main health card
-            backupHealthCard
-            
-            // Info note
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-                
-                Text("Your data is stored only on this device. Regular backups ensure you never lose your financial history.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 4)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
-    }
-    
-    private var backupHealthBadge: some View {
-        let status = backupHealthStatus
-        
-        return HStack(spacing: 4) {
-            Circle()
-                .fill(status.color)
-                .frame(width: 8, height: 8)
-            
-            Text(status.label)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(status.color)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(status.color.opacity(0.15))
-        .cornerRadius(12)
-    }
-    
-    private var backupHealthCard: some View {
-        let status = backupHealthStatus
-        let lastBackup = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date
-        let backupCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.totalBackupCount)
-        
-        return VStack(spacing: 16) {
-            // Visual indicator
-            HStack(spacing: 20) {
-                // Icon with status ring
-                ZStack {
-                    Circle()
-                        .stroke(status.color.opacity(0.3), lineWidth: 4)
-                        .frame(width: 60, height: 60)
-                    
-                    Circle()
-                        .trim(from: 0, to: status.ringProgress)
-                        .stroke(status.color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                        .frame(width: 60, height: 60)
-                        .rotationEffect(.degrees(-90))
-                    
-                    Image(systemName: status.icon)
-                        .font(.system(size: 24))
-                        .foregroundColor(status.color)
-                }
-                
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(status.title)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Text(status.subtitle)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                }
-                
-                Spacer()
-            }
-            
-            Divider()
-            
-            // Stats row
-            HStack(spacing: 0) {
-                // Last backup
-                VStack(spacing: 4) {
-                    Text("Last Backup")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    if let date = lastBackup {
-                        Text(formatBackupDate(date))
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-                    } else {
-                        Text("Never")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.red)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 1, height: 30)
-                
-                // Total backups
-                VStack(spacing: 4) {
-                    Text("Total Backups")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    Text("\(backupCount)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                }
-                .frame(maxWidth: .infinity)
-                
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 1, height: 30)
-                
-                // Data count
-                VStack(spacing: 4) {
-                    Text("Expenses")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    Text("\(viewModel.expenses.count)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            
-            // Backup now button (shown when status is not good)
-            if status != .good {
-                Button(action: {
-                    hapticFeedback(style: .medium)
-                    showingExportSheet = true
-                }) {
-                    HStack {
-                        Image(systemName: "arrow.clockwise.icloud")
-                            .font(.system(size: 16, weight: .semibold))
-                        
-                        Text("Backup Now")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(12)
-                }
-                .buttonStyle(ScaleButtonStyle())
-            }
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(12)
-    }
-    
     // MARK: - Backup Health Status
+
     private enum BackupHealthStatus: Equatable {
         case good
         case okay
         case needsAttention
         case critical
-        
+
         var label: String {
             switch self {
             case .good: return "Good"
@@ -1414,16 +1371,15 @@ struct ProfileView: View {
             case .critical: return "Critical"
             }
         }
-        
+
         var color: Color {
             switch self {
             case .good: return .green
-            case .okay: return .orange
-            case .needsAttention: return .orange
+            case .okay, .needsAttention: return .orange
             case .critical: return .red
             }
         }
-        
+
         var icon: String {
             switch self {
             case .good: return "checkmark.shield.fill"
@@ -1432,7 +1388,7 @@ struct ProfileView: View {
             case .critical: return "xmark.shield.fill"
             }
         }
-        
+
         var title: String {
             switch self {
             case .good: return "Your data is safe"
@@ -1441,7 +1397,7 @@ struct ProfileView: View {
             case .critical: return "No backup found"
             }
         }
-        
+
         var subtitle: String {
             switch self {
             case .good: return "You've backed up recently. Great job!"
@@ -1450,7 +1406,7 @@ struct ProfileView: View {
             case .critical: return "Your data exists only on this device. Please backup!"
             }
         }
-        
+
         var ringProgress: CGFloat {
             switch self {
             case .good: return 1.0
@@ -1460,30 +1416,26 @@ struct ProfileView: View {
             }
         }
     }
-    
+
     private var backupHealthStatus: BackupHealthStatus {
-        guard let lastBackup = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date else {
+        guard let lastBackup = lastBackupDate else {
             return .critical
         }
-        
+
         let daysSinceBackup = Calendar.current.dateComponents([.day], from: lastBackup, to: Date()).day ?? Int.max
-        
+
         switch daysSinceBackup {
-        case 0...7:
-            return .good
-        case 8...14:
-            return .okay
-        case 15...30:
-            return .needsAttention
-        default:
-            return .critical
+        case 0...7:   return .good
+        case 8...14:  return .okay
+        case 15...30: return .needsAttention
+        default:      return .critical
         }
     }
-    
+
     private func formatBackupDate(_ date: Date) -> String {
         let calendar = Calendar.current
         let now = Date()
-        
+
         if calendar.isDateInToday(date) {
             return "Today"
         } else if calendar.isDateInYesterday(date) {
@@ -1499,17 +1451,16 @@ struct ProfileView: View {
             }
         }
     }
-    
-    // MARK: - Haptic Feedback
-    private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        let generator = UIImpactFeedbackGenerator(style: style)
-        generator.impactOccurred()
-    }
 }
+
+// MARK: - Preview
 
 struct ProfileView_Previews: PreviewProvider {
     static var previews: some View {
         ProfileView()
             .environmentObject(ExpenseViewModel())
+            .environmentObject(ProManager.shared)
+            .environmentObject(BudgetViewModel())
+            .environmentObject(CategoryViewModel())
     }
-} 
+}

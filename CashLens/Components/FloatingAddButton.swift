@@ -17,9 +17,9 @@ struct FloatingAddButton: View {
             ZStack {
                 // Background circle with shadow
                 Circle()
-                    .fill(Color.mauve)
+                    .fill(Color.appPrimary)
                     .frame(width: isIPad ? 66 : 56, height: isIPad ? 66 : 56)
-                    .shadow(color: Color.mauve.opacity(0.3), radius: 8, x: 0, y: 4)
+                    .shadow(color: Color.appPrimary.opacity(0.3), radius: 8, x: 0, y: 4)
                     .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 2)
                 
                 // Plus icon
@@ -29,8 +29,10 @@ struct FloatingAddButton: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
-        .scaleEffect(1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: 1.0)
+        // PERF: Removed `.scaleEffect(1.0)` + `.animation(..., value: 1.0)`.
+        // The animation was keyed on a constant — it never actually fired
+        // but every diff cycle still considered it. Removing it makes the
+        // SwiftUI dependency graph for this view a pure leaf.
     }
 }
 

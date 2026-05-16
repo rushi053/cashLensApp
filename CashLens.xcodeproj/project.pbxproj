@@ -6,7 +6,20 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B234E88E2FA3389A0049FCEF /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B234E88D2FA3389A0049FCEF /* WidgetKit.framework */; };
+		B234E8902FA3389A0049FCEF /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B234E88F2FA3389A0049FCEF /* SwiftUI.framework */; };
+		B234E89F2FA3389B0049FCEF /* CashLensWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B234E88B2FA3389A0049FCEF /* CashLensWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
+		B234E89D2FA3389B0049FCEF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B2D4664D2D7F5EA200EAF1A9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B234E88A2FA3389A0049FCEF;
+			remoteInfo = CashLensWidgetsExtension;
+		};
 		B2D4666B2D7F5EA300EAF1A9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = B2D4664D2D7F5EA200EAF1A9 /* Project object */;
@@ -23,13 +36,54 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		B234E8A42FA3389B0049FCEF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B234E89F2FA3389B0049FCEF /* CashLensWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		B234E88B2FA3389A0049FCEF /* CashLensWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CashLensWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B234E88D2FA3389A0049FCEF /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		B234E88F2FA3389A0049FCEF /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		B234E8A62FA3390B0049FCEF /* CashLensWidgetsExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CashLensWidgetsExtension.entitlements; sourceTree = "<group>"; };
 		B2D466552D7F5EA200EAF1A9 /* CashLens.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CashLens.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2D4666A2D7F5EA300EAF1A9 /* CashLensTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CashLensTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2D466742D7F5EA300EAF1A9 /* CashLensUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CashLensUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B234E8A02FA3389B0049FCEF /* Exceptions for "CashLensWidgets" folder in "CashLensWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B234E88A2FA3389A0049FCEF /* CashLensWidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		B234E8912FA3389A0049FCEF /* CashLensWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B234E8A02FA3389B0049FCEF /* Exceptions for "CashLensWidgets" folder in "CashLensWidgetsExtension" target */,
+			);
+			path = CashLensWidgets;
+			sourceTree = "<group>";
+		};
+		B2A5400000000000000000A1 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		B2D466572D7F5EA200EAF1A9 /* CashLens */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = CashLens;
@@ -48,6 +102,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		B234E8882FA3389A0049FCEF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B234E8902FA3389A0049FCEF /* SwiftUI.framework in Frameworks */,
+				B234E88E2FA3389A0049FCEF /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B2D466522D7F5EA200EAF1A9 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -72,12 +135,25 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		B234E88C2FA3389A0049FCEF /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B234E88D2FA3389A0049FCEF /* WidgetKit.framework */,
+				B234E88F2FA3389A0049FCEF /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		B2D4664C2D7F5EA200EAF1A9 = {
 			isa = PBXGroup;
 			children = (
+				B234E8A62FA3390B0049FCEF /* CashLensWidgetsExtension.entitlements */,
 				B2D466572D7F5EA200EAF1A9 /* CashLens */,
+				B2A5400000000000000000A1 /* Shared */,
 				B2D4666D2D7F5EA300EAF1A9 /* CashLensTests */,
 				B2D466772D7F5EA300EAF1A9 /* CashLensUITests */,
+				B234E8912FA3389A0049FCEF /* CashLensWidgets */,
+				B234E88C2FA3389A0049FCEF /* Frameworks */,
 				B2D466562D7F5EA200EAF1A9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +164,7 @@
 				B2D466552D7F5EA200EAF1A9 /* CashLens.app */,
 				B2D4666A2D7F5EA300EAF1A9 /* CashLensTests.xctest */,
 				B2D466742D7F5EA300EAF1A9 /* CashLensUITests.xctest */,
+				B234E88B2FA3389A0049FCEF /* CashLensWidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,6 +172,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		B234E88A2FA3389A0049FCEF /* CashLensWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B234E8A12FA3389B0049FCEF /* Build configuration list for PBXNativeTarget "CashLensWidgetsExtension" */;
+			buildPhases = (
+				B234E8872FA3389A0049FCEF /* Sources */,
+				B234E8882FA3389A0049FCEF /* Frameworks */,
+				B234E8892FA3389A0049FCEF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B234E8912FA3389A0049FCEF /* CashLensWidgets */,
+				B2A5400000000000000000A1 /* Shared */,
+			);
+			name = CashLensWidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = CashLensWidgetsExtension;
+			productReference = B234E88B2FA3389A0049FCEF /* CashLensWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		B2D466542D7F5EA200EAF1A9 /* CashLens */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B2D4667E2D7F5EA300EAF1A9 /* Build configuration list for PBXNativeTarget "CashLens" */;
@@ -102,12 +202,15 @@
 				B2D466512D7F5EA200EAF1A9 /* Sources */,
 				B2D466522D7F5EA200EAF1A9 /* Frameworks */,
 				B2D466532D7F5EA200EAF1A9 /* Resources */,
+				B234E8A42FA3389B0049FCEF /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B234E89E2FA3389B0049FCEF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				B2A5400000000000000000A1 /* Shared */,
 				B2D466572D7F5EA200EAF1A9 /* CashLens */,
 			);
 			name = CashLens;
@@ -170,9 +273,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1620;
+				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 1620;
 				TargetAttributes = {
+					B234E88A2FA3389A0049FCEF = {
+						CreatedOnToolsVersion = 26.0.1;
+					};
 					B2D466542D7F5EA200EAF1A9 = {
 						CreatedOnToolsVersion = 16.2;
 					};
@@ -203,11 +309,19 @@
 				B2D466542D7F5EA200EAF1A9 /* CashLens */,
 				B2D466692D7F5EA300EAF1A9 /* CashLensTests */,
 				B2D466732D7F5EA300EAF1A9 /* CashLensUITests */,
+				B234E88A2FA3389A0049FCEF /* CashLensWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		B234E8892FA3389A0049FCEF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B2D466532D7F5EA200EAF1A9 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -232,6 +346,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		B234E8872FA3389A0049FCEF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B2D466512D7F5EA200EAF1A9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -256,6 +377,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		B234E89E2FA3389B0049FCEF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B234E88A2FA3389A0049FCEF /* CashLensWidgetsExtension */;
+			targetProxy = B234E89D2FA3389B0049FCEF /* PBXContainerItemProxy */;
+		};
 		B2D4666C2D7F5EA300EAF1A9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = B2D466542D7F5EA200EAF1A9 /* CashLens */;
@@ -269,6 +395,70 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		B234E8A22FA3389B0049FCEF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = CashLensWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6C72999Z38;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CashLensWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CashLensWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushi.CashLens.CashLensWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		B234E8A32FA3389B0049FCEF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = CashLensWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6C72999Z38;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CashLensWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CashLensWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushi.CashLens.CashLensWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		B2D4667C2D7F5EA300EAF1A9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -391,14 +581,19 @@
 		B2D4667F2D7F5EA300EAF1A9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-Ocean AppIcon-Forest AppIcon-Sunset AppIcon-Berry AppIcon-Graphite AppIcon-MonoLight AppIcon-MonoDark";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = CashLens/CashLens.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"CashLens/Preview Content\"";
 				DEVELOPMENT_TEAM = 6C72999Z38;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "CashLens uses the camera to scan receipts and attach them to your expenses.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "CashLens lets you pick existing receipt photos from your library to attach to expenses.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -421,14 +616,19 @@
 		B2D466802D7F5EA300EAF1A9 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIcon-Ocean AppIcon-Forest AppIcon-Sunset AppIcon-Berry AppIcon-Graphite AppIcon-MonoLight AppIcon-MonoDark";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = CashLens/CashLens.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "\"CashLens/Preview Content\"";
 				DEVELOPMENT_TEAM = 6C72999Z38;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "CashLens uses the camera to scan receipts and attach them to your expenses.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "CashLens lets you pick existing receipt photos from your library to attach to expenses.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -523,6 +723,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		B234E8A12FA3389B0049FCEF /* Build configuration list for PBXNativeTarget "CashLensWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B234E8A22FA3389B0049FCEF /* Debug */,
+				B234E8A32FA3389B0049FCEF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		B2D466502D7F5EA200EAF1A9 /* Build configuration list for PBXProject "CashLens" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -43,7 +43,15 @@ extension ExpenseViewModel {
             
             if !results.isEmpty {
                 saveContext()
-                loadExpenses()
+                // PERF: Mirror the reassignment in-memory instead of
+                // refetching every expense from disk. The category
+                // rename is a one-shot move from `categoryName` to
+                // `.other`; date order is unaffected so no resort.
+                var mutated = expenses
+                for i in mutated.indices where mutated[i].category.rawValue == categoryName {
+                    mutated[i].category = .other
+                }
+                expenses = mutated
                 print("Moved \(results.count) expenses from \(categoryName) to Other")
             }
         } catch {

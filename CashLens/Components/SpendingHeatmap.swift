@@ -7,13 +7,18 @@ struct SpendingHeatmap: View {
         let amount: Double
         let intensity: Double
     }
-    
-    let expenses: [Expense]
+
+    /// Pre-aggregated day → net total map (refund-aware, floored at 0). The
+    /// caller is expected to do this aggregation **once** (typically on the
+    /// background recompute task in StatisticsView) so the heatmap doesn't
+    /// re-walk the full expense array on every body redraw — the audit
+    /// flagged the prior `expenses: [Expense]` shape as a P0 hot path.
+    let dailyTotals: [Date: Double]
     let startDate: Date
     let endDate: Date
     let accentColor: Color
     let formattedAmount: (Double) -> String
-    
+
     /// Safety cap so extremely large ranges (e.g. "All Time" = distantPast) don't freeze the UI.
     /// Shows the *most recent* `maxDaysToRender` days of the selected range.
     let maxDaysToRender: Int = 365
@@ -58,24 +63,21 @@ struct SpendingHeatmap: View {
         let end = renderRange.end
         guard start <= end else { return [] }
 
-        var totalsByDay: [Date: Double] = [:]
-        for expense in expenses {
-            let key = calendar.startOfDay(for: expense.date)
-            totalsByDay[key, default: 0] += expense.amount
-        }
-        
+        // No O(N) grouping pass here anymore — the caller hands us the
+        // already-aggregated map. We only walk the calendar-day range,
+        // which is bounded by `maxDaysToRender`.
         var dates: [Date] = []
         var cursor = start
         while cursor <= end {
             dates.append(cursor)
             cursor = calendar.date(byAdding: .day, value: 1, to: cursor) ?? cursor.addingTimeInterval(86400)
         }
-        
-        let values = dates.map { totalsByDay[$0, default: 0] }
+
+        let values = dates.map { dailyTotals[$0, default: 0] }
         let maxValue = values.max() ?? 0
-        
+
         return dates.map { date in
-            let amount = totalsByDay[date, default: 0]
+            let amount = dailyTotals[date, default: 0]
             let intensity = maxValue > 0 ? (amount / maxValue) : 0
             return DayCell(
                 id: isoDayId(for: date),
@@ -180,10 +182,10 @@ struct SpendingHeatmap: View {
                     .padding(.vertical, 2)
                 }
             }
-            .onChange(of: startDate) { _ in
+            .onChange(of: startDate) {
                 selectedCell = nil
             }
-            .onChange(of: endDate) { _ in
+            .onChange(of: endDate) {
                 selectedCell = nil
             }
             

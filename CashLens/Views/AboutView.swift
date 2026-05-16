@@ -18,7 +18,7 @@ struct AboutView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: Theme.Spacing.xl) {
                     // App Logo
                     VStack(spacing: 16) {
                         Image(systemName: "dollarsign.circle.fill")
@@ -43,7 +43,7 @@ struct AboutView: View {
                     .padding(.bottom, 20)
                     
                     // App Description
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         Text("About CashLens")
                             .font(.title2)
                             .fontWeight(.bold)
@@ -71,19 +71,18 @@ struct AboutView: View {
                             featureRow(icon: "bell.fill", text: "Smart notifications: renewals, digests, and backup reminders (all opt‑in)")
                             featureRow(icon: "shield.fill", text: "Local data storage - your privacy protected")
                         }
-                        .padding(.leading, 8)
+                        .padding(.leading, Theme.Spacing.xs)
                     }
-                    .padding()
-                    .background(Color.secondarySystemBackground)
-                    .cornerRadius(16)
-                    
+                    .padding(Theme.Spacing.lg)
+                    .cardSurface()
+
                     // What's New Section
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         Text(whatsNewTitle)
                             .font(.title2)
                             .fontWeight(.bold)
-                        
-                        VStack(alignment: .leading, spacing: 10) {
+
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm + 2) {
                             featureRow(icon: "bell.badge.fill", text: "Weekly & monthly digests (opt‑in) with deep links into your expenses")
                             featureRow(icon: "externaldrive.fill.badge.timemachine", text: "Backup reminders (opt‑in) and one‑tap export to Files")
                             featureRow(icon: "chart.pie.fill", text: "More visual statistics: category share + spending heatmap + cleaner trend chart")
@@ -92,28 +91,27 @@ struct AboutView: View {
                             featureRow(icon: "slider.horizontal.3", text: "More personalization: default Home time frame + improved UI polish")
                             featureRow(icon: "checkmark.circle.fill", text: "Stability fixes and better data sync for subscriptions & categories")
                         }
-                        .padding(.leading, 8)
-                        
+                        .padding(.leading, Theme.Spacing.xs)
+
                         Text("These updates focus on clarity, consistency, and helpful reminders—while keeping CashLens fast, private, and simple.")
-                            .font(.caption)
+                            .font(Theme.Typography.caption)
                             .foregroundColor(.secondary)
-                            .padding(.top, 8)
+                            .padding(.top, Theme.Spacing.xs)
                     }
-                    .padding()
-                    .background(Color.secondarySystemBackground)
-                    .cornerRadius(16)
-                    
+                    .padding(Theme.Spacing.lg)
+                    .cardSurface()
+
                     // Contact Section
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         Text("Contact")
                             .font(.title2)
                             .fontWeight(.bold)
-                        
+
                         Text("For any bugs, feature requests, or feedback, feel free to reach out!")
                             .font(.subheadline)
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.leading)
-                        
+
                         Link(destination: URL(string: "mailto:email@rushiraj.me")!) {
                             HStack {
                                 Image(systemName: "envelope.fill")
@@ -122,9 +120,8 @@ struct AboutView: View {
                                     .foregroundColor(.primary)
                                 Spacer()
                             }
-                            .padding(10)
-                            .background(Color.secondarySystemBackground)
-                            .cornerRadius(10)
+                            .padding(Theme.Spacing.sm + 2)
+                            .cardSurface(radius: Theme.Radius.chip, fill: Color.tertiarySystemBackground)
                         }
                         Link(destination: URL(string: "https://cashlens.app")!) {
                             HStack {
@@ -134,49 +131,45 @@ struct AboutView: View {
                                     .foregroundColor(.primary)
                                 Spacer()
                             }
-                            .padding(10)
-                            .background(Color.secondarySystemBackground)
-                            .cornerRadius(10)
+                            .padding(Theme.Spacing.sm + 2)
+                            .cardSurface(radius: Theme.Radius.chip, fill: Color.tertiarySystemBackground)
                         }
                     }
-                    .padding()
-                    .background(Color.secondarySystemBackground)
-                    .cornerRadius(16)
-                    
+                    .padding(Theme.Spacing.lg)
+                    .cardSurface()
+
                     // Developer Info
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         Text("Developer")
                             .font(.title2)
                             .fontWeight(.bold)
-                        
+
                         Text("CashLens was developed by Rushiraj Jadeja with a focus on creating an intuitive, powerful, and privacy-first personal finance experience.")
                             .font(.body)
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.leading)
-                        
+
                         Text("© 2025 Rushiraj Jadeja. All rights reserved.")
-                            .font(.caption)
+                            .font(Theme.Typography.caption)
                             .foregroundColor(.secondary)
-                            .padding(.top, 8)
+                            .padding(.top, Theme.Spacing.xs)
                     }
-                    .padding()
-                    .background(Color.secondarySystemBackground)
-                    .cornerRadius(16)
-                    
+                    .padding(Theme.Spacing.lg)
+                    .cardSurface()
+
                     // Privacy Policy
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                         Text("Privacy & Security")
                             .font(.title2)
                             .fontWeight(.bold)
-                        
+
                         Text("CashLens respects your privacy. All your financial data is stored locally on your device and is never shared with third parties. Your subscription data, custom categories, and expense history remain completely private and under your control.")
                             .font(.body)
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.leading)
                     }
-                    .padding()
-                    .background(Color.secondarySystemBackground)
-                    .cornerRadius(16)
+                    .padding(Theme.Spacing.lg)
+                    .cardSurface()
                     
                     Spacer()
                 }

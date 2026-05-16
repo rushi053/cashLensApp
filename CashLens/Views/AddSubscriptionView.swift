@@ -1,14 +1,21 @@
 import SwiftUI
 
+/// Add / Edit Subscription screen.
+///
+/// Structural twin of `AddExpenseView` and `BudgetSetupView`: custom header
+/// (no nav bar), bold rounded field labels, `.fieldCard()` inputs, circular
+/// category picker, and the same fixed bottom save button with a fade-to-
+/// background gradient.
 struct AddSubscriptionView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var expenseViewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @ObservedObject var subscriptionViewModel: SubscriptionViewModel
-    
-    // State for form fields
+
+    // MARK: - State
+
     @State private var name: String
-    @State private var amount: String
+    @State private var amountText: String
     @State private var startDate: Date
     @State private var frequency: Subscription.Frequency
     @State private var selectedCategory: Expense.Category
@@ -16,33 +23,30 @@ struct AddSubscriptionView: View {
     @State private var notes: String
     @State private var reminderEnabled: Bool
     @State private var reminderDaysBefore: Int
-    
-    // Animation and UI state
-    @State private var showingKeyboard = false
+
     @State private var showingManageCategories = false
     @State private var showingDatePicker = false
-    @State private var showForm = false
+    @State private var showDeleteConfirm = false
     @State private var isSaving = false
-    @State private var showingDeleteConfirmation = false
-    
-    // Editing mode
+    // PERF: Removed `showForm` — it was only set inside `onAppear` via
+    // `withAnimation(Theme.Motion.emphasized)` and never read by any
+    // view, so the only effect was an animation transaction that
+    // competed with the system sheet spring on present.
+
+    @FocusState private var focusedField: Field?
+    private enum Field: Hashable { case name, amount, notes }
+
+    // MARK: - Init
+
     let editingSubscription: Subscription?
     var isEditing: Bool { editingSubscription != nil }
-    
-    // Date formatter
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
-        return formatter
-    }()
-    
-    // Initialize for adding new subscription
+
     init(subscriptionViewModel: SubscriptionViewModel) {
         self.subscriptionViewModel = subscriptionViewModel
         self.editingSubscription = nil
-        
+
         _name = State(initialValue: "")
-        _amount = State(initialValue: "")
+        _amountText = State(initialValue: "")
         _startDate = State(initialValue: Date())
         _frequency = State(initialValue: .monthly)
         _selectedCategory = State(initialValue: .entertainment)
@@ -51,14 +55,13 @@ struct AddSubscriptionView: View {
         _reminderEnabled = State(initialValue: true)
         _reminderDaysBefore = State(initialValue: 1)
     }
-    
-    // Initialize for editing existing subscription
+
     init(subscriptionViewModel: SubscriptionViewModel, editingSubscription: Subscription) {
         self.subscriptionViewModel = subscriptionViewModel
         self.editingSubscription = editingSubscription
-        
+
         _name = State(initialValue: editingSubscription.name)
-        _amount = State(initialValue: String(editingSubscription.amount))
+        _amountText = State(initialValue: String(format: "%.2f", editingSubscription.amount))
         _startDate = State(initialValue: editingSubscription.startDate)
         _frequency = State(initialValue: editingSubscription.frequency)
         _selectedCategory = State(initialValue: editingSubscription.category)
@@ -67,65 +70,70 @@ struct AddSubscriptionView: View {
         _reminderEnabled = State(initialValue: editingSubscription.reminderEnabled)
         _reminderDaysBefore = State(initialValue: editingSubscription.reminderDaysBefore)
     }
-    
+
+    // MARK: - Tokens
+
+    private static let fieldLabelFont = Font.system(size: 18, weight: .bold, design: .rounded)
+
+    private let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, yyyy"
+        return f
+    }()
+
+    // MARK: - Body
+
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color(.systemGroupedBackground)
-                    .ignoresSafeArea()
-                
+        ZStack {
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                header
+
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 28) {
-                        // Header
-                        headerSection
-                        
-                        // Form sections
-                        VStack(spacing: 24) {
-                            basicInfoSection
-                            categorySection
-                            frequencySection
-                            scheduleSection
-                            reminderSection
-                            notesSection
+                    VStack(spacing: Theme.Spacing.xxxl - 4) {
+                        amountField
+                        nameField
+                        frequencyField
+                        scheduleField
+                        categoryPickerField
+                        reminderField
+                        notesField
+
+                        if isEditing {
+                            deleteSection
                         }
-                        .padding(.horizontal, 24)
-                        
-                        // Bottom padding for save button
-                        Rectangle()
-                            .fill(Color.clear)
-                            .frame(height: 100)
                     }
+                    .padding(.horizontal, Theme.Spacing.xxl)
+                    .padding(.top, Theme.Spacing.sm + 2)
+                    .padding(.bottom, 40)
                 }
-                
-                // Save button overlay
-                VStack {
-                    Spacer()
-                    saveButtonSection
-                }
+
+                saveButton
             }
         }
         .navigationBarHidden(true)
-        .onAppear {
-            // CategoryViewModel auto-syncs via fetched results controller
+        .alert("Delete Subscription?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) { deleteSubscription() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
         }
-        .alert(isPresented: $showingDeleteConfirmation) {
-            Alert(
-                title: Text("Delete Subscription"),
-                message: Text("Are you sure you want to delete this subscription? This action cannot be undone."),
-                primaryButton: .destructive(Text("Delete")) {
-                    deleteSubscription()
-                },
-                secondaryButton: .cancel()
-            )
+        .sheet(isPresented: $showingManageCategories) {
+            ManageCategoriesView()
+                .environmentObject(categoryViewModel)
+                .environmentObject(expenseViewModel)
         }
     }
-    
-    private var headerSection: some View {
-        VStack(spacing: 16) {
-            // Navigation bar
+
+    // MARK: - Header
+
+    private var header: some View {
+        VStack(spacing: Theme.Spacing.lg) {
             HStack {
                 Button(action: {
-                    HapticManager.shared.impact(style: .light)
+                    HapticManager.shared.lightTap()
                     dismiss()
                 }) {
                     Image(systemName: "xmark")
@@ -135,12 +143,13 @@ struct AddSubscriptionView: View {
                         .background(Color(.systemGray6))
                         .clipShape(Circle())
                 }
-                
+
                 Spacer()
-                
+
                 if isEditing {
                     Button(action: {
-                        showingDeleteConfirmation = true
+                        HapticManager.shared.warning()
+                        showDeleteConfirm = true
                     }) {
                         Image(systemName: "trash")
                             .font(.system(size: 18, weight: .semibold))
@@ -151,432 +160,538 @@ struct AddSubscriptionView: View {
                     }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
-            
-            // Title
-            VStack(spacing: 8) {
-                Text(isEditing ? "Edit Subscription" : "Add Subscription")
+            .padding(.horizontal, Theme.Spacing.xxl)
+            .padding(.top, Theme.Spacing.xl)
+
+            VStack(spacing: Theme.Spacing.sm) {
+                Text(isEditing ? "Edit Subscription" : "New Subscription")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
-                
-                Text(isEditing ? "Update your subscription details" : "Track a new recurring expense")
+
+                Text(isEditing ? "Update your subscription details" : "Track a recurring expense")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.secondary)
             }
         }
-        .padding(.bottom, 8)
+        .padding(.bottom, Theme.Spacing.sm)
     }
-    
-    private var basicInfoSection: some View {
-        VStack(spacing: 20) {
-            // Name field
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Service Name")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary)
-                    Spacer()
-                }
-                
-                TextField("Netflix, Spotify, Gym...", text: $name)
-                    .font(.system(size: 17, weight: .medium))
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(16)
-                    .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-            }
-            
-            // Amount field
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Amount")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary)
-                    Spacer()
-                }
-                
-                HStack(spacing: 16) {
-                    Text(expenseViewModel.currencySymbol)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(.appPrimary)
-                    
-                    TextField("0.00", text: $amount)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .keyboardType(.decimalPad)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-            }
-        }
-    }
-    
-    private var categorySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+
+    // MARK: - Amount
+
+    private var amountField: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack {
-                Text("Category")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text("Amount")
+                    .font(Self.fieldLabelFont)
                     .foregroundColor(.primary)
-                
                 Spacer()
-                
-                Button(action: {
-                    showingManageCategories = true
-                }) {
-                    HStack(spacing: 6) {
-                        Text("Manage")
-                            .foregroundColor(.mauve)
-                        
-                        Image(systemName: "gearshape.circle")
-                            .font(.system(size: 14))
-                            .foregroundColor(.mauve)
-                    }
-                }
-                .font(.system(size: 15, weight: .semibold))
             }
-            
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 20) {
-                    // Standard categories (excluding deleted ones)
-                    ForEach(expenseViewModel.getAvailableDefaultCategories(), id: \.self) { category in
-                        categoryButton(category)
-                    }
-                    
-                    // Custom categories
-                    ForEach(categoryViewModel.customCategories) { category in
-                        customCategoryButton(category)
-                    }
-                }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 4)
+
+            HStack(spacing: Theme.Spacing.lg) {
+                Text(expenseViewModel.selectedCurrency.symbol)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(.appPrimary)
+
+                TextField("0.00", text: $amountText)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .keyboardType(.decimalPad)
+                    .focused($focusedField, equals: .amount)
             }
-        }
-        .sheet(isPresented: $showingManageCategories) {
-            ManageCategoriesView()
-                .environmentObject(categoryViewModel)
-                .environmentObject(expenseViewModel)
+            .padding(.horizontal, Theme.Spacing.xl)
+            .padding(.vertical, Theme.Spacing.lg)
+            .fieldCard(isFocused: focusedField == .amount)
+            .contentShape(Rectangle())
+            .onTapGesture { focusedField = .amount }
         }
     }
-    
-    private func categoryButton(_ category: Expense.Category) -> some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(Color.forCategory(category.color).opacity(0.3))
-                    .frame(width: 65, height: 65)
-                
-                Image(systemName: category.icon)
-                    .font(.system(size: 24))
-                    .foregroundColor(Color.forCategory(category.color))
+
+    // MARK: - Name
+
+    private var nameField: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack {
+                Text("Service Name")
+                    .font(Self.fieldLabelFont)
+                    .foregroundColor(.primary)
+                Spacer()
             }
-            .overlay(
-                Circle()
-                    .stroke(selectedCategory == category && selectedCustomCategoryId == nil ? 
-                           Color.forCategory(category.color).opacity(0.9) : 
-                           Color.clear, 
-                           lineWidth: 3)
-            )
-            .shadow(color: selectedCategory == category && selectedCustomCategoryId == nil ? 
-                   Color.forCategory(category.color).opacity(0.3) : 
-                   Color.clear, 
-                   radius: 4, x: 0, y: 0)
-            
-            Text(category.rawValue.capitalized)
-                .font(.caption)
-                .foregroundColor(selectedCategory == category && selectedCustomCategoryId == nil ? 
-                                Color.forCategory(category.color) : .secondary)
-        }
-        .onTapGesture {
-            HapticManager.shared.impact(style: .light)
-            selectedCategory = category
-            if category != .custom {
-                selectedCustomCategoryId = nil
-            }
+
+            TextField("Netflix, Spotify, Gym…", text: $name)
+                .font(.system(size: 17, weight: .medium))
+                .focused($focusedField, equals: .name)
+                .padding(.horizontal, Theme.Spacing.xl)
+                .padding(.vertical, Theme.Spacing.lg)
+                .fieldCard(isFocused: focusedField == .name)
+                .contentShape(Rectangle())
+                .onTapGesture { focusedField = .name }
         }
     }
-    
-    private func customCategoryButton(_ category: CustomCategory) -> some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(Color.forCategory(category.colorName).opacity(0.3))
-                    .frame(width: 65, height: 65)
-                
-                Image(systemName: category.icon)
-                    .font(.system(size: 24))
-                    .foregroundColor(Color.forCategory(category.colorName))
-            }
-            .overlay(
-                Circle()
-                    .stroke(selectedCategory == .custom && selectedCustomCategoryId == category.id ? 
-                           Color.forCategory(category.colorName).opacity(0.9) : 
-                           Color.clear, 
-                           lineWidth: 3)
-            )
-            .shadow(color: selectedCategory == .custom && selectedCustomCategoryId == category.id ? 
-                   Color.forCategory(category.colorName).opacity(0.3) : 
-                   Color.clear, 
-                   radius: 4, x: 0, y: 0)
-            
-            Text(category.name)
-                .font(.caption)
-                .foregroundColor(selectedCategory == .custom && selectedCustomCategoryId == category.id ? 
-                                Color.forCategory(category.colorName) : .secondary)
-        }
-        .onTapGesture {
-            HapticManager.shared.impact(style: .light)
-            selectedCategory = .custom
-            selectedCustomCategoryId = category.id
-        }
-    }
-    
-    private var frequencySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+
+    // MARK: - Frequency
+
+    private var frequencyField: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack {
                 Text("Billing Frequency")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(Self.fieldLabelFont)
                     .foregroundColor(.primary)
                 Spacer()
             }
-            
+
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                HStack(spacing: Theme.Spacing.md) {
                     ForEach(Subscription.Frequency.allCases, id: \.self) { freq in
-                        ModernFrequencyButton(
-                            frequency: freq,
-                            isSelected: frequency == freq,
-                            action: { 
-                                HapticManager.shared.impact(style: .light)
-                                frequency = freq 
-                            }
-                        )
+                        frequencyButton(freq)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, Theme.Spacing.xs)
+                .padding(.vertical, Theme.Spacing.xs)
             }
-            .padding(.horizontal, -24)
+            .padding(.horizontal, -Theme.Spacing.xs)
         }
     }
-    
-    private var scheduleSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+
+    private func frequencyButton(_ freq: Subscription.Frequency) -> some View {
+        let isSelected = frequency == freq
+        return Button {
+            HapticManager.shared.selectionChanged()
+            withAnimation(Theme.Motion.snappy) { frequency = freq }
+        } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: freq.icon)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(freq.rawValue)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+            }
+            .padding(.horizontal, Theme.Spacing.lg)
+            .padding(.vertical, Theme.Spacing.md + 2)
+            .background(
+                Group {
+                    if isSelected {
+                        Color.appPrimary
+                    } else {
+                        Color.secondarySystemBackground
+                    }
+                }
+            )
+            .foregroundColor(isSelected ? .white : .primary)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(
+                        isSelected ? Color.clear : Color.primary.opacity(0.07),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(
+                color: isSelected ? Color.appPrimary.opacity(0.3) : Color.black.opacity(0.04),
+                radius: isSelected ? 8 : 4,
+                x: 0,
+                y: isSelected ? 4 : 2
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Schedule
+
+    private var scheduleField: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack {
-                Text("Schedule")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text("Start Date")
+                    .font(Self.fieldLabelFont)
                     .foregroundColor(.primary)
                 Spacer()
             }
-            
-            Button(action: {
-                showingDatePicker.toggle()
-            }) {
-                HStack(spacing: 16) {
+
+            Button {
+                HapticManager.shared.lightTap()
+                focusedField = nil
+                showingDatePicker = true
+            } label: {
+                HStack(spacing: Theme.Spacing.lg) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
                             .fill(Color.appPrimary.opacity(0.15))
-                            .frame(width: 48, height: 48)
-                        
+                            .frame(width: 44, height: 44)
+
                         Image(systemName: "calendar")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(.appPrimary)
                     }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Start Date")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.secondary)
-                        
+
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(dateFormatter.string(from: startDate))
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(.primary)
+
+                        Text(nextPreviewText)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                .padding(.horizontal, Theme.Spacing.xl)
+                .padding(.vertical, Theme.Spacing.md + 2)
+                .fieldCard()
             }
+            .buttonStyle(.plain)
             .sheet(isPresented: $showingDatePicker) {
                 NavigationView {
                     DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
-                        .datePickerStyle(WheelDatePickerStyle())
+                        .datePickerStyle(.graphical)
+                        .padding()
                         .navigationTitle("Start Date")
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .navigationBarTrailing) {
-                                Button("Done") {
-                                    showingDatePicker = false
-                                }
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.mauve)
+                                Button("Done") { showingDatePicker = false }
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.appPrimary)
                             }
                         }
                 }
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
             }
         }
     }
-    
-    private var reminderSection: some View {
-        VStack(spacing: 16) {
+
+    /// Preview string shown under the start date explaining when the next
+    /// billing occurrence falls, so the schedule feels predictable.
+    private var nextPreviewText: String {
+        let next = Subscription.calculateNextDueDate(from: startDate, frequency: frequency)
+        return "Next: \(dateFormatter.string(from: next)) · \(frequency.description)"
+    }
+
+    // MARK: - Category picker
+
+    private var categoryPickerField: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             HStack {
-                Text("Reminders")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text("Category")
+                    .font(Self.fieldLabelFont)
                     .foregroundColor(.primary)
+
                 Spacer()
-            }
-            
-            VStack(spacing: 16) {
-                // Enable reminders toggle
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Payment Reminders")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
-                        
-                        Text("Get notified before payments are due")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.secondary)
+
+                Button {
+                    HapticManager.shared.lightTap()
+                    showingManageCategories = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Manage")
+                            .foregroundColor(.appPrimary)
+                        Image(systemName: "gearshape.circle")
+                            .font(.system(size: 14))
+                            .foregroundColor(.appPrimary)
                     }
-                    
-                    Spacer()
-                    
-                    Toggle("", isOn: $reminderEnabled)
-                        .labelsHidden()
-                }
-                
-                if reminderEnabled {
-                    Divider()
-                    
-                    // Reminder timing
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Remind me")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.primary)
-                            
-                            Text("\(reminderDaysBefore) day\(reminderDaysBefore == 1 ? "" : "s") before due date")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Stepper("", value: $reminderDaysBefore, in: 1...7)
-                            .labelsHidden()
-                    }
+                    .font(.system(size: 15, weight: .semibold))
                 }
             }
-            .padding(20)
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(16)
-            .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Theme.Spacing.xl) {
+                    ForEach(expenseViewModel.getAvailableDefaultCategories(), id: \.self) { category in
+                        categoryButton(category)
+                    }
+
+                    ForEach(categoryViewModel.customCategories) { category in
+                        customCategoryButton(category)
+                    }
+                }
+                .padding(.vertical, Theme.Spacing.sm)
+                .padding(.horizontal, Theme.Spacing.xs)
+            }
         }
     }
-    
-    private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+
+    private func categoryButton(_ category: Expense.Category) -> some View {
+        let isSelected = selectedCategory == category && selectedCustomCategoryId == nil
+        let tint = Color.forCategory(category.color)
+        return VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.3))
+                    .frame(width: 65, height: 65)
+
+                Image(systemName: category.icon)
+                    .font(.system(size: 24))
+                    .foregroundColor(tint)
+            }
+            .overlay(
+                Circle()
+                    .stroke(isSelected ? tint.opacity(0.9) : Color.clear, lineWidth: 3)
+            )
+            .shadow(color: isSelected ? tint.opacity(0.3) : Color.clear, radius: 4, x: 0, y: 0)
+
+            Text(category.rawValue.capitalized)
+                .font(.caption)
+                .foregroundColor(isSelected ? tint : .secondary)
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            withAnimation(Theme.Motion.snappy) {
+                selectedCategory = category
+                if category != .custom { selectedCustomCategoryId = nil }
+            }
+        }
+    }
+
+    private func customCategoryButton(_ category: CustomCategory) -> some View {
+        let isSelected = selectedCategory == .custom && selectedCustomCategoryId == category.id
+        let tint = Color.forCategory(category.colorName)
+        return VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.3))
+                    .frame(width: 65, height: 65)
+
+                Image(systemName: category.icon)
+                    .font(.system(size: 24))
+                    .foregroundColor(tint)
+            }
+            .overlay(
+                Circle()
+                    .stroke(isSelected ? tint.opacity(0.9) : Color.clear, lineWidth: 3)
+            )
+            .shadow(color: isSelected ? tint.opacity(0.3) : Color.clear, radius: 4, x: 0, y: 0)
+
+            Text(category.name)
+                .font(.caption)
+                .foregroundColor(isSelected ? tint : .secondary)
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            withAnimation(Theme.Motion.snappy) {
+                selectedCategory = .custom
+                selectedCustomCategoryId = category.id
+            }
+        }
+    }
+
+    // MARK: - Reminder
+
+    private var reminderField: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             HStack {
-                Text("Notes")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text("Reminder")
+                    .font(Self.fieldLabelFont)
                     .foregroundColor(.primary)
-                
+
                 Text("(Optional)")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.secondary)
-                
+
                 Spacer()
             }
-            
-            TextField("Add details about this subscription...", text: $notes, axis: .vertical)
-                .font(.system(size: 16, weight: .medium))
-                .lineLimit(3, reservesSpace: true)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(16)
-                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+
+            VStack(spacing: 0) {
+                HStack(spacing: Theme.Spacing.md) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                            .fill(Color.appPrimary.opacity(0.15))
+                            .frame(width: 40, height: 40)
+
+                        Image(systemName: reminderEnabled ? "bell.fill" : "bell.slash")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.appPrimary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Payment reminder")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
+
+                        Text(reminderEnabled
+                             ? "Notify me \(reminderDaysBefore) day\(reminderDaysBefore == 1 ? "" : "s") before"
+                             : "No reminder")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $reminderEnabled.animation(Theme.Motion.snappy))
+                        .labelsHidden()
+                        .tint(.appPrimary)
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.vertical, Theme.Spacing.md)
+
+                if reminderEnabled {
+                    Divider().padding(.horizontal, Theme.Spacing.lg)
+
+                    HStack(spacing: Theme.Spacing.md) {
+                        Text("Days before")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
+
+                        Spacer()
+
+                        HStack(spacing: Theme.Spacing.sm) {
+                            ForEach([1, 2, 3, 7], id: \.self) { d in
+                                reminderDayChip(d)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .padding(.vertical, Theme.Spacing.md)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .cardSurface()
+            .softShadow()
         }
     }
-    
-    private var saveButtonSection: some View {
+
+    private func reminderDayChip(_ days: Int) -> some View {
+        let isSelected = reminderDaysBefore == days
+        return Button {
+            HapticManager.shared.selectionChanged()
+            withAnimation(Theme.Motion.snappy) { reminderDaysBefore = days }
+        } label: {
+            Text("\(days)d")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(isSelected ? .white : .primary)
+                .frame(minWidth: 34)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(
+                    Group {
+                        if isSelected {
+                            Color.appPrimary
+                        } else {
+                            Color.primary.opacity(0.06)
+                        }
+                    }
+                )
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Notes
+
+    private var notesField: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack {
+                Text("Notes")
+                    .font(Self.fieldLabelFont)
+                    .foregroundColor(.primary)
+
+                Text("(Optional)")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+            }
+
+            TextField("Plan details, account email…", text: $notes, axis: .vertical)
+                .font(.system(size: 16, weight: .medium))
+                .lineLimit(3, reservesSpace: true)
+                .focused($focusedField, equals: .notes)
+                .padding(.horizontal, Theme.Spacing.xl)
+                .padding(.vertical, Theme.Spacing.lg)
+                .fieldCard(isFocused: focusedField == .notes)
+                .contentShape(Rectangle())
+                .onTapGesture { focusedField = .notes }
+        }
+    }
+
+    // MARK: - Delete
+
+    private var deleteSection: some View {
+        Button(role: .destructive) {
+            HapticManager.shared.warning()
+            showDeleteConfirm = true
+        } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "trash.fill")
+                Text("Delete Subscription")
+            }
+            .font(.system(size: 16, weight: .semibold, design: .rounded))
+            .foregroundColor(.red)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Theme.Spacing.lg)
+            .background(Color.red.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        }
+    }
+
+    // MARK: - Save
+
+    private var saveButton: some View {
+        // Solid bottom CTA strip — hairline divider replaces the
+        // fade-to-background gradient and the button is a flat
+        // primary color (no gradient fill).
         VStack(spacing: 0) {
-            // Gradient overlay to fade content
-            LinearGradient(
-                colors: [Color.clear, Color(.systemGroupedBackground)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 20)
-            
-            // Save button
-            Button(action: saveSubscription) {
+            Divider().opacity(0.35)
+
+            Button(action: handleSaveTap) {
                 HStack {
                     if isSaving {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(0.9)
                     } else {
-                        Text(isEditing ? "Update Subscription" : "Save Subscription")
+                        Text(isEditing ? "Save Changes" : "Add Subscription")
                             .font(.system(size: 18, weight: .bold, design: .rounded))
                     }
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 56)
-                .background(
-                    LinearGradient(
-                        colors: isFormValid ? 
-                            [Color.appPrimary, Color.appPrimary.opacity(0.8)] : 
-                            [Color.gray, Color.gray.opacity(0.8)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(16)
+                .background(isValid ? Color.appPrimary : Color.gray.opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                 .shadow(
-                    color: isFormValid ? Color.appPrimary.opacity(0.4) : Color.gray.opacity(0.2),
+                    color: isValid ? Color.appPrimary.opacity(0.3) : Color.gray.opacity(0.18),
                     radius: 12,
                     x: 0,
                     y: 6
                 )
             }
-            .disabled(!isFormValid || isSaving)
-            .padding(.horizontal, 24)
+            .disabled(!isValid || isSaving)
+            .padding(.horizontal, Theme.Spacing.xxl)
+            .padding(.top, Theme.Spacing.lg)
             .padding(.bottom, 40)
             .background(Color(.systemGroupedBackground))
         }
     }
-    
-    private var isFormValid: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        expenseViewModel.parseAmount(amount) != nil &&
-        expenseViewModel.parseAmount(amount)! > 0
-    }
-    
-    private func saveSubscription() {
-        guard isFormValid else { return }
-        
+
+    private func handleSaveTap() {
+        guard isValid else { return }
+        focusedField = nil
         isSaving = true
-        HapticManager.shared.impact(style: .medium)
-        
-        guard let parsedAmount = expenseViewModel.parseAmount(amount) else {
+        HapticManager.shared.mediumTap()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            HapticManager.shared.success()
+        }
+        saveSubscription()
+    }
+
+    // MARK: - Validation
+
+    private var isValid: Bool {
+        guard let parsed = expenseViewModel.parseAmount(amountText), parsed > 0 else {
+            return false
+        }
+        return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    // MARK: - Persistence
+
+    private func saveSubscription() {
+        guard let parsedAmount = expenseViewModel.parseAmount(amountText) else {
             isSaving = false
             return
         }
-        
-        let subscription = Subscription(
+
+        var subscription = Subscription(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             amount: parsedAmount,
             currency: expenseViewModel.selectedCurrency,
@@ -586,71 +701,33 @@ struct AddSubscriptionView: View {
             customCategoryId: selectedCustomCategoryId,
             notes: notes.isEmpty ? nil : notes
         )
-        
-        var finalSubscription = subscription
-        finalSubscription.reminderEnabled = reminderEnabled
-        finalSubscription.reminderDaysBefore = reminderDaysBefore
-        
+        subscription.reminderEnabled = reminderEnabled
+        subscription.reminderDaysBefore = reminderDaysBefore
+
         Task {
-            do {
-                if let editingSubscription = editingSubscription {
-                    finalSubscription.id = editingSubscription.id
-                    // Preserve fields that should not be reset by editing the form.
-                    finalSubscription.isActive = editingSubscription.isActive
-                    finalSubscription.nextDueDate = editingSubscription.nextDueDate
-                    await subscriptionViewModel.updateSubscription(finalSubscription)
-                } else {
-                    await subscriptionViewModel.addSubscription(finalSubscription)
-                }
-                
-                await MainActor.run {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        isSaving = false
-                        dismiss()
-                    }
+            if let editing = editingSubscription {
+                subscription.id = editing.id
+                subscription.isActive = editing.isActive
+                subscription.nextDueDate = editing.nextDueDate
+                await subscriptionViewModel.updateSubscription(subscription)
+            } else {
+                await subscriptionViewModel.addSubscription(subscription)
+            }
+
+            await MainActor.run {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    isSaving = false
+                    dismiss()
                 }
             }
         }
     }
-    
+
     private func deleteSubscription() {
         guard let subscription = editingSubscription else { return }
-        HapticManager.shared.impact(style: .medium)
+        HapticManager.shared.mediumTap()
         subscriptionViewModel.deleteSubscription(subscription)
         HapticManager.shared.success()
         dismiss()
     }
 }
-
-// Modern Frequency Button
-struct ModernFrequencyButton: View {
-    let frequency: Subscription.Frequency
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            isSelected ? 
-                                LinearGradient(colors: [Color.appPrimary, Color.appPrimary.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing) :
-                                LinearGradient(colors: [Color(.systemGray6), Color(.systemGray5)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .frame(width: 48, height: 48)
-                    
-                    Image(systemName: frequency.icon)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(isSelected ? .white : .secondary)
-                }
-                
-                Text(frequency.rawValue)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(isSelected ? .appPrimary : .secondary)
-            }
-            .frame(width: 80)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-} 

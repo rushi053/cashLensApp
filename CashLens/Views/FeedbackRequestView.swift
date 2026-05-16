@@ -1,8 +1,8 @@
 import SwiftUI
 import StoreKit
-import StoreKit
 
 struct FeedbackRequestView: View {
+    @Environment(\.requestReview) private var requestReview
     @State private var showingAnimation = false
     
     var body: some View {
@@ -21,13 +21,7 @@ struct FeedbackRequestView: View {
                     // Animated icon
                     ZStack {
                         Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.appPrimary.opacity(0.2), Color.appSecondary.opacity(0.1)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .fill(Color.appPrimary.opacity(0.15))
                             .frame(width: 80, height: 80)
                         
                         Image(systemName: "heart.circle.fill")
@@ -73,13 +67,7 @@ struct FeedbackRequestView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.appPrimary, Color.appSecondary],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .background(Color.appPrimary)
                         .cornerRadius(14)
                         .shadow(color: Color.appPrimary.opacity(0.3), radius: 8, x: 0, y: 4)
                     }
@@ -153,35 +141,12 @@ struct FeedbackRequestView: View {
     }
     
     private func rateApp() {
-        HapticManager.shared.impact(style: .medium)
-        
-        // Mark as feedback requested
+        HapticManager.shared.mediumTap()
+
         FeedbackManager.shared.markFeedbackRequested()
-        
-        // Prefer in-app rating prompt (safe + avoids bad URLs on some devices/regions).
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            SKStoreReviewController.requestReview(in: windowScene)
-            return
-        }
-        
-        // Fallback: open App Store review page (no country code; App Store will redirect).
-        let appId = "6743153951"
-        let reviewURLStrings = [
-            "itms-apps://itunes.apple.com/app/id\(appId)?action=write-review",
-            "https://apps.apple.com/app/id\(appId)?action=write-review",
-            "https://apps.apple.com/app/id\(appId)"
-        ]
-        
-        for urlString in reviewURLStrings {
-            if let url = URL(string: urlString) {
-                UIApplication.shared.open(url, options: [:]) { success in
-                    if success == false {
-                        print("Failed to open rating URL: \(urlString)")
-                    }
-                }
-                break
-            }
-        }
+
+        // iOS 16+: SwiftUI environment action; no window scene lookup needed.
+        requestReview()
     }
     
     private func shareApp() {

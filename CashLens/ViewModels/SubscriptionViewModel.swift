@@ -1,43 +1,39 @@
 import Foundation
 import SwiftUI
 import Combine
-import CoreData
+@preconcurrency import CoreData
 import UserNotifications
 
 @MainActor
 class SubscriptionViewModel: NSObject, ObservableObject {
     @Published var subscriptions: [Subscription] = []
-    @Published var dueSubscriptions: [Subscription] = []
     @Published var filteredSubscriptions: [Subscription] = []
     @Published var activeFilter: SubscriptionFilter = .all
-    
+
     enum SubscriptionFilter: CaseIterable {
         case all
         case dueSoon
         case active
-        case paused
-        
+
         var title: String {
             switch self {
             case .all: return "All Subscriptions"
             case .dueSoon: return "Due Soon"
             case .active: return "Active"
-            case .paused: return "Paused"
             }
         }
-        
+
         var icon: String {
             switch self {
             case .all: return "list.bullet"
             case .dueSoon: return "clock.fill"
             case .active: return "checkmark.circle.fill"
-            case .paused: return "pause.circle.fill"
             }
         }
     }
     
     private var cancellables = Set<AnyCancellable>()
-    private let viewContext: NSManagedObjectContext
+    nonisolated private let viewContext: NSManagedObjectContext
     private weak var expenseViewModel: ExpenseViewModel?
     private var fetchedResultsController: NSFetchedResultsController<SubscriptionEntity>?
     
@@ -46,7 +42,6 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         self.expenseViewModel = expenseViewModel
         super.init()
         setupFetchedResultsController()
-        setupDueSubscriptionsFiltering()
         setupSubscriptionFiltering()
         setupCurrencyUpdateListener()
     }
@@ -71,7 +66,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         
         viewContext.performAndWait {
             _ = SubscriptionEntity.fromSubscription(subscription, context: viewContext)
-            saveContext()
+            persistIfNeeded()
         }
         syncNotification(for: subscription)
         
@@ -98,7 +93,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
                 let results = try viewContext.fetch(fetchRequest)
                 if let entity = results.first {
                     entity.updateFromSubscription(subscription)
-                    saveContext()
+                    persistIfNeeded()
                 }
             } catch {
                 print("Error updating subscription: \(error.localizedDescription)")
@@ -117,7 +112,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
                 for entity in results {
                     viewContext.delete(entity)
                 }
-                saveContext()
+                persistIfNeeded()
             } catch {
                 print("Error deleting subscription: \(error.localizedDescription)")
             }
@@ -131,13 +126,19 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         await updateSubscription(updatedSubscription)
     }
     
-    private func saveContext() {
+    /// Nonisolated Core Data save helper. Safe to invoke from inside
+    /// `performAndWait` closures without crossing actor boundaries.
+    /// Assumes the enclosing `performAndWait` serializes access to `viewContext`.
+    private nonisolated func persistIfNeeded() {
         do {
             if viewContext.hasChanges {
                 try viewContext.save()
             }
         } catch {
-            print("Error saving subscription context: \(error.localizedDescription)")
+            // Surface to the global save-error banner so a silent
+            // failure on add/update/delete doesn't leave the UI
+            // showing the operation as successful.
+            SaveErrorReporter.report(operation: "saving subscription", error: error)
         }
     }
     
@@ -170,23 +171,23 @@ class SubscriptionViewModel: NSObject, ObservableObject {
     
     private func updateFromFetchedResults() {
         let entities = fetchedResultsController?.fetchedObjects ?? []
-        
+
         // Repair legacy/bad data: some older records may have a missing UUID id.
         // Without a stable id, edits won't persist (update fetch can't find the entity),
         // and notification identifiers become unstable.
+        // viewContext is main-queue bound, and this method is main-actor isolated,
+        // so we can operate on entities directly without a nested perform block.
         var repairedMissingIDs = false
-        viewContext.performAndWait {
-            for entity in entities where entity.id == nil {
-                entity.id = UUID()
-                repairedMissingIDs = true
-            }
-            if repairedMissingIDs {
-                saveContext()
-            }
+        for entity in entities where entity.id == nil {
+            entity.id = UUID()
+            repairedMissingIDs = true
         }
-        
+        if repairedMissingIDs {
+            persistIfNeeded()
+        }
+
         subscriptions = entities.map { $0.toSubscription() }
-        
+
         if repairedMissingIDs {
             resyncAllSubscriptionNotifications()
         }
@@ -213,41 +214,6 @@ class SubscriptionViewModel: NSObject, ObservableObject {
                 }
             }
         }
-    }
-    
-    // MARK: - Due Subscriptions Management
-    
-    private func setupDueSubscriptionsFiltering() {
-        $subscriptions
-            .map { subscriptions in
-                subscriptions.filter { $0.isDue }
-            }
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.dueSubscriptions, on: self)
-            .store(in: &cancellables)
-    }
-    
-    func checkAndProcessDueSubscriptions() {
-        for subscription in dueSubscriptions {
-            processSubscription(subscription)
-        }
-    }
-    
-    private func processSubscription(_ subscription: Subscription) {
-        // Create expense from subscription
-        var expense = subscription.toExpense()
-        expense.isFromSubscription = true
-        expense.subscriptionId = subscription.id
-        
-        // Add expense through the expense view model
-        expenseViewModel?.addExpense(expense)
-        
-        // Update subscription's next due date
-        var updatedSubscription = subscription
-        updatedSubscription.updateNextDueDate()
-        updateSubscriptionInternal(updatedSubscription)
-        
-        print("Processed subscription: \(subscription.name) - Next due: \(updatedSubscription.formattedNextDueDate)")
     }
     
     // MARK: - Statistics
@@ -398,12 +364,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         let formatted = formatter.string(from: NSNumber(value: totalMonthlyAmount)) ?? "0.00"
         return "\(currency.symbol)\(formatted)"
     }
-    
-    // Manual trigger for testing
-    func manuallyProcessDueSubscriptions() {
-        checkAndProcessDueSubscriptions()
-    }
-    
+
     // MARK: - Manual Payment Processing
     
     func markSubscriptionAsPaid(_ subscription: Subscription) async {
@@ -467,8 +428,6 @@ class SubscriptionViewModel: NSObject, ObservableObject {
             return subscriptions.filter { $0.isActive && $0.daysUntilNext <= 7 }
         case .active:
             return subscriptions.filter { $0.isActive }
-        case .paused:
-            return subscriptions.filter { !$0.isActive }
         }
     }
     
@@ -482,7 +441,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
 } 
 
 extension SubscriptionViewModel: NSFetchedResultsControllerDelegate {
-    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+    nonisolated func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
         Task { @MainActor in
             self.updateFromFetchedResults()
         }

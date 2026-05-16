@@ -12,15 +12,9 @@ struct AddButton: View {
         }) {
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.mauve, Color.appSecondary]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color.appPrimary)
                     .frame(width: isIPad ? 70 : 56, height: isIPad ? 70 : 56)
-                    .shadow(color: Color.mauve.opacity(0.4), radius: isIPad ? 10 : 8, x: 0, y: 4)
+                    .shadow(color: Color.appPrimary.opacity(0.4), radius: isIPad ? 10 : 8, x: 0, y: 4)
                 
                 Image(systemName: "plus")
                     .font(.system(size: isIPad ? 28 : 22, weight: .bold))

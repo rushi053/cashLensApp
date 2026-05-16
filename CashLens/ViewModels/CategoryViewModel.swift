@@ -101,9 +101,11 @@ class CategoryViewModel: NSObject, ObservableObject {
         if viewContext.hasChanges {
             do {
                 try viewContext.save()
-                // Removed noisy print statement
             } catch {
-                print("Error saving context: \(error.localizedDescription)")
+                // Surface failures to the global save-error banner
+                // so a silent persistence failure doesn't leave
+                // category UI looking saved when it isn't.
+                SaveErrorReporter.report(operation: "saving category", error: error)
             }
         }
     }
@@ -137,7 +139,7 @@ class CategoryViewModel: NSObject, ObservableObject {
 } 
 
 extension CategoryViewModel: NSFetchedResultsControllerDelegate {
-    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+    nonisolated func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
         // FRC delegate callbacks may arrive on the context queue; hop back to the main actor for @Published updates.
         Task { @MainActor in
             self.updateFromFetchedResults()

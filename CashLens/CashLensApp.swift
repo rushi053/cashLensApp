@@ -46,6 +46,10 @@ struct CashLensApp: App {
     @StateObject private var viewModel: ExpenseViewModel
     @StateObject private var categoryViewModel = CategoryViewModel()
     @StateObject private var deepLinkRouter = DeepLinkRouter.shared
+    @StateObject private var proManager = ProManager.shared
+    @StateObject private var budgetViewModel = BudgetViewModel()
+    @StateObject private var themeStore = ThemeStore.shared
+    @StateObject private var appIconStore = AppIconStore.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var showOnboarding = false
     @State private var showSplash = true
@@ -65,6 +69,10 @@ struct CashLensApp: App {
                 MainTabView(viewModel: viewModel)
                     .environment(\.managedObjectContext, persistenceController.container.viewContext)
                     .environmentObject(categoryViewModel)
+                    .environmentObject(proManager)
+                    .environmentObject(budgetViewModel)
+                    .environmentObject(themeStore)
+                    .environmentObject(appIconStore)
                     .preferredColorScheme(viewModel.appearanceMode.colorScheme)
                     .sheet(item: $deepLinkRouter.route) { route in
                         switch route {
@@ -83,13 +91,49 @@ struct CashLensApp: App {
                     }
                     .onChange(of: scenePhase) { _, newPhase in
                         if newPhase == .active {
-                            // Only refresh data if needed, don't recreate the entire UI
                             viewModel.refreshData()
-                            
+                            budgetViewModel.refreshProgressFromData()
+                            // Push a fresh widget snapshot whenever the
+                            // app foregrounds — covers the "user added an
+                            // expense from another device / Shortcut /
+                            // import" case where in-app `@Published`
+                            // state didn't drive the change.
+                            WidgetSnapshotCoordinator.shared.refreshNow()
+
                             Task {
-                                await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
+                                await NotificationScheduler.refreshScheduledNotificationsIfNeeded(
+                                    viewModel: viewModel,
+                                    isPro: proManager.isPro
+                                )
                             }
+
+                            // Once-per-foreground orphan sweep for the
+                            // Receipts directory. Catches the rare
+                            // crash-between-write-and-delete window and
+                            // any file that survived a failed import.
+                            // Runs in the background so it never blocks
+                            // the UI; the cost is one shallow directory
+                            // read + at most a few `unlink` calls.
+                            cleanupReceiptOrphansInBackground()
                         }
+                    }
+                    .onAppear {
+                        budgetViewModel.setExpenseViewModel(viewModel)
+                        // Bootstrap the widget snapshot pipe as soon as
+                        // every app-level dependency is alive. The
+                        // coordinator installs its Combine subscriptions
+                        // once and writes an initial snapshot so a
+                        // freshly-installed widget gets real data on its
+                        // very first render instead of waiting for the
+                        // user's next mutation.
+                        WidgetSnapshotCoordinator.shared.bootstrap(
+                            expenseVM: viewModel,
+                            budgetVM: budgetViewModel,
+                            categoryVM: categoryViewModel,
+                            proManager: proManager,
+                            themeStore: themeStore,
+                            viewContext: persistenceController.container.viewContext
+                        )
                     }
                 
                 // Show onboarding screen if needed
@@ -126,6 +170,26 @@ struct CashLensApp: App {
             }) {
                 CurrencyPickerView(viewModel: viewModel, isInitialSetup: true)
             }
+        }
+    }
+
+    /// Once-per-foreground sweep for the Receipts directory. Reads all
+    /// `receiptImagePath` values currently referenced by the live
+    /// expenses and deletes any file in `Documents/Receipts/` that
+    /// isn't in that set. Idempotent and safe — does nothing if the
+    /// directory doesn't exist (fresh install with no receipts).
+    ///
+    /// PERF: We capture the expense array by value (cheap thanks to
+    /// Swift's copy-on-write storage) and do the O(N) `compactMap` +
+    /// `Set` build **inside** the detached task, not on main. The
+    /// previous implementation did the scan on the main actor before
+    /// hopping off — a small but real per-foreground cost that grew
+    /// with expense count.
+    private func cleanupReceiptOrphansInBackground() {
+        let expensesSnapshot = viewModel.expenses
+        Task.detached(priority: .background) {
+            let referenced = Set(expensesSnapshot.compactMap { $0.receiptImagePath })
+            ReceiptStorage.cleanupOrphans(keep: referenced)
         }
     }
 }
