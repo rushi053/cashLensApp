@@ -43,7 +43,6 @@ struct TodayView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var budgetViewModel: BudgetViewModel
-    @EnvironmentObject var proManager: ProManager
 
     /// Resolved verdict for the hero, recomputed off-main whenever
     /// expenses, budgets, or currency change. `nil` until the first
@@ -69,6 +68,11 @@ struct TodayView: View {
     @State private var recomputeTask: Task<Void, Never>? = nil
     @State private var animateSections = false
 
+    /// Drives the gentle "over budget" pulse on the verdict ring's
+    /// outer glow. Animates to 0.6 and back, repeats forever while
+    /// the user is over; eases to 0 when they cross back to safe.
+    @State private var overRingPulse: Double = 0
+
     @State private var editingExpense: Expense? = nil
 
     /// Cross-tab handoff: tapping "See all activity" tells the parent
@@ -89,8 +93,14 @@ struct TodayView: View {
                         .modifier(SectionEntrance(order: 2, animate: animateSections))
                 }
 
-                recentSection
-                    .modifier(SectionEntrance(order: 3, animate: animateSections))
+                // Skip the Recent section entirely on a cold start —
+                // the first-run hero (above) already explains how to
+                // log the first expense; an empty Recent block under
+                // it would just repeat the same prompt.
+                if !viewModel.expenses.isEmpty {
+                    recentSection
+                        .modifier(SectionEntrance(order: 3, animate: animateSections))
+                }
 
                 if let insight = todayInsight {
                     insightCard(for: insight)
@@ -180,15 +190,62 @@ struct TodayView: View {
     // MARK: - Verdict hero
     //
     // The single most important block on the screen. Drives the
-    // "am I OK?" judgement without scrolling.
+    // "am I OK?" judgement without scrolling. With zero data we
+    // swap in a friendlier first-run hero — a "$0.00 spent this
+    // month" headline reads cold and doesn't sell the verdict
+    // experience the user will get once they have a few entries.
     private var verdictHero: some View {
         Group {
-            if let verdict = verdict {
+            if viewModel.expenses.isEmpty {
+                firstRunHero
+            } else if let verdict = verdict {
                 verdictCard(verdict)
             } else {
                 verdictSkeleton
             }
         }
+    }
+
+    /// Shown when the user has no expenses yet. Sells the verdict
+    /// experience without lying about pace — an aspirational card
+    /// rather than a stat card. The "+" CTA is implicit (the FAB
+    /// is right there) so we don't crowd the card with a duplicate
+    /// button.
+    private var firstRunHero: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("WELCOME")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(0.8)
+            }
+            .foregroundColor(Color.appPrimary)
+
+            Text("Your daily verdict appears here.")
+                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, Theme.Spacing.xs)
+
+            Text("Log a few expenses and CashLens will start telling you whether you're On Track, Tight, or Over for the month — at a glance.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, Theme.Spacing.xs)
+
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Tap the + button to log your first expense")
+                    .font(.footnote.weight(.medium))
+            }
+            .foregroundColor(.secondary)
+            .padding(.top, Theme.Spacing.md)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.xl + 2)
+        .cardSurface()
     }
 
     private var verdictSkeleton: some View {
@@ -203,20 +260,17 @@ struct TodayView: View {
     }
 
     private func verdictCard(_ v: TodayVerdict) -> some View {
-        HStack(alignment: .center, spacing: Theme.Spacing.xl) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                // Verdict pill + days-left.
-                //
-                // When the status is `.neutral` (user has no budgets
-                // at all) we deliberately don't show a verdict pill —
-                // a verdict implies a target, and there isn't one yet.
-                // Instead we show a calm "This month" label so the
-                // card still has a header without lying about pace.
-                HStack(spacing: Theme.Spacing.sm) {
+        VStack(alignment: .leading, spacing: 0) {
+            // Top row: verdict pill / days-left on the left, ring
+            // on the right. Pulling the ring up to the same baseline
+            // as the eyebrow row tightens the layout and lets the
+            // hero number breathe centered in the card.
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     if v.status == .neutral {
                         Text("THIS MONTH")
                             .font(.caption2.weight(.semibold))
-                            .tracking(0.6)
+                            .tracking(0.8)
                             .foregroundColor(.secondary)
                     } else {
                         verdictPill(v.status)
@@ -227,39 +281,54 @@ struct TodayView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-
-                // Hero number — the spend, made big.
-                // Monospaced digits + rounded design = the "premium
-                // finance display" treatment Copilot/Monarch use. The
-                // digits never jiggle as the value animates.
-                Text(viewModel.formattedAmount(v.spent))
-                    .font(.system(size: 44, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .contentTransition(.numericText())
-                    .moneyAnimation(amount: v.spent, currency: viewModel.selectedCurrency)
-
-                // Secondary line — what's the spend out of? Falls back
-                // to "this month" copy when there's no budget anchor.
-                Text(v.secondaryLine(formattedAmount: viewModel.formattedAmount))
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-
-                // Projection line — forward-looking. The audit called
-                // this out as the single biggest missing piece on Home.
-                if let projection = v.projectionLine(formattedAmount: viewModel.formattedAmount) {
-                    Text(projection)
-                        .font(.footnote)
-                        .foregroundColor(v.status.tint)
-                        .padding(.top, Theme.Spacing.xs)
-                }
+                Spacer(minLength: Theme.Spacing.lg)
+                verdictRing(percentage: v.ringPercentage, status: v.status)
             }
-            Spacer(minLength: 0)
-            verdictRing(percentage: v.ringPercentage, status: v.status)
+
+            // Hero number — the spend, made big.
+            // Monospaced rounded digits = the "premium finance
+            // display" treatment Copilot/Monarch use. The digits
+            // never jiggle as the value animates.
+            Text(viewModel.formattedAmount(v.spent))
+                .font(.system(size: 46, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .contentTransition(.numericText())
+                .moneyAnimation(amount: v.spent, currency: viewModel.selectedCurrency)
+                .padding(.top, Theme.Spacing.lg)
+
+            // Secondary line — what's the spend out of? Falls back
+            // to "this month" copy when there's no budget anchor.
+            Text(v.secondaryLine(formattedAmount: viewModel.formattedAmount))
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .padding(.top, Theme.Spacing.xs)
+
+            // Projection line — forward-looking. The audit called
+            // this out as the single biggest missing piece on Home.
+            // Pulled out into its own rounded chip so it reads as
+            // a distinct "what's coming" callout rather than yet
+            // another body line under the secondary.
+            if let projection = v.projectionLine(formattedAmount: viewModel.formattedAmount) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(projection)
+                        .font(.footnote.weight(.medium))
+                }
+                .foregroundColor(v.status.tint)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule().fill(v.status.tint.opacity(0.10))
+                )
+                .padding(.top, Theme.Spacing.lg)
+            }
         }
-        .padding(Theme.Spacing.xl)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.xl + 2)
         .cardSurface()
     }
 
@@ -279,25 +348,60 @@ struct TodayView: View {
     /// there's no budget anchor — the hero still works as a
     /// month-pace readout, but without a meaningful percentage we
     /// don't draw a misleading partial fill.
+    ///
+    /// When the user is `over` budget the ring gets a gentle
+    /// recurring pulse — calm enough to live on the screen
+    /// indefinitely (not a flashing alert), bright enough to draw
+    /// the eye back to the verdict.
     private func verdictRing(percentage: Double?, status: TodayVerdict.Status) -> some View {
-        ZStack {
+        let trimAmount = min(max(percentage ?? 0, 0), 1)
+        return ZStack {
             Circle()
-                .stroke(Color.secondarySystemBackground, lineWidth: 8)
-                .frame(width: 76, height: 76)
-            if let pct = percentage {
+                .stroke(Color.secondarySystemBackground, lineWidth: 7)
+                .frame(width: 72, height: 72)
+            if percentage != nil {
                 Circle()
-                    .trim(from: 0, to: min(max(pct, 0), 1))
-                    .stroke(status.tint, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .frame(width: 76, height: 76)
+                    .trim(from: 0, to: trimAmount)
+                    .stroke(status.tint, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                    .frame(width: 72, height: 72)
                     .rotationEffect(.degrees(-90))
-                    .animation(Theme.Motion.emphasized, value: pct)
-                Text("\(Int((pct * 100).rounded()))%")
+                    .animation(Theme.Motion.emphasized, value: trimAmount)
+                    .shadow(
+                        color: status.tint.opacity(status == .over ? overRingPulse : 0),
+                        radius: 8,
+                        x: 0,
+                        y: 0
+                    )
+                Text("\(Int((trimAmount * 100).rounded()))%")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
                     .foregroundColor(.primary)
+                    .contentTransition(.numericText())
+                    .animation(Theme.Motion.tap, value: trimAmount)
             } else {
                 Image(systemName: "chart.bar.fill")
-                    .font(.system(size: 22, weight: .medium))
+                    .font(.system(size: 20, weight: .medium))
                     .foregroundColor(.secondary.opacity(0.4))
+            }
+        }
+        .onAppear {
+            if status == .over {
+                withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                    overRingPulse = 0.6
+                }
+            } else {
+                overRingPulse = 0
+            }
+        }
+        .onChange(of: status) { _, newStatus in
+            if newStatus == .over {
+                withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                    overRingPulse = 0.6
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.4)) {
+                    overRingPulse = 0
+                }
             }
         }
     }
@@ -431,16 +535,33 @@ struct TodayView: View {
             if viewModel.expenses.isEmpty {
                 emptyRecentBlock
             } else {
-                VStack(spacing: Theme.Spacing.md) {
-                    ForEach(Array(viewModel.expenses.prefix(3)), id: \.id) { expense in
-                        ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
-                            .equatable()
-                            .onTapGesture {
-                                HapticManager.shared.lightTap()
-                                editingExpense = expense
-                            }
+                // One container, three bare rows separated by a thin
+                // indented divider — reads as "one recent cluster"
+                // instead of three independently-elevated tiles
+                // stacking on top of each other. Cuts visual weight
+                // by ~40% without losing per-row tappability.
+                let recent = Array(viewModel.expenses.prefix(3))
+                VStack(spacing: 0) {
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { idx, expense in
+                        ExpenseCard(
+                            expense: expense,
+                            viewModel: viewModel,
+                            categoryViewModel: categoryViewModel,
+                            style: .bare
+                        )
+                        .equatable()
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            HapticManager.shared.lightTap()
+                            editingExpense = expense
+                        }
+                        if idx < recent.count - 1 {
+                            Divider()
+                                .padding(.leading, 56) // align with title, past medallion
+                        }
                     }
                 }
+                .cardSurface()
             }
         }
     }
@@ -468,15 +589,20 @@ struct TodayView: View {
     // (or a calm fallback). Never more than one — the audit was
     // explicit that "card sprawl" was eroding the screen.
     private func insightCard(for insight: TodayInsight) -> some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.md) {
-            Image(systemName: insight.icon)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundColor(insight.tint)
-                .frame(width: 36, height: 36)
-                .background(
-                    Circle().fill(insight.tint.opacity(0.12))
-                )
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: Theme.Spacing.md + 2) {
+            // Slimmer, lighter-weight icon medallion. The v1 of this
+            // card used a 36pt heavy-tinted circle that competed
+            // with the verdict ring above; the tighter 32pt treatment
+            // reads as "here's a quiet note" instead of "alert".
+            ZStack {
+                Circle()
+                    .fill(insight.tint.opacity(0.10))
+                    .frame(width: 32, height: 32)
+                Image(systemName: insight.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(insight.tint)
+            }
+            VStack(alignment: .leading, spacing: 3) {
                 Text(insight.headline)
                     .font(Theme.Typography.rowTitle)
                     .foregroundColor(.primary)
