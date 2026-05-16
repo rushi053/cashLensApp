@@ -56,6 +56,11 @@ struct TodayView: View {
     /// `verdict`.
     @State private var weekStrip: [WeekStripDay] = []
 
+    /// User-tapped day in the week strip. When `nil`, the strip
+    /// shows the 7-day total in its header; when set, it shows the
+    /// selected day's date and amount. Tap the same day to deselect.
+    @State private var selectedWeekDay: WeekStripDay? = nil
+
     /// The single most relevant insight to surface today, picked by
     /// `SmartInsightsEngine`. `nil` while computing or when nothing
     /// clears the relevance bar.
@@ -64,7 +69,6 @@ struct TodayView: View {
     @State private var recomputeTask: Task<Void, Never>? = nil
     @State private var animateSections = false
 
-    @State private var showingProfile = false
     @State private var editingExpense: Expense? = nil
 
     /// Cross-tab handoff: tapping "See all activity" tells the parent
@@ -107,13 +111,6 @@ struct TodayView: View {
         .onChange(of: viewModel.expenses.count) { _, _ in scheduleRecompute() }
         .onChange(of: viewModel.selectedCurrency) { _, _ in scheduleRecompute() }
         .onChange(of: budgetViewModel.budgetProgress) { _, _ in scheduleRecompute() }
-        .sheet(isPresented: $showingProfile) {
-            ProfileView()
-                .environmentObject(viewModel)
-                .environmentObject(categoryViewModel)
-                .environmentObject(budgetViewModel)
-                .environmentObject(proManager)
-        }
         .sheet(item: $editingExpense) { expense in
             AddExpenseView(
                 viewModel: viewModel,
@@ -150,31 +147,24 @@ struct TodayView: View {
 
     // MARK: - Header
     //
-    // Minimal. Greeting + name on the left, profile icon on the right.
-    // No search icon — search is in the Activity tab's nav bar now,
-    // which is where browsing happens (Today is a status screen, not
-    // a browsing surface).
+    // Minimal by design. Greeting + name only.
+    //
+    // The v1 Home header had Search + Profile shortcuts because Profile
+    // was sheet-only (no tab) and search was buried inside All
+    // Expenses. Both jobs got promoted to top-level navigation in v2:
+    // Activity owns search (in its nav bar), You owns Profile (its own
+    // tab). The Today header is now purely identifying — no controls
+    // competing with the verdict hero for attention.
     private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(greeting)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                Text(viewModel.userName)
-                    .font(Theme.Typography.pageTitle)
-                    .foregroundColor(.primary)
-            }
-            Spacer()
-            Button {
-                HapticManager.shared.lightTap()
-                showingProfile = true
-            } label: {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(.appPrimary)
-            }
-            .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(greeting)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Text(viewModel.userName)
+                .font(Theme.Typography.pageTitle)
+                .foregroundColor(.primary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var greeting: String {
@@ -215,9 +205,22 @@ struct TodayView: View {
     private func verdictCard(_ v: TodayVerdict) -> some View {
         HStack(alignment: .center, spacing: Theme.Spacing.xl) {
             VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                // Verdict pill + days-left
+                // Verdict pill + days-left.
+                //
+                // When the status is `.neutral` (user has no budgets
+                // at all) we deliberately don't show a verdict pill —
+                // a verdict implies a target, and there isn't one yet.
+                // Instead we show a calm "This month" label so the
+                // card still has a header without lying about pace.
                 HStack(spacing: Theme.Spacing.sm) {
-                    verdictPill(v.status)
+                    if v.status == .neutral {
+                        Text("THIS MONTH")
+                            .font(.caption2.weight(.semibold))
+                            .tracking(0.6)
+                            .foregroundColor(.secondary)
+                    } else {
+                        verdictPill(v.status)
+                    }
                     if let daysLeft = v.daysLeft {
                         Text("\(daysLeft) days left")
                             .font(Theme.Typography.caption)
@@ -226,8 +229,12 @@ struct TodayView: View {
                 }
 
                 // Hero number — the spend, made big.
+                // Monospaced digits + rounded design = the "premium
+                // finance display" treatment Copilot/Monarch use. The
+                // digits never jiggle as the value animates.
                 Text(viewModel.formattedAmount(v.spent))
                     .font(.system(size: 44, weight: .bold, design: .rounded))
+                    .monospacedDigit()
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -302,22 +309,43 @@ struct TodayView: View {
     // you see "spent more on Wednesday, and it was mostly Food."
     private var weekStripSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack {
-                Text("This week")
+            HStack(alignment: .firstTextBaseline) {
+                Text(weekStripHeaderTitle)
                     .font(Theme.Typography.sectionTitle)
                     .foregroundColor(.primary)
                 Spacer()
-                if let total = weekStripTotal {
-                    Text(viewModel.formattedAmount(total))
+                if let amount = weekStripHeaderAmount {
+                    Text(viewModel.formattedAmount(amount))
                         .font(Theme.Typography.numericSmall)
+                        .monospacedDigit()
                         .foregroundColor(.secondary)
                         .contentTransition(.numericText())
-                        .moneyAnimation(amount: total, currency: viewModel.selectedCurrency)
+                        .moneyAnimation(amount: amount, currency: viewModel.selectedCurrency)
                 }
             }
-            HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
-                ForEach(weekStrip, id: \.dateKey) { day in
-                    weekStripBar(day: day)
+            ZStack(alignment: .bottom) {
+                // Baseline ground line — anchors the bars and gives
+                // the strip a clear "floor". Without this the bars
+                // floated and the strip felt unfinished.
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.08))
+                    .frame(height: 1)
+                    .padding(.bottom, 20)
+
+                HStack(alignment: .bottom, spacing: Theme.Spacing.sm) {
+                    ForEach(weekStrip, id: \.dateKey) { day in
+                        weekStripBar(day: day)
+                            .onTapGesture {
+                                HapticManager.shared.selectionChanged()
+                                withAnimation(Theme.Motion.snappy) {
+                                    if selectedWeekDay?.dateKey == day.dateKey {
+                                        selectedWeekDay = nil
+                                    } else {
+                                        selectedWeekDay = day
+                                    }
+                                }
+                            }
+                    }
                 }
             }
             .frame(height: 88)
@@ -326,27 +354,51 @@ struct TodayView: View {
         .cardSurface()
     }
 
-    private var weekStripTotal: Double? {
-        guard !weekStrip.isEmpty else { return nil }
-        let t = weekStrip.reduce(0) { $0 + $1.amount }
-        return t
+    private var weekStripHeaderTitle: String {
+        if let selected = selectedWeekDay {
+            return Self.selectedDayFormatter.string(from: selected.date)
+        }
+        return "This week"
     }
+
+    private var weekStripHeaderAmount: Double? {
+        if let selected = selectedWeekDay {
+            return selected.amount
+        }
+        guard !weekStrip.isEmpty else { return nil }
+        return weekStrip.reduce(0) { $0 + $1.amount }
+    }
+
+    private static let selectedDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE, MMM d"
+        return f
+    }()
 
     private func weekStripBar(day: WeekStripDay) -> some View {
         let maxAmount = max(weekStrip.map(\.amount).max() ?? 1, 0.01)
         let normalized = day.amount / maxAmount
-        let barHeight = max(4, CGFloat(normalized) * 60)
-        let tint = day.tint ?? Color.appPrimary.opacity(0.35)
+        let barHeight = max(3, CGFloat(normalized) * 56)
+        let baseTint = day.tint ?? Color.appPrimary.opacity(0.28)
+        let isSelected = selectedWeekDay?.dateKey == day.dateKey
+        let fill: Color = {
+            if day.isToday { return Color.appPrimary }
+            if isSelected { return baseTint }
+            return baseTint.opacity(selectedWeekDay == nil ? 1 : 0.4)
+        }()
         return VStack(spacing: 6) {
             Spacer(minLength: 0)
             RoundedRectangle(cornerRadius: 4)
-                .fill(day.isToday ? Color.appPrimary : tint)
-                .frame(height: barHeight)
+                .fill(fill)
+                .frame(width: isSelected ? 22 : 18, height: barHeight)
+                .animation(Theme.Motion.snappy, value: isSelected)
+                .animation(Theme.Motion.snappy, value: selectedWeekDay?.dateKey)
             Text(day.shortLabel)
                 .font(.system(size: 11, weight: day.isToday ? .semibold : .regular, design: .rounded))
                 .foregroundColor(day.isToday ? .primary : .secondary)
         }
         .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Recent (top 3)

@@ -143,6 +143,28 @@ struct StatisticsView: View {
                 withAnimation(.easeOut(duration: 0.6).delay(0.1)) {
                     animateCards = true
                 }
+                // v2 IA fix: Insights inherits Today's filter state on
+                // appear so the two tabs never give different answers
+                // to the same question. The IA audit flagged "split-
+                // brain timeframe" as the biggest trust-erosion bug:
+                // a user tapped a pinned category on Home, switched to
+                // Stats expecting it filtered, and got the full month
+                // instead. Insights retains its custom-date-range
+                // override (date range is an Insights-only concept)
+                // but the preset timeframe and category selection
+                // mirror Today on every visit.
+                let inheritedTimeFrame = viewModel.selectedTimeFrame
+                let inheritedCategory = viewModel.selectedCategory
+                let inheritedCustomId = viewModel.selectedCustomCategoryId
+                if selectedTimeFrame != inheritedTimeFrame {
+                    selectedTimeFrame = inheritedTimeFrame
+                }
+                if selectedCategory != inheritedCategory {
+                    selectedCategory = inheritedCategory
+                }
+                if selectedCustomCategoryId != inheritedCustomId {
+                    selectedCustomCategoryId = inheritedCustomId
+                }
                 if !didInitializeRange {
                     didInitializeRange = true
                     applyPresetTimeFrame(selectedTimeFrame)
