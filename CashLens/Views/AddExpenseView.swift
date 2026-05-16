@@ -655,7 +655,6 @@ struct AddExpenseView: View {
                 .padding(.horizontal, Theme.Spacing.xl)
                 .padding(.vertical, Theme.Spacing.lg)
                 .cardSurface()
-                .softShadow()
             }
             .buttonStyle(PlainButtonStyle())
 

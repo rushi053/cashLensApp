@@ -172,7 +172,6 @@ struct CustomCategoryForm: View {
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.vertical, Theme.Spacing.lg)
         .cardSurface()
-        .softShadow()
     }
 
     // MARK: - Name
@@ -498,7 +497,6 @@ struct IconPickerView: View {
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.vertical, Theme.Spacing.md)
         .cardSurface()
-        .softShadow()
     }
 
     private func section(_ group: CustomCategory.IconGroup) -> some View {

@@ -2,17 +2,33 @@ import SwiftUI
 
 /// Canonical settings / menu row.
 ///
-/// Replaces the many variants of `HStack { Image … Text … Spacer … Image(chevron) }`
-/// rows spread across `ProfileView`, `ExportDataView`, `ImportDataView`, etc.
-/// The row itself is not a Button — tap handling is up to the caller so it plays
-/// nicely with `.onTapGesture`, `NavigationLink`, or sheet triggers.
+/// Ships in two visual modes:
+///
+///   • **`.standalone`** (default) — self-contained card with its
+///     own `.cardSurface()` background. Right call when the row is
+///     by itself (e.g. the lone "Clear All Data" row in About).
+///
+///   • **`.bare`** — no background. Meant to be embedded inside a
+///     `SettingsGroup` that provides one shared container for a
+///     small cluster of rows, separated by hairlines — the iOS
+///     Settings-app grouping pattern, instead of N visually-
+///     elevated tiles stacking on each other.
+///
+/// The row itself is not a Button — tap handling is up to the caller
+/// so it plays nicely with `.onTapGesture`, `NavigationLink`, or sheet
+/// triggers.
 struct SettingsRow<Trailing: View>: View {
     let icon: String
     var iconTint: Color = .appPrimary
     let title: String
     var subtitle: String? = nil
     var showsChevron: Bool = true
+    var style: Style = .standalone
     @ViewBuilder var trailing: () -> Trailing
+
+    enum Style: Equatable {
+        case standalone, bare
+    }
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
@@ -42,9 +58,25 @@ struct SettingsRow<Trailing: View>: View {
                     .foregroundColor(.secondary)
             }
         }
-        .padding(Theme.Spacing.lg)
-        .cardSurface(radius: Theme.Radius.row)
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, style == .bare ? Theme.Spacing.md : Theme.Spacing.lg)
+        .background(rowBackground)
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if style == .standalone {
+            RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                .fill(Color(uiColor: .systemBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                )
+                .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        } else {
+            Color.clear
+        }
     }
 }
 
@@ -54,14 +86,79 @@ extension SettingsRow where Trailing == EmptyView {
         iconTint: Color = .appPrimary,
         title: String,
         subtitle: String? = nil,
-        showsChevron: Bool = true
+        showsChevron: Bool = true,
+        style: Style = .standalone
     ) {
         self.icon = icon
         self.iconTint = iconTint
         self.title = title
         self.subtitle = subtitle
         self.showsChevron = showsChevron
+        self.style = style
         self.trailing = { EmptyView() }
+    }
+}
+
+/// Container that wraps a small cluster of `.bare`-style settings
+/// rows in one elevated card with leading-inset hairlines between
+/// them. Optional `title` is rendered above the group as a small
+/// section eyebrow — the iOS-native settings grouping treatment.
+///
+/// Usage:
+/// ```
+/// SettingsGroup(title: "Preferences") {
+///     SettingsRow(icon: "globe", title: "Currency", style: .bare) {
+///         SettingsRowValue(text: "USD")
+///     }
+///     SettingsRow(icon: "moon", title: "Appearance", style: .bare) {
+///         SettingsRowValue(text: "System")
+///     }
+/// }
+/// ```
+struct SettingsGroup<Content: View>: View {
+    let title: String?
+    @ViewBuilder var content: () -> Content
+
+    init(title: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            if let title {
+                Text(title.uppercased())
+                    .font(.caption2.weight(.semibold))
+                    .tracking(0.8)
+                    .foregroundColor(.secondary)
+                    .padding(.leading, Theme.Spacing.md)
+            }
+            VStack(spacing: 0) {
+                _VariadicView.Tree(SettingsGroupLayout()) {
+                    content()
+                }
+            }
+            .cardSurface()
+        }
+    }
+}
+
+/// Variadic layout that draws a leading-inset divider between
+/// each child row. Uses SwiftUI's underscored variadic API — the
+/// standard way to inject a separator pattern between an unknown
+/// number of children (the same primitive `_VStackLayout` and
+/// `ForEach` use internally).
+private struct SettingsGroupLayout: _VariadicView_UnaryViewRoot {
+    @ViewBuilder
+    func body(children: _VariadicView.Children) -> some View {
+        let array = Array(children)
+        ForEach(Array(array.enumerated()), id: \.element.id) { idx, child in
+            child
+            if idx < array.count - 1 {
+                Divider()
+                    .padding(.leading, Theme.Spacing.lg + 30 + Theme.Spacing.md)
+            }
+        }
     }
 }
 
@@ -81,6 +178,7 @@ struct SettingsRowValue: View {
 struct SettingsRowDestructive: View {
     let icon: String
     let title: String
+    var style: SettingsRow<EmptyView>.Style = .standalone
 
     var body: some View {
         HStack(spacing: Theme.Spacing.md) {
@@ -94,9 +192,25 @@ struct SettingsRowDestructive: View {
 
             Spacer()
         }
-        .padding(Theme.Spacing.lg)
-        .cardSurface(radius: Theme.Radius.row)
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, style == .bare ? Theme.Spacing.md : Theme.Spacing.lg)
+        .background(rowBackground)
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var rowBackground: some View {
+        if style == .standalone {
+            RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                .fill(Color(uiColor: .systemBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                )
+                .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        } else {
+            Color.clear
+        }
     }
 }
 

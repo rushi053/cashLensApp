@@ -1313,45 +1313,48 @@ struct AllExpensesView: View {
     
     private func dateGroupView(index: Int, dateGroup: (Date, [Expense])) -> some View {
         let (date, expenses) = dateGroup
-        
+
+        // Header + rows are wrapped in one elevated `.cardSurface()`
+        // tile (same as Today's Recent block). Rows underneath use
+        // `.bare` style with hairline separators between them so the
+        // group reads as one cohesive day — not several nested
+        // shadow stacks (the old structure painted shadows on each
+        // ExpenseCard AND on the wrapper, the visible weight of
+        // which was the audit's #1 visual-noise finding).
         return VStack(spacing: 0) {
-            // Date header with gradient background
             dateHeaderView(date: date, expenses: expenses)
-            
-            // Expenses for this date
+            Divider()
+                .padding(.leading, Theme.Spacing.lg)
             expensesListView(date: date, expenses: expenses, groupIndex: index)
         }
+        .cardSurface()
         .padding(.horizontal)
-        .padding(.top, index == 0 ? 8 : 16)
+        .padding(.top, index == 0 ? 8 : 14)
     }
-    
+
     private func dateHeaderView(date: Date, expenses: [Expense]) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+        HStack(spacing: Theme.Spacing.md) {
+            dateBadgeView(date: date)
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(formatDate(date))
-                    .font(Theme.Typography.subsectionTitle)
-                    .fontWeight(.bold)
+                    .font(Theme.Typography.rowTitle)
                     .foregroundColor(.primary)
 
                 // Refund-aware day total so a return on a busy day actually
                 // reduces the header number.
                 let totalForDay = expenses.netTotal()
-                Text("Total: \(viewModel.formattedAmount(totalForDay))")
-                    .font(.subheadline)
+                let count = expenses.count
+                Text("\(count) \(count == 1 ? "expense" : "expenses") · \(viewModel.formattedAmount(totalForDay))")
+                    .font(.caption)
                     .foregroundColor(.secondary)
+                    .monospacedDigit()
             }
 
-            Spacer()
-
-            dateBadgeView(date: date)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.vertical, Theme.Spacing.md)
-        // Match the body so the whole day-group reads as one cohesive
-        // white card (header + rows + footer) rather than a grey-capped
-        // tile.
-        .background(Color(uiColor: .systemBackground))
-        .cornerRadius(Theme.Radius.card, corners: [.topLeft, .topRight])
     }
 
     /// Hoisted so the day header doesn't allocate two `DateFormatter`s
@@ -1369,51 +1372,60 @@ struct AllExpensesView: View {
     }()
 
     private func dateBadgeView(date: Date) -> some View {
-        return ZStack {
-            RoundedRectangle(cornerRadius: Theme.Spacing.sm, style: .continuous)
-                .fill(Color.appPrimary)
-                .opacity(0.85)
-                .frame(width: 40, height: 40)
+        // Softer treatment — tinted background + colored numerals
+        // instead of the old fully-filled appPrimary square. Reads
+        // as a calendar chip, not a callout pill, which matches the
+        // new "data first, decoration second" rhythm.
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.appPrimary.opacity(0.12))
+                .frame(width: 42, height: 42)
 
             VStack(spacing: 0) {
                 Text(Self.badgeDayFormatter.string(from: date))
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.white)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.appPrimary)
+                    .monospacedDigit()
 
                 Text(Self.badgeMonthFormatter.string(from: date))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.white.opacity(0.9))
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(0.5)
+                    .foregroundColor(Color.appPrimary.opacity(0.8))
             }
         }
     }
 
     private func expensesListView(date: Date, expenses: [Expense], groupIndex: Int) -> some View {
-        // NOTE: The `.softShadow()` that used to live here stacked with the
-        // shadow each `ExpenseCard` inside already paints — two shadow
-        // passes per visible cell when scrolling, which is the #1 cause
-        // of jitter for users with many expenses. The cards' built-in
-        // elevation now carries the depth; this container is just the
-        // bottom corner-rounded white slab beneath them.
-        VStack(spacing: 1) {
+        // Rows use the `.bare` ExpenseCard style. Each row is
+        // separated by a leading-inset hairline so the group reads
+        // as one cohesive day (instead of N visually-elevated tiles
+        // stacked on each other). No background here — the parent
+        // `.cardSurface()` provides it.
+        VStack(spacing: 0) {
             ForEach(Array(expenses.enumerated()), id: \.element.id) { expenseIndex, expense in
                 expenseRowView(expense: expense, groupIndex: groupIndex, expenseIndex: expenseIndex)
+                if expenseIndex < expenses.count - 1 {
+                    Divider()
+                        .padding(.leading, Theme.Spacing.lg + 42 + Theme.Spacing.md)
+                }
             }
         }
-        .background(Color.systemBackground)
-        .cornerRadius(Theme.Radius.card, corners: [.bottomLeft, .bottomRight])
     }
 
     private func expenseRowView(expense: Expense, groupIndex: Int, expenseIndex: Int) -> some View {
         HStack(spacing: Theme.Spacing.sm) {
             if isSelecting {
                 selectionCheckbox(for: expense)
+                    .padding(.leading, Theme.Spacing.lg)
             }
-            ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
+            ExpenseCard(
+                expense: expense,
+                viewModel: viewModel,
+                categoryViewModel: categoryViewModel,
+                style: .bare
+            )
                 .equatable()
         }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.sm)
-            .background(Color.systemBackground)
             .contentShape(Rectangle())
             .onTapGesture {
                 handleRowTap(expense: expense)

@@ -90,7 +90,12 @@ struct StatisticsView: View {
     
     // Donut selection is highlight-only (keeps animation smooth without triggering full stats recompute).
     @State private var donutSelectedId: String? = nil
-    
+
+    // Monthly Recap (Pro). Computed lazily when the user taps the
+    // launch card — it's not on the critical render path.
+    @State private var showingMonthlyRecap = false
+    @State private var monthlyRecapResult: MonthlyRecap? = nil
+
     // MARK: - Computed Properties
 
     // Note: A `filteredExpenses` computed property used to live here. It ran
@@ -237,6 +242,138 @@ struct StatisticsView: View {
         .onChange(of: viewModel.selectedCurrency) {
             scheduleRecomputeStats(immediate: true)
         }
+        .fullScreenCover(isPresented: $showingMonthlyRecap) {
+            if let recap = monthlyRecapResult {
+                MonthlyRecapView(
+                    recap: recap,
+                    currencySymbol: viewModel.selectedCurrency.symbol,
+                    formattedAmount: viewModel.formattedAmount
+                )
+            }
+        }
+    }
+
+    // MARK: - Monthly Recap launch card
+
+    /// True when there's at least one expense in the previous
+    /// calendar month — i.e. the recap will have something to say.
+    private var hasPreviousMonthData: Bool {
+        let cal = Calendar.current
+        guard let prevMonthDate = cal.date(byAdding: .month, value: -1, to: Date()),
+              let interval = cal.dateInterval(of: .month, for: prevMonthDate) else {
+            return false
+        }
+        return viewModel.expenses.contains { expense in
+            interval.contains(expense.date)
+        }
+    }
+
+    private var monthlyRecapLaunchCard: some View {
+        Button {
+            HapticManager.shared.mediumTap()
+            if proManager.isPro {
+                computeMonthlyRecap()
+            } else {
+                showingPaywall = true
+            }
+        } label: {
+            HStack(spacing: Theme.Spacing.md + 2) {
+                ZStack {
+                    Circle()
+                        .fill(Color.appPrimary.opacity(0.14))
+                        .frame(width: 50, height: 50)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundColor(.appPrimary)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(monthlyRecapMonthName.uppercased())
+                            .font(.caption2.weight(.semibold))
+                            .tracking(0.8)
+                            .foregroundColor(.appPrimary)
+                        if !proManager.isPro {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.appPrimary)
+                        }
+                    }
+                    Text("Your monthly recap is ready")
+                        .font(Theme.Typography.rowTitle)
+                        .foregroundColor(.primary)
+                    Text(proManager.isPro
+                         ? "A 7-page story of last month — tap to open."
+                         : "Pro members get a swipeable story of last month.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(Theme.Spacing.lg)
+            .cardSurface()
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .stroke(Color.appPrimary.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+
+    private var monthlyRecapMonthName: String {
+        let cal = Calendar.current
+        guard let prev = cal.date(byAdding: .month, value: -1, to: Date()) else {
+            return "Recap"
+        }
+        let f = DateFormatter()
+        f.dateFormat = "MMMM"
+        return f.string(from: prev)
+    }
+
+    /// Compute the recap off the main actor and present it. Captures
+    /// the relevant expense slice + category-name closure as
+    /// `Sendable` inputs so the detached task is safe.
+    private func computeMonthlyRecap() {
+        let cal = Calendar.current
+        guard let prevMonthDate = cal.date(byAdding: .month, value: -1, to: Date()),
+              let thisInterval = cal.dateInterval(of: .month, for: prevMonthDate),
+              let twoBackDate = cal.date(byAdding: .month, value: -1, to: prevMonthDate),
+              let prevInterval = cal.dateInterval(of: .month, for: twoBackDate) else {
+            return
+        }
+        let allExpenses = viewModel.expenses
+        let thisMonth = allExpenses.filter { thisInterval.contains($0.date) }
+        let previousMonth = allExpenses.filter { prevInterval.contains($0.date) }
+
+        // Build a Sendable, snapshot-style category name lookup so
+        // the engine never touches a Core Data managed object on
+        // the background actor.
+        let customLookup: [UUID: String] = Dictionary(
+            uniqueKeysWithValues: categoryViewModel.customCategories.map { ($0.id, $0.name) }
+        )
+        let resolver: @Sendable (Expense) -> String = { expense in
+            if expense.category == .custom, let id = expense.customCategoryId,
+               let name = customLookup[id] {
+                return name
+            }
+            return expense.category.displayName
+        }
+
+        Task.detached(priority: .userInitiated) {
+            let recap = MonthlyRecapEngine.compute(
+                targetMonth: prevMonthDate,
+                thisMonthExpenses: thisMonth,
+                previousMonthExpenses: previousMonth,
+                categoryDisplayName: resolver
+            )
+            await MainActor.run {
+                self.monthlyRecapResult = recap
+                self.showingMonthlyRecap = true
+            }
+        }
     }
     
     // MARK: - Header Section
@@ -248,12 +385,12 @@ struct StatisticsView: View {
 
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Statistics")
+                    Text("Insights")
                         .font(Theme.Typography.pageTitle)
                         .foregroundColor(.primary)
 
                     Text(getHeaderSubtitle())
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
 
@@ -866,6 +1003,16 @@ struct StatisticsView: View {
     // spring-in cascade so the screen feels unified.
     private var statisticsContent: some View {
         VStack(spacing: Theme.Spacing.xxl) {
+            // Monthly Recap launch card. Surfaces when the previous
+            // calendar month has at least one expense (otherwise
+            // there's nothing to recap). Pro feature; free users see
+            // a soft-locked teaser so they understand what they're
+            // missing.
+            if hasPreviousMonthData {
+                monthlyRecapLaunchCard
+                    .modifier(SectionEntrance(order: -1, animate: animateCards))
+            }
+
             heroOverviewSection
                 .modifier(SectionEntrance(order: 0, animate: animateCards))
 
@@ -975,7 +1122,8 @@ struct StatisticsView: View {
                 }
 
                 Text(viewModel.formattedAmount(totalExpenses()))
-                    .font(.system(size: isWideLayout ? 44 : 38, weight: .bold, design: .rounded))
+                    .font(.system(size: isWideLayout ? 46 : 40, weight: .bold, design: .rounded))
+                    .monospacedDigit()
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
@@ -1001,8 +1149,12 @@ struct StatisticsView: View {
         }
         .padding(Theme.Spacing.xl)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Single elevation via `.cardSurface()` — the explicit
+        // `.shadow(...)` after `.cardSurface(...)` was painting a
+        // second shadow on top of the one the modifier already
+        // applies. The audit flagged this as the cause of the
+        // "smudgy" feel on the Insights hero on dark backgrounds.
         .cardSurface(radius: Theme.Radius.container)
-        .shadow(color: Theme.Shadow.cardColor, radius: Theme.Shadow.cardRadius, x: 0, y: Theme.Shadow.cardY)
     }
 
     /// Compact chip in the hero top-right showing the active category filter.
@@ -1130,6 +1282,7 @@ struct StatisticsView: View {
             if let amount = moneyAmount {
                 Text(value)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -1138,6 +1291,7 @@ struct StatisticsView: View {
             } else {
                 Text(value)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -1794,7 +1948,6 @@ struct StatisticsView: View {
         }
         .padding(Theme.Spacing.lg)
         .cardSurface(radius: Theme.Radius.chip)
-        .softShadow()
     }
 
     /// Renders a single category row. When `isSelected` is true, the row gets a

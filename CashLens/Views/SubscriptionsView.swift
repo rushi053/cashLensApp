@@ -159,7 +159,8 @@ struct SubscriptionsView: View {
 
             Text(subscriptionViewModel
                 .formattedTotalMonthlyAmount(currency: expenseViewModel.selectedCurrency))
-                .font(.system(size: 38, weight: .bold, design: .rounded))
+                .font(.system(size: 40, weight: .bold, design: .rounded))
+                .monospacedDigit()
                 .foregroundColor(.primary)
                 .contentTransition(.numericText())
                 .moneyAnimation(amount: subscriptionViewModel.totalMonthlyAmount,
@@ -179,7 +180,6 @@ struct SubscriptionsView: View {
         .padding(Theme.Spacing.xl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
-        .softShadow()
     }
 
     private func nextUpRow(_ sub: Subscription) -> some View {
@@ -697,7 +697,6 @@ private struct MonthlySpendingBreakdownSheet: View {
         .padding(Theme.Spacing.xl)
         .frame(maxWidth: .infinity)
         .cardSurface()
-        .softShadow()
     }
 
     // MARK: - Explanation
@@ -796,7 +795,6 @@ private struct MonthlySpendingBreakdownSheet: View {
             }
         }
         .cardSurface()
-        .softShadow()
     }
 
     private func breakdownRow(_ sub: Subscription) -> some View {

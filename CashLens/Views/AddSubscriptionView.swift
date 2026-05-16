@@ -545,7 +545,6 @@ struct AddSubscriptionView: View {
                 }
             }
             .cardSurface()
-            .softShadow()
         }
     }
 

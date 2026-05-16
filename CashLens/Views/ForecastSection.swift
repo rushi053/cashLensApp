@@ -192,7 +192,6 @@ struct ForecastSection: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
-        .softShadow()
     }
 
     private var confidenceRow: some View {
@@ -288,7 +287,6 @@ struct ForecastSection: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
         .cardSurface()
-        .softShadow()
     }
 
     private var topDriverCard: some View {
@@ -332,7 +330,6 @@ struct ForecastSection: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
         .cardSurface()
-        .softShadow()
     }
 
     // MARK: - Empty / limited states
@@ -358,7 +355,6 @@ struct ForecastSection: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
-        .softShadow()
     }
 
     private var limitedDataNote: some View {
@@ -401,7 +397,7 @@ struct ForecastSection: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("See Where You're Heading")
-                            .font(.headline)
+                            .font(Theme.Typography.rowTitle)
                             .foregroundColor(.primary)
                         Text("Pro forecasts the next 30, 60, or 90 days using your habits and known subscriptions — with a confidence band so you know what's certain and what isn't.")
                             .font(.subheadline)

@@ -399,7 +399,6 @@ struct BudgetSetupView: View {
                 )
             }
             .cardSurface()
-            .softShadow()
         }
     }
 

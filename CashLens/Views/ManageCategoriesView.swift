@@ -111,7 +111,6 @@ struct ManageCategoriesView: View {
                 }
             }
             .cardSurface()
-            .softShadow()
         }
     }
 
@@ -126,7 +125,6 @@ struct ManageCategoriesView: View {
                 }
             }
             .cardSurface()
-            .softShadow()
         }
     }
 
@@ -141,7 +139,6 @@ struct ManageCategoriesView: View {
                 }
             }
             .cardSurface()
-            .softShadow()
         }
     }
 

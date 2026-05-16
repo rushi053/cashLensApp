@@ -247,23 +247,25 @@ struct ProfileView: View {
     /// chip replaces the pencil. No more "Edit Profile" pill — the name itself is
     /// the affordance.
     private var profileHeader: some View {
-        VStack(spacing: Theme.Spacing.md) {
+        // Compact horizontal treatment for the tab-root presentation
+        // — avatar left, name right. The old vertical "centered hero"
+        // shape was right when Profile was a sheet you opened
+        // intentionally; as a permanent tab you want fast scanning,
+        // not a portrait.
+        HStack(spacing: Theme.Spacing.md + 2) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient.appPrimaryDiagonal)
-                    .frame(width: 72, height: 72)
-                    .primaryGlow(strength: 0.25)
-
+                    .fill(Color.appPrimary)
+                    .frame(width: 54, height: 54)
                 Text(String(viewModel.userName.prefix(1)).uppercased())
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
             }
 
             if isEditingName {
                 HStack(spacing: Theme.Spacing.sm) {
                     TextField("Your Name", text: $tempUserName)
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                        .multilineTextAlignment(.center)
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
                         .padding(.horizontal, Theme.Spacing.md)
                         .padding(.vertical, Theme.Spacing.sm + 2)
                         .background(Color.secondarySystemBackground)
@@ -282,29 +284,31 @@ struct ProfileView: View {
                     }
                     .buttonStyle(ScaleButtonStyle())
                 }
-                .padding(.horizontal, Theme.Spacing.xl)
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
                 Button(action: beginEditingName) {
-                    HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(viewModel.userName)
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
                             .lineLimit(1)
-
-                        Image(systemName: "pencil")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.appPrimary)
-                            .padding(5)
-                            .background(Color.appPrimary.opacity(0.12))
-                            .clipShape(Circle())
+                        HStack(spacing: 4) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Tap to edit")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.secondary)
                     }
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity)
             }
+
+            Spacer(minLength: 0)
         }
         .padding(.top, Theme.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .animation(Theme.Motion.snappy, value: isEditingName)
     }
 
@@ -353,7 +357,7 @@ struct ProfileView: View {
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                 Text("CashLens Pro")
-                    .font(.headline)
+                    .font(Theme.Typography.rowTitle)
                     .foregroundColor(.primary)
                 Text("All features unlocked")
                     .font(.caption)
@@ -399,7 +403,7 @@ struct ProfileView: View {
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("Upgrade to Pro")
-                        .font(.headline)
+                        .font(Theme.Typography.rowTitle)
                         .foregroundColor(.primary)
                     Text("Budgets, tags, PDF reports & more")
                         .font(.caption)
@@ -491,17 +495,18 @@ struct ProfileView: View {
     /// "Support the App" was moved to the About section since it's an action,
     /// not a preference.
     private var preferencesSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            SectionHeader("Preferences")
-                .padding(.bottom, Theme.Spacing.xs)
-
+        // v2 polish: each settings section is now ONE elevated card
+        // with hairline-separated bare rows (the iOS Settings-app
+        // grouping). The old "every row is its own card" treatment
+        // produced ~12 stacked cards on the You tab — visually noisy
+        // and inconsistent with the rest of iOS.
+        SettingsGroup(title: "Preferences") {
             currencyRow
             appearanceMenuRow
             timeFrameMenuRow
             budgetManagementRow
             subscriptionsRow
         }
-        .sectionContainer()
         .sheet(isPresented: $showingBudgetList) {
             BudgetListView()
                 .environmentObject(budgetViewModel)
@@ -522,7 +527,7 @@ struct ProfileView: View {
     /// It now lives under "You → Subscriptions" (manage list) and
     /// is also reachable as a filter chip inside the Activity tab.
     private var subscriptionsRow: some View {
-        SettingsRow(icon: "creditcard.and.123", title: "Subscriptions") {
+        SettingsRow(icon: "creditcard.and.123", title: "Subscriptions", style: .bare) {
             EmptyView()
         }
         .onTapGesture {
@@ -532,7 +537,7 @@ struct ProfileView: View {
     }
 
     private var currencyRow: some View {
-        SettingsRow(icon: "dollarsign.circle.fill", title: "Default Currency") {
+        SettingsRow(icon: "dollarsign.circle.fill", title: "Default Currency", style: .bare) {
             SettingsRowValue(text: "\(viewModel.selectedCurrency.symbol) \(viewModel.selectedCurrency.rawValue)")
         }
         .onTapGesture {
@@ -559,7 +564,7 @@ struct ProfileView: View {
                 }
             }
         } label: {
-            SettingsRow(icon: "moon.fill", title: "Appearance", showsChevron: false) {
+            SettingsRow(icon: "moon.fill", title: "Appearance", showsChevron: false, style: .bare) {
                 HStack(spacing: 4) {
                     SettingsRowValue(text: viewModel.appearanceMode.rawValue)
                     Image(systemName: "chevron.up.chevron.down")
@@ -586,7 +591,7 @@ struct ProfileView: View {
                 }
             }
         } label: {
-            SettingsRow(icon: "calendar.badge.clock", title: "Default Time Frame", showsChevron: false) {
+            SettingsRow(icon: "calendar.badge.clock", title: "Default Time Frame", showsChevron: false, style: .bare) {
                 HStack(spacing: 4) {
                     SettingsRowValue(text: viewModel.defaultHomeTimeFrame.rawValue)
                     Image(systemName: "chevron.up.chevron.down")
@@ -598,7 +603,7 @@ struct ProfileView: View {
     }
 
     private var budgetManagementRow: some View {
-        SettingsRow(icon: "target", title: "Manage Budgets") {
+        SettingsRow(icon: "target", title: "Manage Budgets", style: .bare) {
             if !budgetViewModel.activeBudgets.isEmpty {
                 Text("\(budgetViewModel.activeBudgets.count) active")
                     .font(.caption)
@@ -622,21 +627,17 @@ struct ProfileView: View {
     /// without competing with the system-level appearance toggle that stays
     /// in Preferences.
     private var personalizationSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            SectionHeader("Personalization")
-                .padding(.bottom, Theme.Spacing.xs)
-
+        SettingsGroup(title: "Personalization") {
             colorThemeRow
             appIconRow
         }
-        .sectionContainer()
     }
 
     /// Color Theme row. Trailing slot shows a circular swatch in the active
     /// theme's primary color so the user can see what's applied at a glance,
     /// plus the theme name for clarity. Free users see a "Pro" pill instead.
     private var colorThemeRow: some View {
-        SettingsRow(icon: "paintpalette.fill", title: "Color Theme", showsChevron: true) {
+        SettingsRow(icon: "paintpalette.fill", title: "Color Theme", showsChevron: true, style: .bare) {
             HStack(spacing: Theme.Spacing.sm) {
                 if proManager.isPro {
                     Text(themeStore.currentTheme.displayName)
@@ -671,7 +672,7 @@ struct ProfileView: View {
     @ViewBuilder
     private var appIconRow: some View {
         if UIApplication.shared.supportsAlternateIcons {
-            SettingsRow(icon: "app.badge.fill", title: "App Icon", showsChevron: true) {
+            SettingsRow(icon: "app.badge.fill", title: "App Icon", showsChevron: true, style: .bare) {
                 HStack(spacing: Theme.Spacing.sm) {
                     if proManager.isPro {
                         Text(appIconStore.currentIcon.displayName)
@@ -723,10 +724,7 @@ struct ProfileView: View {
     /// "Schedule" / "Monthly Schedule" / "Backup Schedule"), and shorter
     /// subtitles to reduce visual weight.
     private var remindersSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            SectionHeader("Reminders")
-                .padding(.bottom, Theme.Spacing.xs)
-
+        SettingsGroup(title: "Reminders") {
             weeklySummaryToggleRow
             if weeklySummaryEnabled {
                 scheduleRow(
@@ -768,7 +766,6 @@ struct ProfileView: View {
 
             smartInsightsToggleRow
         }
-        .sectionContainer()
         .sheet(isPresented: $showingWeeklySummarySchedule) {
             weeklySummaryScheduleSheet
         }
@@ -787,7 +784,7 @@ struct ProfileView: View {
         enabled: Bool,
         onTap: @escaping () -> Void
     ) -> some View {
-        SettingsRow(icon: "calendar.badge.clock", title: label) {
+        SettingsRow(icon: "calendar.badge.clock", title: label, style: .bare) {
             SettingsRowValue(text: value)
         }
         .opacity(enabled ? 1.0 : 0.5)
@@ -803,7 +800,8 @@ struct ProfileView: View {
             icon: "bell.badge.fill",
             title: "Weekly Digest",
             subtitle: "Spending summary every week.",
-            showsChevron: false
+            showsChevron: false,
+            style: .bare
         ) {
             Toggle("", isOn: Binding(
                 get: { weeklySummaryEnabled },
@@ -839,7 +837,8 @@ struct ProfileView: View {
             subtitle: proManager.isPro
                 ? "One push only when something interesting happens."
                 : "Unlock weekly highlights powered by your data.",
-            showsChevron: false
+            showsChevron: false,
+            style: .bare
         ) {
             if proManager.isPro {
                 Toggle("", isOn: Binding(
@@ -930,7 +929,8 @@ struct ProfileView: View {
             icon: "calendar.badge.clock",
             title: "Monthly Digest",
             subtitle: "Recap of last month's spending.",
-            showsChevron: false
+            showsChevron: false,
+            style: .bare
         ) {
             Toggle("", isOn: Binding(
                 get: { monthlyDigestEnabled },
@@ -993,7 +993,8 @@ struct ProfileView: View {
             icon: "externaldrive.fill.badge.timemachine",
             title: "Backup Reminder",
             subtitle: "Monthly nudge to export to Files.",
-            showsChevron: false
+            showsChevron: false,
+            style: .bare
         ) {
             Toggle("", isOn: Binding(
                 get: { backupReminderEnabled },
@@ -1057,31 +1058,42 @@ struct ProfileView: View {
     /// info note. Backup-related settings now live together in one place
     /// instead of being split across two sections.
     private var dataSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            SectionHeader("Data") {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            // Section title + backup-health badge ride above the
+            // grouped card so the page-level "Data" header has the
+            // same hierarchy as Preferences / Reminders / About.
+            HStack {
+                Text("DATA")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(0.8)
+                    .foregroundColor(.secondary)
+                Spacer()
                 backupHealthBadge
             }
-            .padding(.bottom, Theme.Spacing.xs)
+            .padding(.horizontal, Theme.Spacing.md)
 
             backupHealthCard
 
-            SettingsRow(icon: "square.and.arrow.up.fill", title: "Export Data")
-                .onTapGesture {
-                    HapticManager.shared.lightTap()
-                    showingExportSheet = true
-                }
-
-            SettingsRow(icon: "square.and.arrow.down.fill", title: "Import Data")
-                .onTapGesture {
-                    HapticManager.shared.lightTap()
-                    showingImportSheet = true
-                }
-
-            SettingsRowDestructive(icon: "trash.fill", title: "Clear All Data")
-                .onTapGesture {
-                    HapticManager.shared.mediumTap()
-                    activeAlert = .clearAllData
-                }
+            VStack(spacing: 0) {
+                SettingsRow(icon: "square.and.arrow.up.fill", title: "Export Data", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        showingExportSheet = true
+                    }
+                Divider().padding(.leading, Theme.Spacing.lg + 30 + Theme.Spacing.md)
+                SettingsRow(icon: "square.and.arrow.down.fill", title: "Import Data", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        showingImportSheet = true
+                    }
+                Divider().padding(.leading, Theme.Spacing.lg + 30 + Theme.Spacing.md)
+                SettingsRowDestructive(icon: "trash.fill", title: "Clear All Data", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.mediumTap()
+                        activeAlert = .clearAllData
+                    }
+            }
+            .cardSurface()
 
             HStack(alignment: .top, spacing: Theme.Spacing.sm + 2) {
                 Image(systemName: "info.circle.fill")
@@ -1092,10 +1104,9 @@ struct ProfileView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            .padding(.horizontal, Theme.Spacing.xs)
+            .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.xs)
         }
-        .sectionContainer()
         .sheet(isPresented: $showingExportSheet) {
             ExportDataView()
                 .environmentObject(viewModel)
@@ -1113,25 +1124,24 @@ struct ProfileView: View {
     /// the screen, and absorbs the "Support the App" row that previously lived
     /// in Settings.
     private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-            SectionHeader("About")
-                .padding(.bottom, Theme.Spacing.xs)
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            SettingsGroup(title: "About") {
+                SettingsRow(icon: "heart.fill", iconTint: .pink, title: "Support the App", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        showingDonationSheet = true
+                    }
 
-            SettingsRow(icon: "heart.fill", iconTint: .pink, title: "Support the App")
-                .onTapGesture {
-                    HapticManager.shared.lightTap()
-                    showingDonationSheet = true
-                }
-
-            SettingsRow(icon: "doc.text.fill", title: "About CashLens")
-                .onTapGesture {
-                    HapticManager.shared.lightTap()
-                    showingAboutSheet = true
-                }
+                SettingsRow(icon: "doc.text.fill", title: "About CashLens", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        showingAboutSheet = true
+                    }
+            }
 
             communityIconRow
+                .padding(.top, Theme.Spacing.md)
         }
-        .sectionContainer()
         .sheet(isPresented: $showingAboutSheet) {
             AboutView()
         }

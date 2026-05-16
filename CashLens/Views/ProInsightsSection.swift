@@ -100,7 +100,7 @@ struct ProInsightsSection: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Unlock Pro Insights")
-                            .font(.headline)
+                            .font(Theme.Typography.rowTitle)
                             .foregroundColor(.primary)
                         Text("See daily pace, spending velocity, year-over-year comparisons, and export PDF reports.")
                             .font(.subheadline)
@@ -235,7 +235,6 @@ private struct DailyPaceCard: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
         .cardSurface()
-        .softShadow()
     }
 }
 
@@ -318,7 +317,6 @@ private struct VelocityCard: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
         .cardSurface()
-        .softShadow()
     }
 }
 
@@ -350,6 +348,5 @@ private struct YearOverYearCard: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface()
-        .softShadow()
     }
 }
