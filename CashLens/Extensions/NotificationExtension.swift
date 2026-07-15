@@ -19,4 +19,29 @@ extension Notification.Name {
     /// history / digest scheduling — none of which affect backup
     /// metadata).
     static let backupMetadataDidChange = Notification.Name("backupMetadataDidChange")
+
+    /// Posted (on the main queue) after a headless write path —
+    /// Siri/Shortcuts App Intents via `QuickLogService`, or the widget
+    /// pending-queue drain — inserts expenses directly into the store
+    /// on a background context. A live `ExpenseViewModel` observes this
+    /// and re-runs its diff-gated `loadExpensesAsync()` so the
+    /// in-memory array reconciles without a full-table thrash. Harmless
+    /// when the scene isn't alive (nobody is subscribed).
+    static let expensesChangedExternally = Notification.Name("expensesChangedExternally")
+
+    /// Posted (on the main actor) by `AppLockManager` right after a
+    /// successful unlock. Subscribers use it to release work that was
+    /// deliberately deferred while the lock screen was up — e.g.
+    /// `DeepLinkRouter` flushing a notification/widget route so its
+    /// sheet can't present *above* the lock overlay.
+    static let appDidUnlock = Notification.Name("appDidUnlock")
+
+    /// Posted by Today when the user taps a header arrow that should
+    /// jump to Insights with a specific window preselected (e.g. the
+    /// "This week" header). The `object` carries the desired
+    /// `ExpenseViewModel.TimeFrame`. `StatisticsView` listens and
+    /// applies the new timeframe **before** the tab switch animates
+    /// in, so the user lands on the right view without a flash of
+    /// the previous selection.
+    static let insightsRequestTimeFrame = Notification.Name("insightsRequestTimeFrame")
 } 

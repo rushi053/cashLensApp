@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// Free users can browse and tap to preview, but applying anything other
 /// than the primary `Mauve` icon opens the paywall — matching the
-/// `ThemePickerView` UX so users have a consistent mental model.
+/// `AppearanceStudioView` UX so users have a consistent mental model.
 ///
 /// The picker shows a 2 × 4 grid (8 options total) of generously sized icon
 /// tiles with rounded corners that mirror the iOS home-screen grid. The
@@ -47,7 +47,7 @@ struct AppIconPickerView: View {
                 .padding(.top, Theme.Spacing.lg)
                 .padding(.bottom, Theme.Spacing.xxl)
             }
-            .background(Color.systemGroupedBackground)
+            .background(Color.systemBackground)
             .navigationTitle("App Icon")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -56,7 +56,7 @@ struct AppIconPickerView: View {
                         .fontWeight(.semibold)
                 }
             }
-            .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .sheet(isPresented: $showingPaywall) { PaywallView(context: .icons) }
             .alert("Couldn't change icon", isPresented: Binding(
                 get: { errorBanner != nil },
                 set: { if !$0 { errorBanner = nil } }
@@ -106,10 +106,7 @@ struct AppIconPickerView: View {
             }
         }
         .padding(Theme.Spacing.xl)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                .fill(Color.secondarySystemGroupedBackground)
-        )
+        .cardSurface()
     }
 
     // MARK: - Grid
@@ -151,10 +148,7 @@ struct AppIconPickerView: View {
             }
         }
         .padding(Theme.Spacing.xl)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                .fill(Color.secondarySystemGroupedBackground)
-        )
+        .cardSurface()
     }
 
     private func iconTile(_ icon: AppIconOption) -> some View {

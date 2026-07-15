@@ -3,7 +3,7 @@ import Foundation
 /// Persists per-budget, per-period state so threshold alerts fire once when crossing 80% / 100%, not on every launch.
 enum BudgetAlertState {
     private static func periodToken(for budget: Budget) -> String {
-        String(Int(budget.period.dateRange.start.timeIntervalSince1970))
+        String(Int(budget.dateRange.start.timeIntervalSince1970))
     }
 
     /// Last stored utilization (0...∞) for crossing detection after relaunch / foreground.

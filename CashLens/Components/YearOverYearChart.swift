@@ -10,31 +10,36 @@ struct YearOverYearChart: View {
     let accent: Color
     let formattedAmount: (Double) -> String
 
-    private var monthFormatter: DateFormatter {
+    // Static: DateFormatter allocation is expensive and these were
+    // rebuilt on every body pass.
+    private static let monthFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MMM"
         return f
-    }
+    }()
 
-    private var yearFormatter: DateFormatter {
+    private static let yearFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy"
         return f
-    }
+    }()
 
     private var currentYearLabel: String {
         guard let first = points.first?.monthAnchor else { return "This Year" }
-        return yearFormatter.string(from: first)
+        return Self.yearFormatter.string(from: first)
     }
 
     private var previousYearLabel: String {
         guard let first = points.first?.monthAnchor,
               let prev = Calendar.current.date(byAdding: .year, value: -1, to: first) else { return "Last Year" }
-        return yearFormatter.string(from: prev)
+        return Self.yearFormatter.string(from: prev)
     }
 
     private struct Bar: Identifiable {
-        let id = UUID()
+        // Stable identity derived from content — `UUID()` here minted
+        // fresh ids on every body pass, so Charts saw an entirely new
+        // dataset each redraw and re-animated/recreated all marks.
+        var id: String { "\(monthLabel)-\(series)" }
         let monthLabel: String
         let series: String
         let amount: Double
@@ -42,7 +47,7 @@ struct YearOverYearChart: View {
 
     private var bars: [Bar] {
         points.flatMap { point -> [Bar] in
-            let label = monthFormatter.string(from: point.monthAnchor)
+            let label = Self.monthFormatter.string(from: point.monthAnchor)
             return [
                 Bar(monthLabel: label, series: previousYearLabel, amount: point.previousAmount),
                 Bar(monthLabel: label, series: currentYearLabel, amount: point.currentAmount),

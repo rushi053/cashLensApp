@@ -79,6 +79,10 @@ struct StatisticsView: View {
     
     // PDF export state
     @State private var showingPaywall = false
+    /// Which Pro surface routed the user to the paywall — set right
+    /// before flipping `showingPaywall` so the sheet leads with the
+    /// relevant feature.
+    @State private var paywallContext: PaywallContext = .general
     @State private var showingShareSheet = false
     @State private var exportedPDFURL: URL? = nil
     @State private var isExportingPDF = false
@@ -91,10 +95,17 @@ struct StatisticsView: View {
     // Donut selection is highlight-only (keeps animation smooth without triggering full stats recompute).
     @State private var donutSelectedId: String? = nil
 
-    // Monthly Recap (Pro). Computed lazily when the user taps the
-    // launch card — it's not on the critical render path.
+    // Monthly Recap entry point. The row only renders when last month
+    // actually has data (checked off-main in the recompute pass so the
+    // body never walks the full expense array).
     @State private var showingMonthlyRecap = false
-    @State private var monthlyRecapResult: MonthlyRecap? = nil
+    @State private var cachedHasLastMonthData = false
+
+    /// True once the first background stats pass has *committed* its
+    /// results. Until then the hero card shows a skeleton instead of
+    /// stale/zero numbers (design review "Loading" item — the hero
+    /// used to flash ₹0 during the first recompute after cold start).
+    @State private var statsResultsReady = false
 
     // MARK: - Computed Properties
 
@@ -121,8 +132,13 @@ struct StatisticsView: View {
     }
     
     // MARK: - Main Body
+    //
+    // NOTE: deliberately NOT wrapped in a NavigationView. The nav bar
+    // was permanently hidden and nothing here pushes — the wrapper
+    // only added a UINavigationController whose layout pass ran on
+    // every tab switch. All presentations are sheets, which don't
+    // need navigation chrome from this level.
     var body: some View {
-        NavigationView {
             ScrollView {
                 VStack(spacing: Theme.Spacing.xxl) {
                     headerSection
@@ -140,13 +156,17 @@ struct StatisticsView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(Color.systemBackground)
-            .navigationBarTitle("")
-            .navigationBarHidden(true)
-            .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 isStatsTabVisible = true
-                withAnimation(.easeOut(duration: 0.6).delay(0.1)) {
-                    animateCards = true
+                // Guarded: the entrance cascade should only ever run on
+                // the FIRST appearance. Re-running the withAnimation on
+                // every tab switch created a (no-op but non-free)
+                // animation transaction right in the middle of the tab
+                // transition.
+                if !animateCards {
+                    withAnimation(.easeOut(duration: 0.6).delay(0.1)) {
+                        animateCards = true
+                    }
                 }
                 // v2 IA fix: Insights inherits Today's filter state on
                 // appear so the two tabs never give different answers
@@ -188,13 +208,23 @@ struct StatisticsView: View {
             .onDisappear {
                 isStatsTabVisible = false
             }
-        }
-        .navigationViewStyle(StackNavigationViewStyle()) // Always use stack style to prevent split view
         .sheet(isPresented: $showingAddExpense) {
+            // Explicit injection, same as the FAB path in MainTabView —
+            // AddExpenseView requires CategoryViewModel and relying on
+            // implicit sheet-environment inheritance is fragile.
             AddExpenseView(viewModel: viewModel)
+                .environmentObject(categoryViewModel)
         }
         .sheet(isPresented: $showingPaywall) {
-            PaywallView()
+            PaywallView(context: paywallContext)
+        }
+        .sheet(isPresented: $showingMonthlyRecap) {
+            // Recap always covers the most recent *complete* month.
+            // Env objects (ExpenseViewModel / CategoryViewModel)
+            // inherit from this view automatically.
+            if let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: Date()) {
+                MonthlyRecapSheet(month: lastMonth)
+            }
         }
         .sheet(isPresented: $showingShareSheet) {
             if let url = exportedPDFURL {
@@ -242,140 +272,26 @@ struct StatisticsView: View {
         .onChange(of: viewModel.selectedCurrency) {
             scheduleRecomputeStats(immediate: true)
         }
-        .fullScreenCover(isPresented: $showingMonthlyRecap) {
-            if let recap = monthlyRecapResult {
-                MonthlyRecapView(
-                    recap: recap,
-                    currencySymbol: viewModel.selectedCurrency.symbol,
-                    formattedAmount: viewModel.formattedAmount
-                )
+        // Today's section headers (currently the "This week" arrow)
+        // post `insightsRequestTimeFrame` carrying a TimeFrame before
+        // switching tabs to here. We honour the request so the user
+        // lands on the same window they were glancing at without
+        // having to retap a filter. Ignored if the payload isn't a
+        // TimeFrame or matches what we're already showing.
+        .onReceive(NotificationCenter.default.publisher(for: .insightsRequestTimeFrame)) { note in
+            guard let requested = note.object as? ExpenseViewModel.TimeFrame else { return }
+            // Apply both the pill selection AND the underlying date
+            // range — `applyPresetTimeFrame` is what actually shifts
+            // the window the charts compute against. Without it the
+            // user would see the right pill highlighted but the same
+            // old date range until they tapped the pill themselves.
+            if requested != selectedTimeFrame {
+                selectedTimeFrame = requested
             }
+            applyPresetTimeFrame(requested)
         }
     }
 
-    // MARK: - Monthly Recap launch card
-
-    /// True when there's at least one expense in the previous
-    /// calendar month — i.e. the recap will have something to say.
-    private var hasPreviousMonthData: Bool {
-        let cal = Calendar.current
-        guard let prevMonthDate = cal.date(byAdding: .month, value: -1, to: Date()),
-              let interval = cal.dateInterval(of: .month, for: prevMonthDate) else {
-            return false
-        }
-        return viewModel.expenses.contains { expense in
-            interval.contains(expense.date)
-        }
-    }
-
-    private var monthlyRecapLaunchCard: some View {
-        Button {
-            HapticManager.shared.mediumTap()
-            if proManager.isPro {
-                computeMonthlyRecap()
-            } else {
-                showingPaywall = true
-            }
-        } label: {
-            HStack(spacing: Theme.Spacing.md + 2) {
-                ZStack {
-                    Circle()
-                        .fill(Color.appPrimary.opacity(0.14))
-                        .frame(width: 50, height: 50)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 22, weight: .regular))
-                        .foregroundColor(.appPrimary)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(monthlyRecapMonthName.uppercased())
-                            .font(.caption2.weight(.semibold))
-                            .tracking(0.8)
-                            .foregroundColor(.appPrimary)
-                        if !proManager.isPro {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(.appPrimary)
-                        }
-                    }
-                    Text("Your monthly recap is ready")
-                        .font(Theme.Typography.rowTitle)
-                        .foregroundColor(.primary)
-                    Text(proManager.isPro
-                         ? "A 7-page story of last month — tap to open."
-                         : "Pro members get a swipeable story of last month.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.secondary)
-            }
-            .padding(Theme.Spacing.lg)
-            .cardSurface()
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                    .stroke(Color.appPrimary.opacity(0.35), lineWidth: 1)
-            )
-        }
-        .buttonStyle(ScaleButtonStyle())
-    }
-
-    private var monthlyRecapMonthName: String {
-        let cal = Calendar.current
-        guard let prev = cal.date(byAdding: .month, value: -1, to: Date()) else {
-            return "Recap"
-        }
-        let f = DateFormatter()
-        f.dateFormat = "MMMM"
-        return f.string(from: prev)
-    }
-
-    /// Compute the recap off the main actor and present it. Captures
-    /// the relevant expense slice + category-name closure as
-    /// `Sendable` inputs so the detached task is safe.
-    private func computeMonthlyRecap() {
-        let cal = Calendar.current
-        guard let prevMonthDate = cal.date(byAdding: .month, value: -1, to: Date()),
-              let thisInterval = cal.dateInterval(of: .month, for: prevMonthDate),
-              let twoBackDate = cal.date(byAdding: .month, value: -1, to: prevMonthDate),
-              let prevInterval = cal.dateInterval(of: .month, for: twoBackDate) else {
-            return
-        }
-        let allExpenses = viewModel.expenses
-        let thisMonth = allExpenses.filter { thisInterval.contains($0.date) }
-        let previousMonth = allExpenses.filter { prevInterval.contains($0.date) }
-
-        // Build a Sendable, snapshot-style category name lookup so
-        // the engine never touches a Core Data managed object on
-        // the background actor.
-        let customLookup: [UUID: String] = Dictionary(
-            uniqueKeysWithValues: categoryViewModel.customCategories.map { ($0.id, $0.name) }
-        )
-        let resolver: @Sendable (Expense) -> String = { expense in
-            if expense.category == .custom, let id = expense.customCategoryId,
-               let name = customLookup[id] {
-                return name
-            }
-            return expense.category.displayName
-        }
-
-        Task.detached(priority: .userInitiated) {
-            let recap = MonthlyRecapEngine.compute(
-                targetMonth: prevMonthDate,
-                thisMonthExpenses: thisMonth,
-                previousMonthExpenses: previousMonth,
-                categoryDisplayName: resolver
-            )
-            await MainActor.run {
-                self.monthlyRecapResult = recap
-                self.showingMonthlyRecap = true
-            }
-        }
-    }
-    
     // MARK: - Header Section
     private var headerSection: some View {
         VStack(spacing: 0) {
@@ -410,6 +326,7 @@ struct StatisticsView: View {
             if proManager.isPro {
                 exportPDFReport()
             } else {
+                paywallContext = .reports
                 showingPaywall = true
             }
         } label: {
@@ -745,6 +662,7 @@ struct StatisticsView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear category filter")
                 .transition(.scale.combined(with: .opacity))
             }
         }
@@ -941,6 +859,16 @@ struct StatisticsView: View {
                 referenceDate: referenceNow
             )
 
+            // Monthly Recap row gate: does last month have any data?
+            // Checked here (full unfiltered set, off-main) so the row
+            // never dangles over an empty recap.
+            let hasLastMonthData: Bool = {
+                guard let thisMonthStart = calendar.dateInterval(of: .month, for: referenceNow)?.start,
+                      let prevStart = calendar.date(byAdding: .month, value: -1, to: thisMonthStart)
+                else { return false }
+                return expensesSnapshot.contains { $0.date >= prevStart && $0.date < thisMonthStart }
+            }()
+
             // Freeze mutable aggregates into immutable snapshots before crossing
             // the main-actor boundary so captures are Sendable-safe.
             let finalTotal = total
@@ -976,7 +904,9 @@ struct StatisticsView: View {
                 self.cachedPaymentMethodBreakdown = paymentBreakdown
                 self.cachedTrendChartDates = finalTrendChartDates
                 self.cachedTrendChartValues = finalTrendChartValues
+                self.cachedHasLastMonthData = hasLastMonthData
                 self.isRecomputingStats = false
+                self.statsResultsReady = true
             }
         }
     }
@@ -1003,18 +933,14 @@ struct StatisticsView: View {
     // spring-in cascade so the screen feels unified.
     private var statisticsContent: some View {
         VStack(spacing: Theme.Spacing.xxl) {
-            // Monthly Recap launch card. Surfaces when the previous
-            // calendar month has at least one expense (otherwise
-            // there's nothing to recap). Pro feature; free users see
-            // a soft-locked teaser so they understand what they're
-            // missing.
-            if hasPreviousMonthData {
-                monthlyRecapLaunchCard
-                    .modifier(SectionEntrance(order: -1, animate: animateCards))
+            Group {
+                if statsResultsReady {
+                    heroOverviewSection
+                } else {
+                    heroSkeleton
+                }
             }
-
-            heroOverviewSection
-                .modifier(SectionEntrance(order: 0, animate: animateCards))
+            .modifier(SectionEntrance(order: 0, animate: animateCards))
 
             ProInsightsSection(
                 isPro: proManager.isPro,
@@ -1023,7 +949,10 @@ struct StatisticsView: View {
                 yearOverYearPoints: cachedYoYPoints,
                 accent: accentForSelection,
                 formattedAmount: viewModel.formattedAmount,
-                onUpgradeTap: { showingPaywall = true }
+                onUpgradeTap: {
+                    paywallContext = .insights
+                    showingPaywall = true
+                }
             )
             .modifier(SectionEntrance(order: 1, animate: animateCards))
 
@@ -1040,29 +969,93 @@ struct StatisticsView: View {
                     forecastHorizon = newValue
                     scheduleRecomputeStats(immediate: true)
                 },
-                onUpgradeTap: { showingPaywall = true }
+                onUpgradeTap: {
+                    paywallContext = .forecast
+                    showingPaywall = true
+                }
             )
             .modifier(SectionEntrance(order: 2, animate: animateCards))
 
             if !insights.isEmpty {
                 highlightsSection
                     .modifier(SectionEntrance(order: 3, animate: animateCards))
+                    .sectionScrollTransition()
             }
 
             if cachedFilteredCount > 0 {
                 whereItGoesSection
                     .modifier(SectionEntrance(order: 4, animate: animateCards))
+                    .sectionScrollTransition()
 
                 paymentMethodsSection
                     .modifier(SectionEntrance(order: 5, animate: animateCards))
+                    .sectionScrollTransition()
 
                 spendingPatternSection
                     .modifier(SectionEntrance(order: 6, animate: animateCards))
+                    .sectionScrollTransition()
 
                 trendSection
                     .modifier(SectionEntrance(order: 7, animate: animateCards))
+                    .sectionScrollTransition()
+            }
+
+            if cachedHasLastMonthData {
+                monthlyRecapRow
+                    .modifier(SectionEntrance(order: 8, animate: animateCards))
+                    .sectionScrollTransition()
             }
         }
+    }
+
+    // MARK: - Monthly Recap row
+    //
+    // Permanent entry point to the month-in-review sheet (the Today
+    // card is time-boxed to the first few days of a month; this row is
+    // how the user gets back to the recap the rest of the time).
+    // Bottom of the stack on purpose — Insights answers "what's
+    // happening now?" first, then offers the look-back as the closing
+    // beat of the screen.
+    private var monthlyRecapRow: some View {
+        Button {
+            HapticManager.shared.lightTap()
+            showingMonthlyRecap = true
+        } label: {
+            HStack(spacing: Theme.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(Color.appPrimary.opacity(0.14))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.appPrimary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Monthly Recap")
+                        .font(Theme.Typography.rowTitle)
+                        .foregroundColor(.primary)
+                    Text("\(lastMonthName) in review — shareable")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer(minLength: Theme.Spacing.sm)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(Theme.Spacing.lg)
+            .cardSurface()
+        }
+        .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel("Monthly recap: \(lastMonthName) in review")
+    }
+
+    private var lastMonthName: String {
+        guard let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: Date()) else { return "Last month" }
+        return Self.formatterMonthOnly.string(from: lastMonth)
     }
 
     /// Resolves the human-readable name of the forecast's top-driver category.
@@ -1122,7 +1115,10 @@ struct StatisticsView: View {
                 }
 
                 Text(viewModel.formattedAmount(totalExpenses()))
-                    .font(.system(size: isWideLayout ? 46 : 40, weight: .bold, design: .rounded))
+                    // One shared hero-numeral token app-wide (the review
+                    // flagged 40pt here vs 46pt on Today as the single
+                    // numeric inconsistency).
+                    .font(Theme.Typography.heroNumeric)
                     .monospacedDigit()
                     .foregroundColor(.primary)
                     .lineLimit(1)
@@ -1155,6 +1151,28 @@ struct StatisticsView: View {
         // applies. The audit flagged this as the cause of the
         // "smudgy" feel on the Insights hero on dark backgrounds.
         .cardSurface(radius: Theme.Radius.container)
+    }
+
+    /// Loading placeholder for the hero card — same footprint as the
+    /// real thing so nothing jumps when results land. Shown only until
+    /// the first recompute commits (previously the hero rendered ₹0 /
+    /// stale numbers for that window).
+    private var heroSkeleton: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            RoundedRectangle(cornerRadius: 6).fill(Color.tertiarySystemBackground).frame(width: 90, height: 12)
+            RoundedRectangle(cornerRadius: 10).fill(Color.tertiarySystemBackground).frame(width: 200, height: 40)
+            RoundedRectangle(cornerRadius: 8).fill(Color.tertiarySystemBackground).frame(width: 150, height: 18)
+            Divider().padding(.vertical, Theme.Spacing.sm).opacity(0.5)
+            HStack(spacing: Theme.Spacing.xl) {
+                ForEach(0..<3, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 6).fill(Color.tertiarySystemBackground).frame(height: 30)
+                }
+            }
+        }
+        .padding(Theme.Spacing.xl)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface(radius: Theme.Radius.container)
+        .skeletonShimmer()
     }
 
     /// Compact chip in the hero top-right showing the active category filter.
@@ -1602,12 +1620,13 @@ struct StatisticsView: View {
     /// Empty-state hint shown when every expense in view has no method set.
     private func noTaggedMethodsHint(unspecifiedCount: Int) -> some View {
         VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "creditcard.trianglebadge.exclamationmark")
-                .font(.system(size: 26, weight: .regular))
-                .foregroundColor(.appPrimary.opacity(0.85))
+            Image(systemName: "creditcard")
+                .font(.system(size: 26, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tertiary)
 
             Text("No payment methods tagged yet")
-                .font(.system(size: 15, weight: .semibold))
+                .font(Theme.Typography.rowTitle)
                 .foregroundColor(.primary)
 
             Text("Add a method when you log an expense and it'll instantly appear here as a slice. \(unspecifiedCount) expenses are waiting.")
@@ -1627,6 +1646,7 @@ struct StatisticsView: View {
     private func paymentMethodsLockedTeaser(breakdown: PaymentMethodBreakdown) -> some View {
         Button {
             HapticManager.shared.lightTap()
+            paywallContext = .insights
             showingPaywall = true
         } label: {
             VStack(spacing: Theme.Spacing.lg) {
@@ -2261,7 +2281,22 @@ struct StatisticsView: View {
         
         let expenseCount = cachedFilteredCount
         let totalAmount = totalExpenses()
-        let rangeLabel = "\(Self.formatterMediumDate.string(from: rangeStartDate)) – \(Self.formatterMediumDate.string(from: rangeEndDate))"
+        // For `.all`, the literal `rangeStartDate` is `Date.distantPast`, which
+        // formats as a meaningless "Jan 1, 1". Anchor the visible label to the
+        // user's earliest expense instead so the subtitle reads "Since Dec 15,
+        // 2025" — actually informative. Falls back to "All time" if the user
+        // somehow gets here with no expenses (defensive; the empty-state guard
+        // above should catch this first).
+        let rangeLabel: String
+        if selectedTimeFrame == .all {
+            if let earliest = viewModel.expenses.last?.date {
+                rangeLabel = "Since \(Self.formatterMediumDate.string(from: earliest))"
+            } else {
+                rangeLabel = "All time"
+            }
+        } else {
+            rangeLabel = "\(Self.formatterMediumDate.string(from: rangeStartDate)) – \(Self.formatterMediumDate.string(from: rangeEndDate))"
+        }
         
         if selectedCategory != nil {
             // When a category is selected
@@ -2284,7 +2319,12 @@ struct StatisticsView: View {
 
 // MARK: - Data Structures
 struct StatInsight: Identifiable {
-    let id = UUID()
+    /// Stable identity derived from the title (unique per insight kind).
+    /// PERF: this used to be `let id = UUID()`, regenerated on every
+    /// recompute — the insights `ForEach` saw all-new identities each
+    /// refresh, tore down and rebuilt every card, and re-ran entrance
+    /// transitions (the visible flicker/pop-in on stats refresh).
+    var id: String { title }
     let title: String
     let description: String
     let icon: String
@@ -2300,29 +2340,9 @@ struct CategoryExpenseData {
     let count: Int
 }
 
-// MARK: - Section Entrance Modifier
-//
-// A unified, snappy entrance animation for every section on the Statistics
-// screen. Each section specifies its `order` (0, 1, 2…) and the modifier
-// stages a small translate + fade with a spring, offset by 60 ms per section.
-// The whole screen settles in ~0.4 s instead of the ~1 s cascade we had before.
-private struct SectionEntrance: ViewModifier {
-    let order: Int
-    let animate: Bool
-
-    private var delay: Double { Double(order) * 0.06 }
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(animate ? 1 : 0)
-            .offset(y: animate ? 0 : 12)
-            .animation(
-                .spring(response: 0.55, dampingFraction: 0.82, blendDuration: 0)
-                    .delay(delay),
-                value: animate
-            )
-    }
-}
+// The section entrance cascade lives in `Design/ViewModifiers.swift`
+// (`SectionEntrance`) — shared with TodayView and the Import/Export
+// screens so the whole app has one "section appears" motion.
 
 struct StatisticsView_Previews: PreviewProvider {
     static var previews: some View {

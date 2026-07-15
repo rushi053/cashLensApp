@@ -174,6 +174,10 @@ struct CodableBudget: Codable {
     var alertAtPercentages: [Double]
     var isActive: Bool
     var createdAt: Date
+    /// Fixed window for `period == "Custom"` budgets. Optional so
+    /// backups created before custom periods existed decode cleanly.
+    var customStartDate: Date?
+    var customEndDate: Date?
 
     struct FilterDTO: Codable {
         /// `"overall"`, `"default"`, or `"custom"`.
@@ -192,6 +196,8 @@ struct CodableBudget: Codable {
         self.alertAtPercentages = budget.alertAtPercentages
         self.isActive = budget.isActive
         self.createdAt = budget.createdAt
+        self.customStartDate = budget.customStartDate
+        self.customEndDate = budget.customEndDate
 
         switch budget.categoryFilter {
         case .overall:
@@ -225,15 +231,24 @@ struct CodableBudget: Codable {
 
         let percentages = alertAtPercentages.isEmpty ? Budget.defaultAlertPercentages : alertAtPercentages
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A custom-period budget without its dates is malformed —
+        // fall back to monthly rather than dropping the budget.
+        var repairedPeriod = period
+        if period == .custom && (customStartDate == nil || customEndDate == nil) {
+            repairedPeriod = .monthly
+        }
+
         return Budget(
             id: id,
             name: cleanName.isEmpty ? "Budget" : cleanName,
             amount: amount,
-            period: period,
+            period: repairedPeriod,
             categoryFilter: filter,
             alertAtPercentages: percentages,
             isActive: isActive,
-            createdAt: createdAt
+            createdAt: createdAt,
+            customStartDate: repairedPeriod == .custom ? customStartDate : nil,
+            customEndDate: repairedPeriod == .custom ? customEndDate : nil
         )
     }
 }

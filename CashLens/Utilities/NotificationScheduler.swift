@@ -14,6 +14,10 @@ enum AppNotificationIdentifiers {
     /// app foreground so the body always reflects the freshest computed
     /// insight; when no insight clears the firing bar, no request is added.
     static let smartInsightWeekly = "smart_insight_weekly_next"
+    /// One-shot reminder scheduled at trial-start purchase, fired 2 days
+    /// before the trial converts. Backs the paywall timeline's "we send
+    /// you a reminder" promise with a real notification.
+    static let trialEndingReminder = "trial_ending_reminder"
 }
 
 struct NotificationScheduler {
@@ -37,13 +41,6 @@ struct NotificationScheduler {
         }
     }
     
-    static func cancelWeeklySummary() {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [
-            AppNotificationIdentifiers.weeklySummary,
-            AppNotificationIdentifiers.weeklyDigest
-        ])
-    }
-    
     // MARK: - Public entrypoint used by the app on foregrounding
     
     /// Re-schedules next-occurrence notifications based on current user preferences.
@@ -58,33 +55,89 @@ struct NotificationScheduler {
         let monthlyEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.monthlyDigestEnabled)
         let backupEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.backupReminderEnabled)
         let smartInsightsEnabled = UserDefaults.standard.bool(forKey: UserDefaultsKeys.smartInsightsEnabled)
-        
+
+        let weeklyWeekday = UserDefaults.standard.integer(forKey: UserDefaultsKeys.weeklySummaryWeekday)
+        let weeklyHour = UserDefaults.standard.integer(forKey: UserDefaultsKeys.weeklySummaryHour)
+        let weeklyMinute = UserDefaults.standard.integer(forKey: UserDefaultsKeys.weeklySummaryMinute)
+        let monthlyDay = UserDefaults.standard.integer(forKey: UserDefaultsKeys.monthlyDigestDayOfMonth)
+        let monthlyHour = UserDefaults.standard.integer(forKey: UserDefaultsKeys.monthlyDigestHour)
+        let monthlyMinute = UserDefaults.standard.integer(forKey: UserDefaultsKeys.monthlyDigestMinute)
+        let backupDay = UserDefaults.standard.integer(forKey: UserDefaultsKeys.backupReminderDayOfMonth)
+        let backupHour = UserDefaults.standard.integer(forKey: UserDefaultsKeys.backupReminderHour)
+        let backupMinute = UserDefaults.standard.integer(forKey: UserDefaultsKeys.backupReminderMinute)
+
+        // PERF: gate the whole pass on a fingerprint of everything the
+        // scheduled content depends on. The "IfNeeded" previously only
+        // checked the on/off toggles — when enabled, every foreground
+        // recomputed digests over the **entire** expense array (weekly +
+        // monthly + the smart-insight scan). The fingerprint covers the
+        // data shape (count + newest date + currency), every schedule
+        // setting, Pro state, and the concrete next fire dates — so once
+        // a scheduled notification's slot passes, the fingerprint changes
+        // and the pass runs again.
+        let normalizedWeeklyWeekday = max(1, min(7, weeklyWeekday == 0 ? 2 : weeklyWeekday))
+        var fingerprint = "v1"
+        fingerprint += "|data:\(viewModel.expenses.count):\(viewModel.expenses.first?.date.timeIntervalSince1970 ?? 0):\(viewModel.selectedCurrency.rawValue)"
+        fingerprint += "|pro:\(isPro)"
+        if weeklyEnabled {
+            let fire = nextWeeklyFireDate(weekday: normalizedWeeklyWeekday, hour: weeklyHour, minute: weeklyMinute)
+            fingerprint += "|w:\(normalizedWeeklyWeekday):\(weeklyHour):\(weeklyMinute):\(fire.timeIntervalSince1970)"
+        } else {
+            fingerprint += "|w:off"
+        }
+        if monthlyEnabled {
+            let fire = nextMonthlyFireDate(dayOfMonth: normalizeDayOfMonth(monthlyDay), hour: monthlyHour, minute: monthlyMinute)
+            fingerprint += "|m:\(normalizeDayOfMonth(monthlyDay)):\(monthlyHour):\(monthlyMinute):\(fire.timeIntervalSince1970)"
+        } else {
+            fingerprint += "|m:off"
+        }
+        if backupEnabled {
+            let fire = nextMonthlyFireDate(dayOfMonth: normalizeDayOfMonth(backupDay), hour: backupHour, minute: backupMinute)
+            fingerprint += "|b:\(normalizeDayOfMonth(backupDay)):\(backupHour):\(backupMinute):\(fire.timeIntervalSince1970)"
+        } else {
+            fingerprint += "|b:off"
+        }
+        if smartInsightsEnabled && isPro {
+            let fire = nextWeeklyFireDate(
+                weekday: smartInsightDefaultWeekday,
+                hour: smartInsightDefaultHour,
+                minute: smartInsightDefaultMinute
+            )
+            fingerprint += "|s:\(fire.timeIntervalSince1970)"
+        } else {
+            fingerprint += "|s:off"
+        }
+
+        if fingerprint == UserDefaults.standard.string(forKey: UserDefaultsKeys.scheduledNotificationsFingerprint) {
+            return
+        }
+
         // Clean up legacy repeating id if any exists
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [AppNotificationIdentifiers.weeklySummary])
         
+        // Track success across the pass: the fingerprint may only be
+        // recorded when every *enabled* schedule actually landed —
+        // otherwise a failed pass (authorization revoked mid-session,
+        // `add` error) would be remembered as done and never retried.
+        var allSucceeded = true
+
         if weeklyEnabled {
-            let weekday = UserDefaults.standard.integer(forKey: UserDefaultsKeys.weeklySummaryWeekday)
-            let hour = UserDefaults.standard.integer(forKey: UserDefaultsKeys.weeklySummaryHour)
-            let minute = UserDefaults.standard.integer(forKey: UserDefaultsKeys.weeklySummaryMinute)
-            _ = await scheduleNextWeeklyDigest(weekday: max(1, min(7, weekday == 0 ? 2 : weekday)), hour: hour, minute: minute, viewModel: viewModel)
+            let ok = await scheduleNextWeeklyDigest(weekday: normalizedWeeklyWeekday, hour: weeklyHour, minute: weeklyMinute, viewModel: viewModel)
+            allSucceeded = allSucceeded && ok
         } else {
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [AppNotificationIdentifiers.weeklyDigest])
         }
         
         if monthlyEnabled {
-            let day = UserDefaults.standard.integer(forKey: UserDefaultsKeys.monthlyDigestDayOfMonth)
-            let hour = UserDefaults.standard.integer(forKey: UserDefaultsKeys.monthlyDigestHour)
-            let minute = UserDefaults.standard.integer(forKey: UserDefaultsKeys.monthlyDigestMinute)
-            _ = await scheduleNextMonthlyDigest(dayOfMonth: normalizeDayOfMonth(day), hour: hour, minute: minute, viewModel: viewModel)
+            let ok = await scheduleNextMonthlyDigest(dayOfMonth: normalizeDayOfMonth(monthlyDay), hour: monthlyHour, minute: monthlyMinute, viewModel: viewModel)
+            allSucceeded = allSucceeded && ok
         } else {
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [AppNotificationIdentifiers.monthlyDigest])
         }
         
         if backupEnabled {
-            let day = UserDefaults.standard.integer(forKey: UserDefaultsKeys.backupReminderDayOfMonth)
-            let hour = UserDefaults.standard.integer(forKey: UserDefaultsKeys.backupReminderHour)
-            let minute = UserDefaults.standard.integer(forKey: UserDefaultsKeys.backupReminderMinute)
-            _ = await scheduleNextBackupReminder(dayOfMonth: normalizeDayOfMonth(day), hour: hour, minute: minute)
+            let ok = await scheduleNextBackupReminder(dayOfMonth: normalizeDayOfMonth(backupDay), hour: backupHour, minute: backupMinute)
+            allSucceeded = allSucceeded && ok
         } else {
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [AppNotificationIdentifiers.backupReminder])
         }
@@ -97,45 +150,21 @@ struct NotificationScheduler {
             withIdentifiers: [AppNotificationIdentifiers.smartInsightWeekly]
         )
         if smartInsightsEnabled && isPro {
-            _ = await scheduleNextSmartInsight(viewModel: viewModel)
+            let ok = await scheduleNextSmartInsight(viewModel: viewModel)
+            allSucceeded = allSucceeded && ok
         }
+
+        // Record only after the pass ran to completion so a mid-pass
+        // failure (e.g. authorization revoked) retries next foreground.
+        guard allSucceeded else { return }
+        UserDefaults.standard.set(fingerprint, forKey: UserDefaultsKeys.scheduledNotificationsFingerprint)
     }
     
-    // MARK: - Legacy API used by ProfileView (kept signature; now schedules next digest)
-    
-    static func scheduleWeeklySummary(weekday: Int, hour: Int, minute: Int) async -> Bool {
-        // ProfileView uses this entrypoint; treat "Weekly Summary" as "Weekly Digest".
-        // We need access to real data for dynamic body, so if the app hasn't created the view model yet,
-        // we still schedule a generic notification without stats.
-        let ok = await ensureAuthorized()
-        guard ok else { return false }
-        
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [
-            AppNotificationIdentifiers.weeklySummary,
-            AppNotificationIdentifiers.weeklyDigest
-        ])
-        
-        let nextFire = nextWeeklyFireDate(weekday: weekday, hour: hour, minute: minute)
-        let content = UNMutableNotificationContent()
-        content.title = "Weekly Digest"
-        content.body = "Open CashLens to review your spending for the week."
-        content.sound = .default
-        content.userInfo = [
-            NotificationUserInfoKeys.route: NotificationRouteTypes.allExpenses,
-            NotificationUserInfoKeys.rangeStart: nextFire.addingTimeInterval(-7 * 24 * 60 * 60).timeIntervalSince1970,
-            NotificationUserInfoKeys.rangeEnd: nextFire.timeIntervalSince1970
-        ]
-        
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(5, nextFire.timeIntervalSinceNow), repeats: false)
-        let request = UNNotificationRequest(identifier: AppNotificationIdentifiers.weeklyDigest, content: content, trigger: trigger)
-        
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-            return true
-        } catch {
-            return false
-        }
-    }
+    // NOTE: removed two dead legacy entry points here
+    // (`cancelWeeklySummary` / `scheduleWeeklySummary`) — nothing
+    // called them; the digest lifecycle runs entirely through
+    // `refreshScheduledNotificationsIfNeeded`, which still cleans up
+    // the legacy `weeklySummary` identifier on every pass.
     
     // MARK: - Category name lookup
     //
@@ -160,7 +189,9 @@ struct NotificationScheduler {
             if expense.category == .custom, let id = expense.customCategoryId {
                 return customCategoriesById[id] ?? "Custom"
             }
-            return expense.category.rawValue
+            // displayName, not rawValue — the digest should say
+            // "Food & Drinks", matching the label users see in-app.
+            return expense.category.displayName
         }
     }
 
@@ -262,6 +293,52 @@ struct NotificationScheduler {
         }
     }
     
+    // MARK: - Trial ending reminder
+
+    /// Schedules the one-shot "your trial ends soon" reminder promised
+    /// by the paywall's trial timeline. Called immediately after a
+    /// trial-starting purchase succeeds; fires 2 days before the trial
+    /// converts (for a 7-day trial: day 5). If notification permission
+    /// is denied we simply can't deliver — nothing else to do.
+    ///
+    /// The body restates the exact upcoming charge so the reminder is
+    /// useful on its own, and stays truthful for users who already
+    /// cancelled (Apple keeps the trial active until its end date).
+    static func scheduleTrialEndingReminder(trialDays: Int, renewalPriceText: String) async {
+        let ok = await ensureAuthorized()
+        guard ok else { return }
+
+        UNUserNotificationCenter.current().removePendingNotificationRequests(
+            withIdentifiers: [AppNotificationIdentifiers.trialEndingReminder]
+        )
+
+        let reminderDay = max(trialDays - 2, 1)
+        // Derive the headline from the actual fire day — for short
+        // trials `reminderDay` clamps and "in 2 days" would be wrong.
+        let daysLeftAtFire = trialDays - reminderDay
+        let content = UNMutableNotificationContent()
+        switch daysLeftAtFire {
+        case ..<1: content.title = "Your Pro trial is ending"
+        case 1:    content.title = "Your Pro trial ends tomorrow"
+        default:   content.title = "Your Pro trial ends in \(daysLeftAtFire) days"
+        }
+        content.body = renewalPriceText.isEmpty
+            ? "Your free trial converts soon. Cancel anytime in Settings if Pro isn't for you."
+            : "After the trial you'll be charged \(renewalPriceText). Cancel anytime in Settings if Pro isn't for you."
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(
+            timeInterval: max(5, TimeInterval(reminderDay) * 24 * 60 * 60),
+            repeats: false
+        )
+        let request = UNNotificationRequest(
+            identifier: AppNotificationIdentifiers.trialEndingReminder,
+            content: content,
+            trigger: trigger
+        )
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
     // MARK: - Date helpers
     
     private static func normalizeDayOfMonth(_ day: Int) -> Int {

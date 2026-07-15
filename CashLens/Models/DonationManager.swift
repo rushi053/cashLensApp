@@ -7,28 +7,39 @@ class DonationManager: ObservableObject {
     
     @Published private(set) var products: [Product] = []
     @Published private(set) var purchasedProductIDs = Set<String>()
-    
-    private let productIdentifiers = [
-        "com.cashlens.donation.coffee",
-        "com.cashlens.donation.lunch",
-        "com.cashlens.donation.fuel"
+
+    // MARK: - Product IDs
+
+    nonisolated static let coffeeID = "com.cashlens.donation.coffee"
+    nonisolated static let lunchID  = "com.cashlens.donation.lunch"
+    nonisolated static let fuelID   = "com.cashlens.donation.fuel"
+
+    nonisolated static let allDonationIDs: Set<String> = [
+        coffeeID, lunchID, fuelID
     ]
-    
+
+    private let productIdentifiers = [
+        DonationManager.coffeeID,
+        DonationManager.lunchID,
+        DonationManager.fuelID
+    ]
+
     private init() {
         Task {
             await loadProducts()
         }
-        Task.detached { [weak self] in
-            for await result in Transaction.updates {
-                if case .verified(let transaction) = result {
-                    await transaction.finish()
-                    await self?.recordPurchasedProductID(transaction.productID)
-                }
-            }
-        }
+        // NOTE: No `Transaction.updates` iterator here. The app runs a
+        // single consolidated listener in `ProManager` which routes
+        // donation transactions to `recordPurchasedProductID(_:)` and
+        // calls `finish()` exactly once per transaction. Two parallel
+        // iterators each finishing everything raced each other — a
+        // donation could be finished before it was recorded.
     }
 
-    private func recordPurchasedProductID(_ productID: String) {
+    /// Records a purchased donation product. Called from the direct
+    /// purchase path below and from ProManager's consolidated
+    /// transaction listener. Idempotent (set insert).
+    func recordPurchasedProductID(_ productID: String) {
         purchasedProductIDs.insert(productID)
     }
 
@@ -50,8 +61,13 @@ class DonationManager: ObservableObject {
         case .success(let verification):
             switch verification {
             case .verified(let transaction):
-                await transaction.finish()
                 recordPurchasedProductID(transaction.productID)
+                await transaction.finish()
+                // Apply the donor grandfather policy immediately so the
+                // tip earns its Pro grant in this session — previously
+                // the scan only ran at launch/restore, so the donor
+                // stayed on the free tier until relaunch.
+                await ProManager.shared.scanForDonorGrant()
             case .unverified:
                 throw StoreError.failedVerification
             }

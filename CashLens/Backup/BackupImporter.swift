@@ -370,9 +370,15 @@ enum BackupImporter {
 
         context.perform {
             do {
+                // ATOMICITY: `wipeStore` marks deletions *in this
+                // context* (it deliberately avoids NSBatchDeleteRequest,
+                // which writes straight to the SQLite file the moment it
+                // executes). The wipe and the import below therefore
+                // commit — or fail — together in the single
+                // `context.save()`: an import error after the wipe can
+                // never leave the user with an empty store.
                 if mode == .replace {
                     try wipeStore(context: context)
-                    wipePreferences()
                 }
 
                 try importCustomCategories(preview.bundle.data.customCategories, context: context, summary: &summary)
@@ -380,12 +386,16 @@ enum BackupImporter {
                 try importSubscriptions(preview.bundle.data.subscriptions, context: context, summary: &summary)
                 try importBudgets(preview.bundle.data.budgets, context: context, summary: &summary)
 
-                applyDeletedDefaults(preview.bundle.data.deletedDefaultCategories, summary: &summary)
-
                 if context.hasChanges {
                     try context.save()
                 }
 
+                // Preference writes only after the data commit — same
+                // ordering rationale as the wipe above.
+                if mode == .replace {
+                    wipePreferences()
+                }
+                applyDeletedDefaults(preview.bundle.data.deletedDefaultCategories, summary: &summary)
                 applyPreferences(preview.bundle.preferences, summary: &summary)
 
                 DispatchQueue.main.async {
@@ -708,18 +718,23 @@ enum BackupImporter {
 
     // MARK: - Replace mode wipers
 
+    /// Mark every row of every entity deleted **in the given context**.
+    ///
+    /// Deliberately NOT `NSBatchDeleteRequest`: batch deletes execute
+    /// against the SQLite file immediately, so a failure later in the
+    /// import would leave the store already emptied. In-context deletes
+    /// stay pending until the import's single `context.save()`, making
+    /// wipe + re-import one atomic transaction. `includesPropertyValues
+    /// = false` keeps the fetch to bare object IDs, so this stays cheap
+    /// even at tens of thousands of rows. The viewContext picks the
+    /// deletions up via `automaticallyMergesChangesFromParent`.
     private static func wipeStore(context: NSManagedObjectContext) throws {
         let entities = ["ExpenseEntity", "SubscriptionEntity", "CustomCategoryEntity", "BudgetEntity"]
         for name in entities {
-            let request = NSFetchRequest<NSFetchRequestResult>(entityName: name)
-            let delete = NSBatchDeleteRequest(fetchRequest: request)
-            delete.resultType = .resultTypeObjectIDs
-            let result = try context.execute(delete) as? NSBatchDeleteResult
-            if let ids = result?.result as? [NSManagedObjectID] {
-                NSManagedObjectContext.mergeChanges(
-                    fromRemoteContextSave: [NSDeletedObjectsKey: ids],
-                    into: [PersistenceController.shared.container.viewContext, context]
-                )
+            let request = NSFetchRequest<NSManagedObject>(entityName: name)
+            request.includesPropertyValues = false
+            for object in try context.fetch(request) {
+                context.delete(object)
             }
         }
     }

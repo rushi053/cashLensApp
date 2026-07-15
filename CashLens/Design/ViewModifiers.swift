@@ -221,17 +221,29 @@ struct FieldCardModifier: ViewModifier {
     let radius: CGFloat
     let isFocused: Bool
 
+    @Environment(\.colorScheme) private var scheme
+
     func body(content: Content) -> some View {
-        let borderColor = isFocused ? Color.appPrimary.opacity(0.55) : Color.primary.opacity(0.07)
-        let borderWidth: CGFloat = isFocused ? 1.5 : 1
-        let shadowColor = isFocused ? Color.appPrimary.opacity(0.18) : Theme.Shadow.cardColor
-        let shadowRadius: CGFloat = isFocused ? 10 : Theme.Shadow.cardRadius
-        let shadowY: CGFloat = isFocused ? 4 : Theme.Shadow.cardY
+        // v2: field cards now use the same elevated-white treatment
+        // as the rest of the app (ExpenseCard, SettingsRow standalone,
+        // Today verdict hero). Pure white on light mode, slightly
+        // elevated dark grey on dark mode. Hairline border + soft
+        // shadow gives a defined lift when the card sits on the
+        // also-white page; the focused state amps the border to the
+        // app's accent and warms the shadow to mauve.
+        let fill: Color = scheme == .dark
+            ? Color(uiColor: .secondarySystemGroupedBackground)
+            : Color(uiColor: .systemBackground)
+        let borderColor = isFocused ? Color.appPrimary.opacity(0.55) : Color.primary.opacity(0.06)
+        let borderWidth: CGFloat = isFocused ? 1.5 : 0.5
+        let shadowColor = isFocused ? Color.appPrimary.opacity(0.18) : Color.black.opacity(0.04)
+        let shadowRadius: CGFloat = isFocused ? 10 : 6
+        let shadowY: CGFloat = isFocused ? 4 : 2
 
         return content
             .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color.secondarySystemBackground)
+                    .fill(fill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -291,5 +303,77 @@ struct PrimaryGlowModifier: ViewModifier {
 extension View {
     func primaryGlow(strength: CGFloat = 0.3) -> some View {
         modifier(PrimaryGlowModifier(strength: strength))
+    }
+}
+
+// MARK: - Section entrance
+//
+// Canonical cascading spring entrance for screen sections. Formerly
+// duplicated as a `private struct SectionEntrance` in TodayView,
+// StatisticsView, ImportDataView, and ExportDataView — promoted here
+// (as those files' comments promised) so every screen shares one
+// "section appears" motion. Each section passes its `order` (0, 1, 2…)
+// and the modifier stages a small translate + fade, offset 60ms per
+// section, so a full screen settles in ~0.4s.
+struct SectionEntrance: ViewModifier {
+    let order: Int
+    let animate: Bool
+
+    private var delay: Double { Double(order) * 0.06 }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(animate ? 1 : 0)
+            .offset(y: animate ? 0 : 12)
+            .animation(
+                .spring(response: 0.55, dampingFraction: 0.82, blendDuration: 0)
+                    .delay(delay),
+                value: animate
+            )
+    }
+}
+
+// MARK: - Scroll transition
+//
+// Subtle viewport-entry treatment for section cards on long scrolling
+// screens (Today, Insights): cards fade from 85% and scale from 98% as
+// they enter from the bottom edge. Layers on top of `SectionEntrance`
+// (which handles the *first* appearance cascade) — this one keeps the
+// screen feeling alive on every scroll, not just on load. Deliberately
+// tiny deltas: motion should register subconsciously, never announce
+// itself.
+extension View {
+    func sectionScrollTransition() -> some View {
+        scrollTransition(.interactive, axis: .vertical) { content, phase in
+            content
+                .opacity(phase == .bottomTrailing ? 0.85 : 1)
+                .scaleEffect(phase == .bottomTrailing ? 0.98 : 1)
+        }
+    }
+}
+
+// MARK: - Skeleton shimmer
+//
+// Slow opacity breathe for loading skeletons (Today verdict skeleton,
+// Insights hero skeleton). A calm 1.2s ease pulse — enough to signal
+// "this is loading, not broken" without the sweeping-gradient shimmer
+// that would violate the no-gradient rule.
+struct SkeletonShimmerModifier: ViewModifier {
+    @State private var dimmed = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(dimmed ? 0.55 : 1.0)
+            .animation(
+                .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
+                value: dimmed
+            )
+            .onAppear { dimmed = true }
+    }
+}
+
+extension View {
+    func skeletonShimmer() -> some View {
+        modifier(SkeletonShimmerModifier())
     }
 }

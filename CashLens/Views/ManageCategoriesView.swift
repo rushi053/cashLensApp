@@ -3,9 +3,10 @@ import SwiftUI
 /// Manage Categories — default + custom category management.
 ///
 /// Visual language matches the rest of the modern settings sub-screens
-/// (`AppIconPickerView`, `ThemePickerView`): grouped sections in
-/// rounded card containers, generously sized icon medallions, swipe
-/// actions and a primary FAB at the bottom for the "add" action so the
+/// (`AppIconPickerView`, `AppearanceStudioView`): grouped sections in
+/// rounded card containers, generously sized icon medallions, long-press
+/// context menus for row actions (swipe actions don't function outside a
+/// `List`), and a primary FAB at the bottom for the "add" action so the
 /// CTA is always one thumb-reach away regardless of list length.
 struct ManageCategoriesView: View {
     @Environment(\.dismiss) private var dismiss
@@ -36,7 +37,7 @@ struct ManageCategoriesView: View {
     var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(uiColor: .systemBackground).ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: Theme.Spacing.xxl) {
@@ -72,18 +73,23 @@ struct ManageCategoriesView: View {
                 loadDeletedDefaultCategories()
             }
             .sheet(isPresented: $showingAddCategory) {
-                CustomCategoryForm(editingCategory: editingCategory)
-                    .environmentObject(categoryViewModel)
+                CustomCategoryForm(
+                    editingCategory: editingCategory,
+                    onDelete: editingCategory.map { category in
+                        { deleteCustomCategory(category) }
+                    }
+                )
+                .environmentObject(categoryViewModel)
             }
             .alert("Delete Custom Category", isPresented: $showingDeleteAlert) {
                 Button("Delete", role: .destructive) {
                     if let category = categoryToDelete {
-                        categoryViewModel.deleteCustomCategory(id: category.id)
+                        deleteCustomCategory(category)
                     }
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("Any expenses using this category will be moved to “Other”.")
+                Text("Any expenses using this category will be moved to “Other”. Budgets for it will be removed.")
             }
             .alert("Hide Default Category", isPresented: $showingDeleteDefaultAlert) {
                 Button("Hide", role: .destructive) {
@@ -93,7 +99,7 @@ struct ManageCategoriesView: View {
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
-                Text("This hides the category everywhere. Existing expenses move to “Other”. You can restore it from the “Hidden” section anytime.")
+                Text("This hides the category everywhere. Existing expenses and subscriptions move to “Other”, and budgets for it are removed. You can restore the category from the “Hidden” section anytime.")
             }
         }
     }
@@ -204,7 +210,22 @@ struct ManageCategoriesView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        // NOTE: not `.swipeActions` — that modifier only functions
+        // inside a `List`, and these rows live in a ScrollView card,
+        // so the old swipe-to-delete was silently dead. Delete now
+        // lives in two visible places: this context menu, and the
+        // trash button inside the edit form the row opens.
+        .contextMenu {
+            Button {
+                HapticManager.shared.lightTap()
+                editingCategory = category
+                showingAddCategory = true
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+
+            Divider()
+
             Button(role: .destructive) {
                 HapticManager.shared.warning()
                 categoryToDelete = category
@@ -245,7 +266,10 @@ struct ManageCategoriesView: View {
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.vertical, Theme.Spacing.md)
         .contentShape(Rectangle())
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        // Context menu, not `.swipeActions` — swipe actions are
+        // List-only and these rows render inside a ScrollView card
+        // (the old swipe-to-hide never worked here).
+        .contextMenu {
             Button(role: .destructive) {
                 HapticManager.shared.warning()
                 defaultCategoryToDelete = category
@@ -322,11 +346,23 @@ struct ManageCategoriesView: View {
             .padding(.horizontal, Theme.Spacing.xxl)
             .padding(.top, Theme.Spacing.lg)
             .padding(.bottom, Theme.Spacing.xxl)
-            .background(Color(.systemGroupedBackground))
+            .background(Color(uiColor: .systemBackground))
         }
     }
 
     // MARK: - Helpers
+
+    /// One canonical delete path for custom categories, used by both
+    /// the row context menu and the edit form's trash button. Order
+    /// matters: expenses retarget to "Other" first (so nothing points
+    /// at the id when it disappears), then the category itself — plus
+    /// its subscriptions/budgets cleanup — goes in one save.
+    private func deleteCustomCategory(_ category: CustomCategory) {
+        expenseViewModel.moveExpensesFromDeletedCustomCategory(category.id)
+        withAnimation(Theme.Motion.tap) {
+            categoryViewModel.deleteCustomCategory(id: category.id)
+        }
+    }
 
     private func loadDeletedDefaultCategories() {
         if let deleted = UserDefaults.standard.array(forKey: UserDefaultsKeys.deletedDefaultCategories) as? [String] {
@@ -340,15 +376,20 @@ struct ManageCategoriesView: View {
 
     private func deleteDefaultCategory(_ category: Expense.Category) {
         expenseViewModel.moveExpensesFromDeletedCategory(category.rawValue)
+        // Same integrity contract as custom-category deletion:
+        // subscriptions retarget to "Other", budgets filtered to the
+        // hidden category are removed (their spend just moved to
+        // "Other", so they'd track 0% forever).
+        categoryViewModel.cleanupAfterHidingDefaultCategory(rawValue: category.rawValue)
         withAnimation(Theme.Motion.tap) {
-            deletedDefaultCategories.insert(category.rawValue)
+            _ = deletedDefaultCategories.insert(category.rawValue)
         }
         saveDeletedDefaultCategories()
     }
 
     private func restoreDefaultCategory(_ category: Expense.Category) {
         withAnimation(Theme.Motion.tap) {
-            deletedDefaultCategories.remove(category.rawValue)
+            _ = deletedDefaultCategories.remove(category.rawValue)
         }
         saveDeletedDefaultCategories()
     }

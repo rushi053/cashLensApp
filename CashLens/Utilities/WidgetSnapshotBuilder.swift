@@ -43,6 +43,10 @@ enum WidgetSnapshotBuilder {
     /// further out than this is not interesting on a glance widget.
     private static let upcomingWindowDays = 14
 
+    /// Hard cap on exported Quick Log templates — the Medium widget
+    /// shows at most 3 buttons; one spare for forward compatibility.
+    private static let maxQuickLogTemplates = 4
+
     // MARK: - Inputs container
 
     /// Lightweight value-type bundle of everything the builder needs.
@@ -53,6 +57,9 @@ enum WidgetSnapshotBuilder {
         let budgets: [Budget]
         let subscriptions: [Subscription]
         let customCategories: [CustomCategory]
+        /// User-saved expense templates in display order (MRU first) —
+        /// exported for the interactive Quick Log widget.
+        let templates: [ExpenseTemplate]
         let currencyCode: String
         let userName: String
         let activeThemeId: String
@@ -102,8 +109,47 @@ enum WidgetSnapshotBuilder {
                 expenses: inputs.expenses,
                 now: inputs.now,
                 calendar: cal
+            ),
+            quickLogTemplates: buildQuickLogTemplates(
+                templates: inputs.templates,
+                customByID: customByID
             )
         )
+    }
+
+    // MARK: - Quick Log templates block
+
+    private static func buildQuickLogTemplates(
+        templates: [ExpenseTemplate],
+        customByID: [UUID: CustomCategory]
+    ) -> [WidgetSnapshot.QuickLogTemplate] {
+        templates
+            // A widget button must log something concrete — templates
+            // without a positive amount (or refund presets) can't be
+            // one-tap logged and are skipped.
+            .filter { $0.amount.isFinite && $0.amount > 0 && !$0.isRefund }
+            .prefix(maxQuickLogTemplates)
+            .map { template in
+                let (symbol, hex): (String, String)
+                if template.category == .custom,
+                   let id = template.customCategoryId,
+                   let cc = customByID[id] {
+                    symbol = cc.icon
+                    hex = CategoryHex.resolve(cc.colorName)
+                } else {
+                    symbol = template.category.icon
+                    hex = CategoryHex.resolve(template.category.color)
+                }
+                return WidgetSnapshot.QuickLogTemplate(
+                    id: template.id,
+                    name: template.trimmedName,
+                    amount: template.amount,
+                    categoryRaw: template.category.rawValue,
+                    customCategoryId: template.category == .custom ? template.customCategoryId : nil,
+                    symbol: symbol,
+                    hex: hex
+                )
+            }
     }
 
     // MARK: - Spending block
@@ -256,9 +302,11 @@ enum WidgetSnapshotBuilder {
         expenses: [Expense],
         customByID: [UUID: CustomCategory]
     ) -> [WidgetSnapshot.BudgetRow] {
-        let active = budgets.filter(\.isActive).prefix(maxBudgets)
+        // Ended custom-window budgets (a trip that's over) drop out of
+        // the widget — the Home Screen should only show live guardrails.
+        let active = budgets.filter { $0.isActive && !$0.hasEnded }.prefix(maxBudgets)
         return active.map { budget in
-            let range = budget.period.dateRange
+            let range = budget.dateRange
             let matching = expenses.filter { e in
                 guard e.date >= range.start && e.date < range.end else { return false }
                 switch budget.categoryFilter {
@@ -290,13 +338,21 @@ enum WidgetSnapshotBuilder {
                 }
             }()
 
+            let widgetPeriod: WidgetSnapshot.BudgetPeriod = {
+                switch budget.period {
+                case .weekly:  return .weekly
+                case .monthly: return .monthly
+                case .custom:  return .custom
+                }
+            }()
+
             return WidgetSnapshot.BudgetRow(
                 id: budget.id.uuidString,
                 name: budget.name,
                 cap: budget.amount,
                 spent: spent,
-                period: budget.period == .weekly ? .weekly : .monthly,
-                daysRemaining: budget.period.daysRemaining,
+                period: widgetPeriod,
+                daysRemaining: budget.daysRemaining,
                 symbol: symbol,
                 hex: hex
             )

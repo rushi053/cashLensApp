@@ -4,54 +4,75 @@ import SwiftUI
 /// stats), a segmented filter strip, and a sectioned list of subscriptions
 /// (Due Soon / Later / Paused).
 struct SubscriptionsView: View {
-    @ObservedObject var expenseViewModel: ExpenseViewModel
-    @StateObject private var subscriptionViewModel: SubscriptionViewModel
+    @EnvironmentObject var expenseViewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
+    /// Shared instance owned by `CashLensApp`. The `ExpenseViewModel`
+    /// dependency is wired by the app's onAppear via
+    /// `setExpenseViewModel`, same way the budget view model is.
+    @EnvironmentObject var subscriptionViewModel: SubscriptionViewModel
     @State private var showingAddSubscription = false
     @State private var selectedSubscription: Subscription?
     @State private var showingMonthlyBreakdown = false
-    @State private var animateCards = false
+    // v2: dropped the cascading `SubEntrance` modifier — the sheet
+    // is already animating in on its own spring, layering a 0.07s-
+    // staggered fade+slide on top of that produced the "heavy/slow
+    // to settle" feeling the user reported. The list now paints in
+    // one frame with the sheet, which feels notably snappier.
+
+    /// Paused subscriptions stay tucked behind a collapsed section by
+    /// default — they're reference material, not daily reading. The
+    /// header (with count) always renders so nothing feels lost.
+    @State private var showPausedSection = false
+
+    /// Derived hero numbers (yearly, due-this-week amount, average,
+    /// next-up), recomputed once per subscriptions change instead of
+    /// re-scanning the array for each stat on every body evaluation —
+    /// the same "derive off the body" rule TodayView follows. The
+    /// array is small so this runs as a plain main-actor task after a
+    /// short debounce; no detached hop needed at this size.
+    @State private var heroStats = HeroStats()
+    @State private var statsTask: Task<Void, Never>?
+
+    struct HeroStats: Equatable {
+        var activeCount: Int = 0
+        var yearlyTotal: Double = 0
+        var dueWeekAmount: Double = 0
+        var dueWeekCount: Int = 0
+        var averagePerSub: Double = 0
+        var biggestMonthly: Double = 0
+        var nextUp: Subscription? = nil
+    }
 
     @Namespace private var filterNamespace
-
-    init(expenseViewModel: ExpenseViewModel) {
-        self.expenseViewModel = expenseViewModel
-        _subscriptionViewModel = StateObject(
-            wrappedValue: SubscriptionViewModel(expenseViewModel: expenseViewModel)
-        )
-    }
 
     // MARK: - Body
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 0) {
-                    headerSection
+        // No NavigationView here. v2: Subscriptions is only ever
+        // presented as a sheet from Today/Profile, both of which
+        // already wrap us in their own container, AND the screen
+        // ships its own custom header (page title + Add button).
+        // The legacy `NavigationView` was rendering an empty 50pt
+        // nav-bar shelf above our custom header — the "big gap" the
+        // user was seeing — without contributing anything else.
+        ScrollView {
+            VStack(spacing: 0) {
+                headerSection
 
-                    VStack(spacing: Theme.Spacing.xl) {
-                        heroCard
-                            .modifier(SubEntrance(order: 0, animate: animateCards))
-
-                        filterStrip
-                            .modifier(SubEntrance(order: 1, animate: animateCards))
-
-                        listSection
-                            .modifier(SubEntrance(order: 2, animate: animateCards))
-                    }
-                    .padding(.horizontal, Theme.Spacing.xxl)
-                    .padding(.bottom, Theme.Spacing.tabBarInset)
+                VStack(spacing: Theme.Spacing.xl) {
+                    heroCard
+                    filterStrip
+                    listSection
                 }
+                .padding(.horizontal, Theme.Spacing.xxl)
+                .padding(.bottom, Theme.Spacing.tabBarInset)
             }
-            .background(Color.systemBackground)
         }
-        .navigationViewStyle(StackNavigationViewStyle())
-        .onAppear {
-            guard !animateCards else { return }
-            withAnimation(Theme.Motion.emphasized) { animateCards = true }
-        }
+        .background(Color.systemBackground)
         .sheet(isPresented: $showingAddSubscription) {
             AddSubscriptionView(subscriptionViewModel: subscriptionViewModel)
                 .environmentObject(expenseViewModel)
+                .environmentObject(categoryViewModel)
         }
         .sheet(item: $selectedSubscription) { subscription in
             AddSubscriptionView(
@@ -59,6 +80,7 @@ struct SubscriptionsView: View {
                 editingSubscription: subscription
             )
             .environmentObject(expenseViewModel)
+            .environmentObject(categoryViewModel)
         }
         .sheet(isPresented: $showingMonthlyBreakdown) {
             MonthlySpendingBreakdownSheet(
@@ -69,33 +91,42 @@ struct SubscriptionsView: View {
             )
             .presentationDragIndicator(.visible)
         }
+        .onAppear { scheduleStatsRecompute() }
+        .onReceive(subscriptionViewModel.$subscriptions) { _ in
+            scheduleStatsRecompute()
+        }
+        .onDisappear { statsTask?.cancel() }
     }
 
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: Theme.Spacing.xl)
+        // Sheet presentation already gives us a top safe-area inset
+        // and a drag-indicator from `.presentationDragIndicator`, so
+        // a small `.lg` top padding is all we need — no more 32pt
+        // `Color.clear` spacer that used to sit underneath the now-
+        // removed NavigationView's nav-bar shelf.
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("Subscriptions")
+                    .font(Theme.Typography.pageTitle)
+                    .foregroundColor(.primary)
 
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    Text("Subscriptions")
-                        .font(Theme.Typography.pageTitle)
-                        .foregroundColor(.primary)
-
-                    Text(activeCountLabel)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.secondary)
-                        .contentTransition(.numericText())
-                }
-
-                Spacer()
-
-                addButton
+                Text(activeCountLabel)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .contentTransition(.numericText())
             }
-            .padding(.horizontal, Theme.Spacing.xxl)
-            .padding(.bottom, Theme.Spacing.xl)
+
+            Spacer()
+
+            addButton
         }
+        .padding(.horizontal, Theme.Spacing.xxl)
+        // `xl` top — matches the sheet-header convention's clear-air
+        // gap below the grab handle (was `lg`).
+        .padding(.top, Theme.Spacing.xl)
+        .padding(.bottom, Theme.Spacing.xl)
         .background(Color.systemBackground)
     }
 
@@ -157,20 +188,37 @@ struct SubscriptionsView: View {
                 .accessibilityLabel("About Monthly Spending")
             }
 
-            Text(subscriptionViewModel
-                .formattedTotalMonthlyAmount(currency: expenseViewModel.selectedCurrency))
-                .font(.system(size: 40, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(.primary)
-                .contentTransition(.numericText())
-                .moneyAnimation(amount: subscriptionViewModel.totalMonthlyAmount,
-                                currency: expenseViewModel.selectedCurrency)
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text(subscriptionViewModel
+                    .formattedTotalMonthlyAmount(currency: expenseViewModel.selectedCurrency))
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .contentTransition(.numericText())
+                    .moneyAnimation(amount: subscriptionViewModel.totalMonthlyAmount,
+                                    currency: expenseViewModel.selectedCurrency)
 
-            if let next = nextUpSubscription {
+                // Yearly cost footprint — the "what does this add up
+                // to?" number people underestimate most about their
+                // subscriptions. Reads as one quiet sentence, not
+                // another stat tile.
+                if heroStats.activeCount > 0 {
+                    Text(yearlyFootprintLine)
+                        .font(.footnote.weight(.medium))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .contentTransition(.numericText())
+                }
+            }
+
+            if let next = heroStats.nextUp {
                 nextUpRow(next)
             }
 
-            if !subscriptionViewModel.subscriptions.filter({ $0.isActive }).isEmpty {
+            if heroStats.activeCount > 0 {
                 Divider()
                     .overlay(Color.primary.opacity(0.06))
 
@@ -218,19 +266,17 @@ struct SubscriptionsView: View {
         }
     }
 
+    /// Three glance stats. "Yearly" moved up into the footprint line
+    /// under the headline, freeing its slot for the *amount* leaving
+    /// this week (the count alone answered "how many?" but never
+    /// "how much?") and the single biggest monthly drag.
     private var miniStatsRow: some View {
         HStack(spacing: Theme.Spacing.md) {
             miniStat(
-                label: "Yearly",
-                value: yearlyFormatted,
-                icon: "calendar"
-            )
-
-            divider
-
-            miniStat(
                 label: "Due 7d",
-                value: "\(subscriptionViewModel.upcomingSubscriptions.count)",
+                value: heroStats.dueWeekCount == 0
+                    ? "None"
+                    : formatCurrency(heroStats.dueWeekAmount),
                 icon: "clock"
             )
 
@@ -238,8 +284,16 @@ struct SubscriptionsView: View {
 
             miniStat(
                 label: "Average",
-                value: averageFormatted,
+                value: "\(formatCurrency(heroStats.averagePerSub))/mo",
                 icon: "arrow.up.arrow.down"
+            )
+
+            divider
+
+            miniStat(
+                label: "Biggest",
+                value: "\(formatCurrency(heroStats.biggestMonthly))/mo",
+                icon: "crown"
             )
         }
     }
@@ -349,12 +403,6 @@ struct SubscriptionsView: View {
                         lineWidth: 1
                     )
             )
-            .shadow(
-                color: isSelected ? Color.appPrimary.opacity(0.25) : .clear,
-                radius: isSelected ? 6 : 0,
-                x: 0,
-                y: isSelected ? 3 : 0
-            )
         }
         .buttonStyle(.plain)
     }
@@ -399,8 +447,13 @@ struct SubscriptionsView: View {
                     rows(for: later)
                 }
                 if !paused.isEmpty {
-                    subsectionHeader("Paused", count: paused.count)
-                    rows(for: paused)
+                    // Paused subs are reference material, not daily
+                    // reading — collapsed by default so the active
+                    // list ends cleanly, one tap to reveal.
+                    pausedSectionHeader(count: paused.count)
+                    if showPausedSection {
+                        rows(for: paused)
+                    }
                 }
             } else {
                 rows(for: subs)
@@ -430,6 +483,45 @@ struct SubscriptionsView: View {
         }
     }
 
+    private func pausedSectionHeader(count: Int) -> some View {
+        Button {
+            HapticManager.shared.selectionChanged()
+            withAnimation(Theme.Motion.tap) {
+                showPausedSection.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text("Paused")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+
+                Text("\(count)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(
+                        Capsule().fill(Color.primary.opacity(0.06))
+                    )
+
+                Spacer()
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .rotationEffect(.degrees(showPausedSection ? 0 : -90))
+            }
+            .padding(.top, Theme.Spacing.sm)
+            .padding(.bottom, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Paused subscriptions, \(count)")
+        .accessibilityHint(showPausedSection ? "Collapses the section" : "Expands the section")
+    }
+
     private func subsectionHeader(_ title: String, count: Int) -> some View {
         HStack(spacing: 6) {
             Text(title)
@@ -457,7 +549,7 @@ struct SubscriptionsView: View {
 
     private var emptyStateView: some View {
         EmptyStatePanel(
-            icon: "creditcard.and.123",
+            icon: "calendar.badge.clock",
             title: "No Subscriptions Yet",
             message: "Track recurring expenses like Netflix, Spotify, or the gym — and never miss a payment."
         ) {
@@ -471,12 +563,13 @@ struct SubscriptionsView: View {
     private var filterEmptyState: some View {
         VStack(spacing: Theme.Spacing.md) {
             Image(systemName: subscriptionViewModel.activeFilter.icon)
-                .font(.system(size: 32, weight: .regular))
-                .foregroundColor(.secondary.opacity(0.7))
+                .font(.system(size: 28, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tertiary)
                 .padding(.top, Theme.Spacing.xxl)
 
             Text("No \(subscriptionViewModel.activeFilter.title.lowercased()) subscriptions")
-                .font(.system(size: 16, weight: .semibold))
+                .font(Theme.Typography.rowTitle)
                 .foregroundColor(.primary)
 
             Button {
@@ -501,13 +594,82 @@ struct SubscriptionsView: View {
 
     // MARK: - Derived values
 
-    /// The next upcoming active subscription (earliest `nextDueDate`). `nil`
-    /// when nothing is active.
-    private var nextUpSubscription: Subscription? {
-        subscriptionViewModel.subscriptions
-            .filter { $0.isActive }
-            .min(by: { $0.nextDueDate < $1.nextDueDate })
+    /// One pass over the subscriptions array produces every hero
+    /// number. Debounced 50ms so a burst of FRC updates (import,
+    /// currency relabel) collapses into a single recompute.
+    private func scheduleStatsRecompute() {
+        statsTask?.cancel()
+        statsTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard !Task.isCancelled else { return }
+
+            let subs = subscriptionViewModel.subscriptions
+            let calendar = Calendar.current
+            let weekAhead = calendar.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+
+            var stats = HeroStats()
+            var monthlyTotal = 0.0
+            for sub in subs where sub.isActive {
+                stats.activeCount += 1
+                let monthly = subscriptionViewModel.monthlyEquivalentAmount(for: sub)
+                monthlyTotal += monthly
+                stats.biggestMonthly = max(stats.biggestMonthly, monthly)
+                if sub.nextDueDate <= weekAhead {
+                    stats.dueWeekCount += 1
+                    stats.dueWeekAmount += sub.amount
+                }
+                if stats.nextUp == nil || sub.nextDueDate < stats.nextUp!.nextDueDate {
+                    stats.nextUp = sub
+                }
+            }
+            stats.yearlyTotal = monthlyTotal * 12
+            stats.averagePerSub = stats.activeCount > 0
+                ? monthlyTotal / Double(stats.activeCount)
+                : 0
+
+            if stats != heroStats {
+                heroStats = stats
+            }
+        }
     }
+
+    /// "≈ ₹28,400 a year across 6 subscriptions"
+    private var yearlyFootprintLine: String {
+        let count = heroStats.activeCount
+        let subsNoun = count == 1 ? "subscription" : "subscriptions"
+        return "≈ \(formatCurrency(heroStats.yearlyTotal)) a year across \(count) \(subsNoun)"
+    }
+
+    // Static formatters — these run on the hero + mini-stat hot path
+    // and DateFormatter/NumberFormatter allocation is expensive per
+    // body pass.
+    private static let weekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE"
+        return f
+    }()
+
+    private static let monthDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
+    private static let wholeNumberFormatter: NumberFormatter = {
+        let nf = NumberFormatter()
+        nf.numberStyle = .decimal
+        nf.maximumFractionDigits = 0
+        nf.minimumFractionDigits = 0
+        return nf
+    }()
+
+    private static let twoDecimalFormatter: NumberFormatter = {
+        let nf = NumberFormatter()
+        nf.numberStyle = .decimal
+        nf.maximumFractionDigits = 2
+        nf.minimumFractionDigits = 2
+        return nf
+    }()
 
     private func relativeDueText(for sub: Subscription) -> String {
         let days = sub.daysUntilNext
@@ -515,54 +677,15 @@ struct SubscriptionsView: View {
         if days == 0 { return "today" }
         if days == 1 { return "tomorrow" }
         if days <= 6 {
-            let weekdayFormatter = DateFormatter()
-            weekdayFormatter.dateFormat = "EEEE"
-            return "in \(days) days · \(weekdayFormatter.string(from: sub.nextDueDate))"
+            return "in \(days) days · \(Self.weekdayFormatter.string(from: sub.nextDueDate))"
         }
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        return f.string(from: sub.nextDueDate)
-    }
-
-    private var yearlyFormatted: String {
-        let yearly = subscriptionViewModel.totalMonthlyAmount * 12
-        return formatCurrency(yearly)
-    }
-
-    private var averageFormatted: String {
-        let active = subscriptionViewModel.subscriptions.filter { $0.isActive }
-        guard !active.isEmpty else { return formatCurrency(0) }
-        let avg = subscriptionViewModel.totalMonthlyAmount / Double(active.count)
-        return formatCurrency(avg)
+        return Self.monthDayFormatter.string(from: sub.nextDueDate)
     }
 
     private func formatCurrency(_ value: Double) -> String {
-        let nf = NumberFormatter()
-        nf.numberStyle = .decimal
-        nf.maximumFractionDigits = value >= 100 ? 0 : 2
-        nf.minimumFractionDigits = value >= 100 ? 0 : 2
+        let nf = value >= 100 ? Self.wholeNumberFormatter : Self.twoDecimalFormatter
         let str = nf.string(from: NSNumber(value: value)) ?? "0"
         return "\(expenseViewModel.selectedCurrency.symbol)\(str)"
-    }
-}
-
-// MARK: - Entrance animation
-
-/// Cascading spring-based entrance, mirroring the Statistics page so the whole
-/// app shares one "section appears" motion.
-private struct SubEntrance: ViewModifier {
-    let order: Int
-    let animate: Bool
-    private var delay: Double { Double(order) * 0.07 }
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(animate ? 1 : 0)
-            .offset(y: animate ? 0 : 12)
-            .animation(
-                .spring(response: 0.55, dampingFraction: 0.82, blendDuration: 0).delay(delay),
-                value: animate
-            )
     }
 }
 
@@ -841,6 +964,8 @@ private struct MonthlySpendingBreakdownSheet: View {
 // MARK: - Preview
 
 #Preview {
-    SubscriptionsView(expenseViewModel: ExpenseViewModel())
+    SubscriptionsView()
+        .environmentObject(ExpenseViewModel())
         .environmentObject(CategoryViewModel())
+        .environmentObject(SubscriptionViewModel())
 }

@@ -186,7 +186,7 @@ class BudgetViewModel: NSObject, ObservableObject {
             let results = await Task.detached(priority: .userInitiated) { [expenses, activeBudgets, memorySnapshot] in
                 var progressMap: [UUID: BudgetProgress] = [:]
                 for budget in activeBudgets {
-                    let range = budget.period.dateRange
+                    let range = budget.dateRange
                     let matching = expenses.filter { expense in
                         guard expense.date >= range.start && expense.date < range.end else { return false }
                         switch budget.categoryFilter {
@@ -217,8 +217,8 @@ class BudgetViewModel: NSObject, ObservableObject {
                         spent: spent,
                         limit: budget.amount,
                         percentage: pct,
-                        daysRemaining: budget.period.daysRemaining,
-                        totalDays: budget.period.totalDays,
+                        daysRemaining: budget.daysRemaining,
+                        totalDays: budget.totalDays,
                         status: status
                     )
                 }
@@ -258,8 +258,16 @@ class BudgetViewModel: NSObject, ObservableObject {
                 for threshold in budget.alertAtPercentages.sorted() where threshold > 0 {
                     if old < threshold && newPct >= threshold - 0.000_001,
                        !BudgetAlertState.hasFired(budget: budget, threshold: threshold) {
+                        // `markFired` happens inside the scheduler, only
+                        // after the notification is actually accepted by
+                        // the system. Marking here would burn the
+                        // once-per-threshold shot even when authorization
+                        // was denied or `add` failed — the user would
+                        // never get that alert. Re-entry before the async
+                        // add completes is harmless: the request id is
+                        // deterministic, so a double-add just replaces
+                        // itself.
                         scheduleBudgetNotification(budget: budget, threshold: threshold, spentFraction: newPct)
-                        BudgetAlertState.markFired(budget: budget, threshold: threshold)
                     }
                 }
             }
@@ -268,7 +276,16 @@ class BudgetViewModel: NSObject, ObservableObject {
         }
 
         lastPublishedProgress = newMap
-        budgetProgress = newMap
+        // PERF: equality-gate the publish. Recomputes fire on every
+        // `$expenses` emit (plus every foreground), but the resulting
+        // map is very often identical — e.g. an expense edit that
+        // doesn't touch any budget's category/window. An ungated
+        // assign re-published anyway, and the widget coordinator's
+        // `$budgetProgress` sink then rebuilt + rewrote the snapshot
+        // and called `reloadAllTimelines()` for literally nothing.
+        if budgetProgress != newMap {
+            budgetProgress = newMap
+        }
     }
 
     /// Foreground hook: ensures progress matches data after long background (no-op if already synced).
@@ -295,7 +312,7 @@ class BudgetViewModel: NSObject, ObservableObject {
     }
 
     private func scheduleBudgetNotification(budget: Budget, threshold: Double, spentFraction: Double) {
-        let periodStart = budget.period.dateRange.start.timeIntervalSince1970
+        let periodStart = budget.dateRange.start.timeIntervalSince1970
         let id = notificationIdentifier(budgetId: budget.id, threshold: threshold, periodStart: periodStart)
 
         Task {
@@ -313,7 +330,7 @@ class BudgetViewModel: NSObject, ObservableObject {
                 content.body = "You've reached \(pctText) of your \"\(budget.name)\" budget."
             }
             content.sound = .default
-            let range = budget.period.dateRange
+            let range = budget.dateRange
             // AllExpenses date range uses inclusive end-of-period day; budget range.end is exclusive.
             let lastInclusiveDay = Calendar.current.date(byAdding: .day, value: -1, to: range.end) ?? range.end
             var info: [String: Any] = [
@@ -336,12 +353,14 @@ class BudgetViewModel: NSObject, ObservableObject {
 
             do {
                 try await UNUserNotificationCenter.current().add(request)
+                // Only now is the alert guaranteed to reach the user —
+                // safe to consume the once-per-threshold flag.
+                BudgetAlertState.markFired(budget: budget, threshold: threshold)
+                await MainActor.run {
+                    HapticManager.shared.warning()
+                }
             } catch {
                 print("BudgetViewModel: notification add failed — \(error.localizedDescription)")
-            }
-
-            await MainActor.run {
-                HapticManager.shared.warning()
             }
         }
     }
@@ -355,10 +374,18 @@ class BudgetViewModel: NSObject, ObservableObject {
     func progress(for budget: Budget) -> BudgetProgress {
         budgetProgress[budget.id] ?? BudgetProgress(
             spent: 0, limit: budget.amount, percentage: 0,
-            daysRemaining: budget.period.daysRemaining,
-            totalDays: budget.period.totalDays,
+            daysRemaining: budget.daysRemaining,
+            totalDays: budget.totalDays,
             status: .safe
         )
+    }
+
+    /// Active budgets whose window is still running — an ended trip
+    /// budget stays in the manage list (with its final numbers) but
+    /// shouldn't keep driving glance surfaces like Today's verdict
+    /// or the widget.
+    var currentBudgets: [Budget] {
+        activeBudgets.filter { !$0.hasEnded }
     }
 
     var primaryBudget: Budget? {

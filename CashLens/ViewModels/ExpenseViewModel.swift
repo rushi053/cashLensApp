@@ -5,6 +5,14 @@ import CoreData
 
 class ExpenseViewModel: ObservableObject {
     @Published var expenses: [Expense] = []
+    /// Phased-hydration marker. `false` while `expenses` holds only the
+    /// synchronous launch window (recent rows); flips to `true` once
+    /// `loadExpensesAsync()` has published the full table. Consumers
+    /// that must see complete history before doing destructive or
+    /// persistent work (receipt orphan sweep, notification digests)
+    /// should gate on this / use `waitUntilFullyHydrated()`.
+    /// Set from `ExpenseViewModel+CoreData.swift`, hence no `private(set)`.
+    @Published var isFullyHydrated: Bool = false
     @Published var filteredExpenses: [Expense] = []
     @Published var selectedCategory: Expense.Category?
     @Published var selectedCustomCategoryId: UUID?
@@ -54,11 +62,17 @@ class ExpenseViewModel: ObservableObject {
             UserDefaults.standard.set(defaultHomeTimeFrame.rawValue, forKey: UserDefaultsKeys.defaultHomeTimeFrame)
         }
     }
+    /// SAFETY: Setting this does **not** rewrite stored data. The bulk
+    /// relabel of every expense/subscription currency field
+    /// (`syncCurrencyAcrossStoredData()`) is destructive — amounts are
+    /// NOT converted — so it only runs from `CurrencyPickerView`'s
+    /// commit path after explicit user confirmation. Keeping it out of
+    /// `didSet` also stops the rewrite from firing on every launch
+    /// (`loadSelectedCurrency`), on locale auto-pick, and on backup
+    /// restore (where it used to clobber imported currencies).
     @Published var selectedCurrency: Expense.Currency = .usd {
         didSet {
             if oldValue != selectedCurrency {
-                updateAllExpensesToCurrentCurrency()
-                updateAllSubscriptionsToCurrentCurrency()
                 // Broadcast so views with **baked-in** formatted strings
                 // (e.g. `StatisticsView.cachedInsights`, which embeds the
                 // formatter output at compute time) can flush and rebuild.
@@ -113,7 +127,24 @@ class ExpenseViewModel: ObservableObject {
                 let end = calendar.date(byAdding: .year, value: 1, to: start) ?? referenceDate
                 return (start, end)
             case .all:
-                return (Date.distantPast, referenceDate)
+                // BUG FIX: previously this returned `(distantPast, referenceDate)`
+                // — i.e. an `end` that's the live current moment rather than a
+                // day boundary. `StatisticsView.applyPresetTimeFrame` then
+                // subtracts 1 day from `range.end` to convert the half-open
+                // interval into the inclusive "Custom range" UI representation
+                // (`endDate` shown to the user as the last *included* day).
+                // That math is correct when `range.end` is "start of next
+                // bucket" (start of next month / week / year), but for `.all`
+                // it produced `rangeEndDate = yesterday`, and the downstream
+                // `ExpenseFilter` then resolved `endExclusive = startOfToday`,
+                // silently dropping every expense dated within today's local
+                // day. By returning `startOfTomorrow` here we make `.all`
+                // behave like the other cases: subtract 1 day → `startOfToday`,
+                // expand → `startOfTomorrow`, and every expense ever is now
+                // actually included.
+                let startOfToday = calendar.startOfDay(for: referenceDate)
+                let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? referenceDate
+                return (Date.distantPast, startOfTomorrow)
             }
         }
     }
@@ -134,6 +165,33 @@ class ExpenseViewModel: ObservableObject {
     
     private var cancellables = Set<AnyCancellable>()
     let viewContext: NSManagedObjectContext
+
+    /// Long-lived background context reused by every `loadExpensesAsync()`
+    /// pass. PERF: previously each call built a fresh
+    /// `newBackgroundContext()` — a nontrivial setup cost paid on every
+    /// foreground transition for no benefit. Only touched from the main
+    /// actor (the async load hops onto it via `perform`).
+    ///
+    /// Derived from `viewContext`'s coordinator (not
+    /// `PersistenceController.shared`) so the VM always reads the same
+    /// store it was injected with — required by the store-load-failure
+    /// recovery path, where the VM is deliberately wired to an in-memory
+    /// container and must never fetch against the broken shared
+    /// coordinator; also keeps previews/tests self-contained.
+    lazy var backgroundLoadContext: NSManagedObjectContext = {
+        let context = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+        context.persistentStoreCoordinator = viewContext.persistentStoreCoordinator
+        context.automaticallyMergesChangesFromParent = true
+        return context
+    }()
+
+    /// In-memory cache backing `categoryDisplayName/Icon/Color(for:)`.
+    /// PERF: those helpers used to run a Core Data fetch **per call**
+    /// (per rendered row, per sort comparison, per digest line). The
+    /// cache is built lazily on first use and invalidated whenever a
+    /// context save touches `CustomCategoryEntity` (see `init`), on
+    /// `dataDidClear`, and after a backup restore. Main-thread only.
+    var customCategoriesByIdCache: [UUID: CustomCategory]? = nil
     
     // Show currency picker on first launch
     @AppStorage(UserDefaultsKeys.hasShownCurrencyPicker) var hasShownCurrencyPicker: Bool = false
@@ -177,6 +235,55 @@ class ExpenseViewModel: ObservableObject {
         
         // Set up filtering
         setupFiltering()
+
+        // Invalidate the custom-category cache whenever any context save
+        // touches CustomCategoryEntity (CategoryViewModel CRUD, imports
+        // that save normally) or the data is cleared wholesale. Batch
+        // operations that bypass save notifications are covered by the
+        // explicit invalidation in `reloadAfterBackupRestore()`.
+        NotificationCenter.default
+            .publisher(for: .NSManagedObjectContextDidSave)
+            .sink { [weak self] note in
+                guard Self.saveTouchedCustomCategories(note) else { return }
+                DispatchQueue.main.async { self?.customCategoriesByIdCache = nil }
+            }
+            .store(in: &cancellables)
+        NotificationCenter.default
+            .publisher(for: .dataDidClear)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.customCategoriesByIdCache = nil }
+            .store(in: &cancellables)
+
+        // Headless write paths (Siri intents, widget queue drain) insert
+        // rows on a background context this VM never sees. The diff-gated
+        // async reload picks the new rows up in one publish.
+        NotificationCenter.default
+            .publisher(for: .expensesChangedExternally)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.loadExpensesAsync() }
+            .store(in: &cancellables)
+    }
+
+    private static func saveTouchedCustomCategories(_ note: Notification) -> Bool {
+        let userInfo = note.userInfo ?? [:]
+        for key in [NSInsertedObjectsKey, NSUpdatedObjectsKey, NSDeletedObjectsKey] {
+            if let set = userInfo[key] as? Set<NSManagedObject>,
+               set.contains(where: { $0 is CustomCategoryEntity }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Suspend until the full expense table has been published (no-op if
+    /// already hydrated). Used by launch-time consumers that must not run
+    /// on the partial hot window (notification digests, etc.).
+    @MainActor
+    func waitUntilFullyHydrated() async {
+        if isFullyHydrated { return }
+        for await hydrated in $isFullyHydrated.values where hydrated {
+            return
+        }
     }
     
     // Load individual preferences from UserDefaults
@@ -223,18 +330,6 @@ class ExpenseViewModel: ObservableObject {
         }
     }
     
-    // Legacy method kept for compatibility - now delegates to individual methods
-    private func loadUserPreferences() {
-        if let savedName = UserDefaults.standard.string(forKey: UserDefaultsKeys.userName) {
-            userName = savedName
-        }
-        
-        loadSelectedCurrency()
-        loadAppearanceMode()
-        
-        hasShownCurrencyPicker = UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasShownCurrencyPicker)
-    }
-
     /// Re-read every preference + reload Core Data after a backup restore so
     /// the UI immediately reflects the imported state. Kept on the main actor
     /// so all `@Published` writes happen safely.
@@ -245,7 +340,15 @@ class ExpenseViewModel: ObservableObject {
         loadSelectedTimeFrame()
         loadAppearanceMode()
         loadSummaryPreferences()
-        loadExpenses()
+        // Imports write custom categories via batch operations that don't
+        // post save notifications — flush the lookup cache explicitly.
+        customCategoriesByIdCache = nil
+        // PERF: async reload — the old synchronous `loadExpenses()` here
+        // stalled the main thread for large imports right as the
+        // "import succeeded" sheet appeared. The summary sheet doesn't
+        // need the array synchronously; the diff-gated publish lands a
+        // moment later and refreshes every observer.
+        loadExpensesAsync()
     }
     
     // Auto-select currency based on user's locale if not already set
@@ -364,7 +467,17 @@ class ExpenseViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 30_000_000)
             guard !Task.isCancelled else { return }
 
-            let result = await Task.detached(priority: .userInitiated) {
+            // Snapshot the currently-published values so the detached
+            // pass can equality-check its result OFF-main. When nothing
+            // changed (very common: an `$expenses` publish whose rows
+            // all fall outside the active timeframe filter, a no-op
+            // hydration refresh, etc.) we skip the six `@Published`
+            // writes entirely — otherwise every observer of this view
+            // model (Today, Activity, Insights, You) got an
+            // `objectWillChange` for identical data.
+            let previousFiltered = self.filteredExpenses
+
+            let result: FilterAndTotalsResult? = await Task.detached(priority: .userInitiated) {
                 let filtered = ExpenseFilter.apply(
                     expenses: expenses,
                     category: category,
@@ -397,6 +510,11 @@ class ExpenseViewModel: ObservableObject {
                     }
                 }
 
+                // Everything else in the result is a pure function of
+                // `filtered`, so one array comparison decides whether
+                // the whole commit is a no-op. O(N), but off-main.
+                if filtered == previousFiltered { return nil }
+
                 return FilterAndTotalsResult(
                     filtered: filtered,
                     total: total.isFinite ? total : 0,
@@ -407,7 +525,7 @@ class ExpenseViewModel: ObservableObject {
                 )
             }.value
 
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let result else { return }
             self.applyFilterAndTotalsResult(result)
         }
     }
@@ -454,31 +572,12 @@ class ExpenseViewModel: ObservableObject {
         return cachedCountsByCustomId[customCategoryId, default: 0]
     }
     
-    /// Force recalculate totals if needed (legacy compatibility)
-    /// This is useful when you need immediate accurate totals without waiting for cache
-    func calculateTotalExpenses(for category: Expense.Category? = nil) -> Double {
-        let expensesToSum = category == nil ?
-            filteredExpenses :
-            filteredExpenses.filter { $0.category == category }
-        
-        let total = expensesToSum.reduce(0) { result, expense in
-            guard expense.amount.isFinite else { return result }
-            return result + expense.amount
-        }
-        
-        return total.isFinite ? total : 0.0
-    }
-    
-    
-    func filterExpenses(_ expenses: [Expense], category: Expense.Category?, customCategoryId: UUID?, timeFrame: TimeFrame) -> [Expense] {
-        ExpenseFilter.apply(
-            expenses: expenses,
-            category: category,
-            customCategoryId: customCategoryId,
-            timeFrame: timeFrame,
-            referenceDate: Date()
-        )
-    }
+    // NOTE: removed two dead legacy helpers here —
+    // `calculateTotalExpenses(for:)` (no call sites, and it summed raw
+    // `amount`, ignoring refunds — a landmine for any future caller;
+    // live totals come from `cachedTotalAmount` / `signedAmount`) and
+    // `filterExpenses(...)` (a pass-through to `ExpenseFilter.apply`,
+    // which callers use directly).
     
     // Currency symbol for formatting
     var currencySymbol: String {

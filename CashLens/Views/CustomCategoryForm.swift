@@ -21,17 +21,27 @@ struct CustomCategoryForm: View {
     @State private var errorMessage: String = ""
     @State private var showingError = false
     @State private var isSaving = false
+    @State private var showDeleteConfirm = false
 
     @FocusState private var nameFocused: Bool
 
     var editingCategory: CustomCategory?
     var onSave: ((CustomCategory) -> Void)?
+    /// Provided by the presenting screen when deletion is allowed
+    /// (i.e. when editing). Runs the actual delete + expense cleanup;
+    /// the form only owns the confirm dialog. `nil` hides the trash.
+    var onDelete: (() -> Void)?
 
     // MARK: - Init
 
-    init(editingCategory: CustomCategory? = nil, onSave: ((CustomCategory) -> Void)? = nil) {
+    init(
+        editingCategory: CustomCategory? = nil,
+        onSave: ((CustomCategory) -> Void)? = nil,
+        onDelete: (() -> Void)? = nil
+    ) {
         self.editingCategory = editingCategory
         self.onSave = onSave
+        self.onDelete = onDelete
 
         if let category = editingCategory {
             _categoryName = State(initialValue: category.name)
@@ -71,7 +81,7 @@ struct CustomCategoryForm: View {
 
     var body: some View {
         ZStack {
-            Color(.systemGroupedBackground)
+            Color(uiColor: .systemBackground)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -93,12 +103,25 @@ struct CustomCategoryForm: View {
             }
         }
         .navigationBarHidden(true)
+        // App-wide sheet convention: visible grab handle on every
+        // custom-chrome sheet, with the header giving it clear air.
+        .presentationDragIndicator(.visible)
         .alert(isPresented: $showingError) {
             Alert(
                 title: Text("Heads up"),
                 message: Text(errorMessage),
                 dismissButton: .default(Text("OK"))
             )
+        }
+        .alert("Delete Category?", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                HapticManager.shared.success()
+                onDelete?()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Expenses using “\(trimmedName.isEmpty ? "this category" : trimmedName)” will move to “Other”. Budgets for it will be removed.")
         }
         .sheet(isPresented: $showingIconPicker) {
             IconPickerView(
@@ -114,31 +137,37 @@ struct CustomCategoryForm: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            HStack {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .frame(width: 32, height: 32)
-                        .background(Color(.systemGray6))
+        // Shared SheetHeader — same eyebrow-over-verb strip as the
+        // rest of the add-sheet family. The preview tile below the
+        // header carries the visual interest the old big title used
+        // to provide. Editing adds the same trailing trash button
+        // BudgetSetupView and AddSubscriptionView use, so deleting a
+        // category doesn't depend on discovering the swipe gesture
+        // in the manage list.
+        SheetHeader(
+            eyebrow: "Category",
+            title: isEditing ? "Editing" : "Add New",
+            onClose: { dismiss() }
+        ) {
+            if isEditing, onDelete != nil {
+                Button {
+                    HapticManager.shared.warning()
+                    showDeleteConfirm = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.red)
+                        .frame(width: 36, height: 36)
+                        .background(.ultraThinMaterial)
+                        .overlay(Circle().stroke(Color.red.opacity(0.22), lineWidth: 0.5))
                         .clipShape(Circle())
                 }
-                Spacer()
-            }
-            .padding(.horizontal, Theme.Spacing.xxl)
-            .padding(.top, Theme.Spacing.xl)
-
-            VStack(spacing: Theme.Spacing.sm) {
-                Text(isEditing ? "Edit Category" : "New Category")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                Text(isEditing ? "Update its look and feel" : "Pick a colour and an icon")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.secondary)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete this category")
+            } else {
+                SheetHeaderSpacer()
             }
         }
-        .padding(.bottom, Theme.Spacing.sm)
     }
 
     // MARK: - Preview tile
@@ -353,7 +382,7 @@ struct CustomCategoryForm: View {
             .padding(.horizontal, Theme.Spacing.xxl)
             .padding(.top, Theme.Spacing.lg)
             .padding(.bottom, 40)
-            .background(Color(.systemGroupedBackground))
+            .background(Color(uiColor: .systemBackground))
         }
     }
 
@@ -427,7 +456,7 @@ struct IconPickerView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemGroupedBackground).ignoresSafeArea()
+            Color(uiColor: .systemBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 pickerHeader
@@ -547,16 +576,11 @@ struct IconPickerView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 32, weight: .medium))
-                .foregroundColor(.secondary.opacity(0.6))
-            Text("No icons match “\(query)”")
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        InlineEmptyState(
+            icon: "text.magnifyingglass",
+            title: "No icons match “\(query)”"
+        )
+        .padding(.top, Theme.Spacing.xxxl)
     }
 }
 
@@ -572,7 +596,7 @@ struct ColorPickerView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemGroupedBackground).ignoresSafeArea()
+            Color(uiColor: .systemBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 pickerHeader

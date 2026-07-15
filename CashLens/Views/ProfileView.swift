@@ -3,41 +3,43 @@ import Foundation
 import StoreKit
 import UserNotifications
 
-/// Profile / Settings hub.
+/// Profile / Settings hub — the **You** tab root.
 ///
 /// **Information architecture (top → bottom):**
-///   1. Compact profile header (small avatar + tap-to-edit name with pencil chip).
+///   1. Compact profile header (avatar + tap-to-edit name).
 ///   2. Pro card (active or upgrade).
-///   3. **Backup warning banner** — only shown when backup health is not `.good`,
-///      so the most critical signal can't be missed at the bottom of the scroll.
-///   4. Preferences (currency / appearance / time frame / budgets).
-///   5. Reminders (weekly digest / monthly digest / backup reminder + schedule rows).
-///   6. Data (export / import / backup health card / clear all data).
-///   7. About (about / support the app / community icon row / version footer).
+///   3. **Backup warning banner** — only shown when backup health is not `.good`.
+///   4. **General** — pure preferences (Currency / Default Time Frame / Siri).
+///   5. **Privacy & Security** — App Lock toggle + grace window + Privacy dashboard.
+///   6. **Personalization** — Theme & Appearance studio + App Icon (Pro).
+///   7. **Manage** — navigation rows to dedicated managers (Budgets / Categories /
+///      Subscriptions), each with a live count badge. Split off from General
+///      because these are screens-of-data, not set-and-forget values.
+///   8. **Notifications** — a single nav row pushing `NotificationsSettingsView`.
+///   9. **Data** — Backup Health card + Export / Import / Clear.
+///  10. **About** — Support / Rate / Restore Purchases (free users) / About +
+///      community icon row + version footer.
 ///
-/// **Design intent:** Settings is for persistent preferences, so action-shaped rows
-/// like "Support the App" were moved out into the bottom About section.
-/// `Appearance` and `Default Time Frame` use `Menu` instead of inline accordion
-/// pickers — fewer taps, no layout glitches, more iOS-native.
+/// **Design intent:** Each section has a single purpose so the page scans
+/// top-to-bottom in calm groups instead of 10+ rows of mixed concerns.
+/// Pickers use `Menu` rather than inline accordions for native, glitch-free
+/// dropdowns.
+///
+/// NOTE: the legacy sheet-from-Home presentation (X close button,
+/// `presentationMode` dismiss, UIKit "Profile" title) was removed —
+/// this view is only ever mounted as the tab root now.
 struct ProfileView: View {
-    /// v2: when ProfileView is the You tab root (not the legacy
-    /// sheet-from-Home presentation), there's no presenter to dismiss
-    /// back to — so the leading "X" close button must disappear.
-    /// Legacy sheet call sites pass `false` (default) and keep
-    /// their existing dismiss UX.
-    let isRootTab: Bool
-
-    init(isRootTab: Bool = false) {
-        self.isRootTab = isRootTab
-    }
-
-    @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var proManager: ProManager
     @EnvironmentObject var budgetViewModel: BudgetViewModel
+    @EnvironmentObject var subscriptionViewModel: SubscriptionViewModel
     @EnvironmentObject var themeStore: ThemeStore
     @EnvironmentObject var appIconStore: AppIconStore
+    /// App Lock is app-global state (the overlay mounts in
+    /// `CashLensApp`), so Profile observes the shared manager rather
+    /// than owning any lock state itself.
+    @ObservedObject private var appLockManager = AppLockManager.shared
 
     @State private var isEditingName = false
     @FocusState private var nameFieldFocused: Bool
@@ -46,6 +48,7 @@ struct ProfileView: View {
     @State private var showingPaywall = false
     @State private var showingBudgetList = false
     @State private var showingSubscriptions = false
+    @State private var showingCategories = false
     @State private var showingCurrencyPicker = false
     @State private var showingAboutSheet = false
     @State private var showingExportSheet = false
@@ -53,39 +56,27 @@ struct ProfileView: View {
     @State private var showingImportSheet = false
     @State private var showingThemePicker = false
     @State private var showingAppIconPicker = false
+    @State private var showingSiriTips = false
 
-    // Weekly summary
+    /// Shown when enabling App Lock fails its required authentication
+    /// (no passcode set, or the user cancelled the prompt).
+    @State private var showingAppLockEnableFailed = false
+
+    /// Restore Purchases (About section, free users only). The row is
+    /// the standard escape hatch for "I paid on my old phone" — it
+    /// used to exist only inside the paywall, which is exactly the
+    /// screen a previous purchaser doesn't want to open.
+    @State private var isRestoringPurchases = false
+    @State private var restoreResultMessage: String? = nil
+
+    // Reminder + Smart Insights state lives in `NotificationsSettingsView`
+    // (the pushed sub-page). We only need the four boolean toggles here
+    // to render the live "N active" badge on the Notifications row;
+    // `@AppStorage` keeps these values in sync with the sub-page via
+    // UserDefaults, so the badge updates the moment a toggle is flipped.
     @AppStorage(UserDefaultsKeys.weeklySummaryEnabled) private var weeklySummaryEnabled: Bool = false
-    @AppStorage(UserDefaultsKeys.weeklySummaryWeekday) private var weeklySummaryWeekday: Int = 2 // Monday
-    @AppStorage(UserDefaultsKeys.weeklySummaryHour) private var weeklySummaryHour: Int = 9
-    @AppStorage(UserDefaultsKeys.weeklySummaryMinute) private var weeklySummaryMinute: Int = 0
-
-    @State private var showingWeeklySummarySchedule = false
-    @State private var scheduleTempWeekday: Int = 2
-    @State private var scheduleTempTime: Date = Date()
-
-    // Monthly digest
     @AppStorage(UserDefaultsKeys.monthlyDigestEnabled) private var monthlyDigestEnabled: Bool = false
-    @AppStorage(UserDefaultsKeys.monthlyDigestDayOfMonth) private var monthlyDigestDayOfMonth: Int = 1
-    @AppStorage(UserDefaultsKeys.monthlyDigestHour) private var monthlyDigestHour: Int = 9
-    @AppStorage(UserDefaultsKeys.monthlyDigestMinute) private var monthlyDigestMinute: Int = 0
-    @State private var showingMonthlyDigestSchedule = false
-    @State private var monthlyTempDayOfMonth: Int = 1
-    @State private var monthlyTempTime: Date = Date()
-
-    // Backup reminder
     @AppStorage(UserDefaultsKeys.backupReminderEnabled) private var backupReminderEnabled: Bool = false
-    @AppStorage(UserDefaultsKeys.backupReminderDayOfMonth) private var backupReminderDayOfMonth: Int = 1
-    @AppStorage(UserDefaultsKeys.backupReminderHour) private var backupReminderHour: Int = 9
-    @AppStorage(UserDefaultsKeys.backupReminderMinute) private var backupReminderMinute: Int = 0
-    @State private var showingBackupReminderSchedule = false
-    @State private var backupTempDayOfMonth: Int = 1
-    @State private var backupTempTime: Date = Date()
-
-    // Smart Insights (Pro). No schedule sub-row — by design it fires Sunday
-    // 10 AM in the user's local time and only when the engine has something
-    // genuinely interesting to say. Surface area is one toggle so the
-    // setting never feels noisy or fiddly.
     @AppStorage(UserDefaultsKeys.smartInsightsEnabled) private var smartInsightsEnabled: Bool = false
 
     /// Backup metadata is held in `@State` (not read inline from UserDefaults)
@@ -99,23 +90,23 @@ struct ProfileView: View {
 
     private enum ActiveAlert: Identifiable {
         case clearAllData
-        case notificationPermission
 
         var id: String {
             switch self {
             case .clearAllData: return "clearAllData"
-            case .notificationPermission: return "notificationPermission"
             }
         }
     }
 
     @State private var activeAlert: ActiveAlert?
 
-    private var versionString: String {
+    /// Static — the bundle version can't change while the app runs, so
+    /// there's no reason to re-read the info dictionary on every redraw.
+    private static let versionString: String = {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
         return "\(version) (\(build))"
-    }
+    }()
 
     // MARK: - Body
 
@@ -123,12 +114,28 @@ struct ProfileView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: Theme.Spacing.xxl) {
+                    // In-content page title — same treatment as
+                    // Today/Activity/Insights. The UIKit large-title
+                    // bar is hidden below because its expand/settle
+                    // layout re-ran on every tab switch, stuttering
+                    // the tab bar's selection animation — the exact
+                    // bug fixed for Activity earlier.
+                    HStack {
+                        Text("You")
+                            .font(Theme.Typography.pageTitle)
+                            .foregroundColor(.primary)
+                        Spacer()
+                    }
+                    .padding(.top, Theme.Spacing.sm)
+
                     profileHeader
                     proSection
                     backupBanner
-                    preferencesSection
+                    generalSection
+                    privacySection
                     personalizationSection
-                    remindersSection
+                    manageSection
+                    notificationsSection
                     dataSection
                     aboutSection
                     versionFooter
@@ -136,23 +143,11 @@ struct ProfileView: View {
                 .padding()
                 .padding(.bottom, Theme.Spacing.xl)
             }
-            .navigationTitle(isRootTab ? "You" : "Profile")
-            .navigationBarItems(
-                leading: Group {
-                    if !isRootTab {
-                        Button(action: {
-                            presentationMode.wrappedValue.dismiss()
-                        }) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.primary)
-                                .padding(Theme.Spacing.sm)
-                                .background(Color.secondarySystemBackground)
-                                .clipShape(Circle())
-                        }
-                    }
-                }
-            )
+            .navigationTitle("")
+            // No UIKit nav bar at the root (in-content title above).
+            // Pushed children (Privacy, Notifications) re-show the bar
+            // with their own titles + back button, per-view as always.
+            .navigationBarHidden(true)
             .background(Color.systemBackground)
             .alert(item: $activeAlert) { alert in
                 switch alert {
@@ -168,23 +163,16 @@ struct ProfileView: View {
                         },
                         secondaryButton: .cancel()
                     )
-                case .notificationPermission:
-                    return Alert(
-                        title: Text("Enable Notifications"),
-                        message: Text("Please enable notifications in Settings to receive weekly summaries."),
-                        dismissButton: .default(Text("OK"))
-                    )
                 }
             }
             .onAppear {
                 tempUserName = viewModel.userName
-                scheduleTempWeekday = weeklySummaryWeekday
-                scheduleTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
                 reloadBackupMetadata()
             }
-            .onChange(of: showingExportSheet) { _, _ in
-                reloadBackupMetadata()
-            }
+            // NOTE: no `.onChange(of: showingExportSheet)` reload —
+            // `ExportDataView` posts `.backupMetadataDidChange` the
+            // moment a backup completes (handled below), so reloading
+            // again on sheet open/close was pure duplicate work.
             // PERF: Previously this listened to **every**
             // `UserDefaults.didChangeNotification` app-wide. Any
             // unrelated default write — currency change, theme bump,
@@ -207,9 +195,11 @@ struct ProfileView: View {
                 PaywallView()
             }
             .sheet(isPresented: $showingThemePicker) {
-                ThemePickerView()
+                AppearanceStudioView()
                     .environmentObject(themeStore)
                     .environmentObject(proManager)
+                    .environmentObject(appIconStore)
+                    .environmentObject(viewModel)
             }
             .sheet(isPresented: $showingAppIconPicker) {
                 AppIconPickerView()
@@ -220,10 +210,10 @@ struct ProfileView: View {
     }
 
     /// Pulls the latest backup metadata into `@State` so the banner + Backup
-    /// Health card re-render. Called from `.onAppear`, `.onChange` of the
-    /// export sheet, and on every `UserDefaults.didChangeNotification`.
-    /// Updates are gated to avoid a no-op state assignment that would still
-    /// invalidate the view tree.
+    /// Health card re-render. Called from `.onAppear` and whenever
+    /// `.backupMetadataDidChange` fires (posted by the backup exporter /
+    /// importer). Updates are gated to avoid a no-op state assignment that
+    /// would still invalidate the view tree.
     private func reloadBackupMetadata() {
         let newDate = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date
         let newCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.totalBackupCount)
@@ -286,23 +276,24 @@ struct ProfileView: View {
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
+                // Pencil glyph beside the name instead of the old
+                // "Tap to edit" caption line — the review called the
+                // caption noisy for a once-in-a-lifetime action; the
+                // glyph carries the affordance quietly.
                 Button(action: beginEditingName) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: Theme.Spacing.sm) {
                         Text(viewModel.userName)
                             .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
                             .lineLimit(1)
-                        HStack(spacing: 4) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 10, weight: .semibold))
-                            Text("Tap to edit")
-                                .font(.caption)
-                        }
-                        .foregroundColor(.secondary)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.secondary)
                     }
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity)
+                .accessibilityLabel("Edit name")
             }
 
             Spacer(minLength: 0)
@@ -348,11 +339,11 @@ struct ProfileView: View {
         HStack(spacing: Theme.Spacing.md + 2) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient.appPrimaryDiagonal)
+                    .fill(Color.appPrimary.opacity(0.14))
                     .frame(width: 44, height: 44)
                 Image(systemName: "crown.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.white)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.appPrimary)
             }
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -376,13 +367,10 @@ struct ProfileView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .padding()
-        .cardSurface(
-            radius: Theme.Radius.hero,
-            fill: Color.secondarySystemBackground.opacity(0.5)
-        )
+        .cardSurface(radius: Theme.Radius.hero)
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Radius.hero, style: .continuous)
-                .stroke(Color.appPrimary.opacity(0.4), lineWidth: Theme.Stroke.medium)
+                .stroke(Color.appPrimary.opacity(0.30), lineWidth: 1)
         )
     }
 
@@ -394,18 +382,18 @@ struct ProfileView: View {
             HStack(spacing: Theme.Spacing.md + 2) {
                 ZStack {
                     Circle()
-                        .fill(LinearGradient.appPrimaryDiagonal)
+                        .fill(Color.appPrimary.opacity(0.14))
                         .frame(width: 44, height: 44)
                     Image(systemName: "crown.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.white)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.appPrimary)
                 }
 
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
                     Text("Upgrade to Pro")
                         .font(Theme.Typography.rowTitle)
                         .foregroundColor(.primary)
-                    Text("Budgets, tags, PDF reports & more")
+                    Text("Unlimited budgets, receipts, PDF reports & more")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -419,12 +407,11 @@ struct ProfileView: View {
             .padding()
             .cardSurface(
                 radius: Theme.Radius.hero,
-                fill: LinearGradient.appPrimarySoft
+                fill: Color.appPrimary.opacity(0.06)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.hero, style: .continuous)
-                    .stroke(Color.appPrimary.opacity(0.3), lineWidth: Theme.Stroke.medium
-                    )
+                    .stroke(Color.appPrimary.opacity(0.25), lineWidth: 1)
             )
         }
         .buttonStyle(ScaleButtonStyle())
@@ -489,22 +476,154 @@ struct ProfileView: View {
         }
     }
 
-    // MARK: - Preferences
+    // MARK: - General
 
-    /// Persistent preferences only (currency, appearance, time frame, budgets).
-    /// "Support the App" was moved to the About section since it's an action,
-    /// not a preference.
-    private var preferencesSection: some View {
+    /// Pure preferences only — values the user sets once and the rest
+    /// of the app reads. Navigation-style rows (managers, sub-pages)
+    /// live in the dedicated `manageSection` below so this group
+    /// stays scannable.
+    private var generalSection: some View {
         // v2 polish: each settings section is now ONE elevated card
         // with hairline-separated bare rows (the iOS Settings-app
         // grouping). The old "every row is its own card" treatment
         // produced ~12 stacked cards on the You tab — visually noisy
         // and inconsistent with the rest of iOS.
-        SettingsGroup(title: "Preferences") {
+        SettingsGroup(title: "General") {
             currencyRow
-            appearanceMenuRow
             timeFrameMenuRow
+            siriShortcutsRow
+        }
+        .sheet(isPresented: $showingSiriTips) {
+            SiriShortcutsTipsView()
+        }
+    }
+
+    /// Discovery row for the zero-setup Siri phrases (`CashLensShortcuts`).
+    /// Free feature — capture is never paywalled.
+    private var siriShortcutsRow: some View {
+        SettingsRow(
+            icon: "waveform",
+            title: "Siri & Shortcuts",
+            subtitle: "\u{201C}Log an expense in CashLens\u{201D}",
+            style: .bare
+        )
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            showingSiriTips = true
+        }
+    }
+
+    // MARK: - Privacy & Security
+
+    /// App Lock (free — privacy features are a brand statement, not a
+    /// paywall) + the privacy dashboard. Sits right under General so
+    /// the app's core promise is visible without scrolling past the
+    /// feature managers.
+    private var privacySection: some View {
+        SettingsGroup(title: "Privacy & Security") {
+            appLockToggleRow
+            if appLockManager.isEnabled {
+                appLockGraceRow
+            }
+            privacyDashboardRow
+        }
+        // Attached here (not on the ScrollView) so it can't collide
+        // with the `alert(item:)` that owns the clear-all-data flow.
+        .alert("Couldn't Turn On App Lock", isPresented: $showingAppLockEnableFailed) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("CashLens needs \(AppLockManager.unlockMethodName) or a device passcode to lock the app. Verify once to turn it on.")
+        }
+        .animation(Theme.Motion.snappy, value: appLockManager.isEnabled)
+    }
+
+    /// Face ID / Touch ID / Optic ID naming is resolved from the
+    /// device's actual biometry; devices with no biometrics read
+    /// "Passcode". Enabling requires one successful authentication
+    /// first so nobody can lock themselves out.
+    private var appLockToggleRow: some View {
+        SettingsRow(
+            icon: AppLockManager.unlockMethodSymbol,
+            title: "App Lock",
+            subtitle: "Require \(AppLockManager.unlockMethodName) when you open CashLens.",
+            showsChevron: false,
+            style: .bare
+        ) {
+            Toggle("", isOn: Binding(
+                get: { appLockManager.isEnabled },
+                set: { newValue in
+                    HapticManager.shared.lightTap()
+                    if newValue {
+                        Task {
+                            let ok = await appLockManager.enableAfterAuthentication()
+                            if !ok { showingAppLockEnableFailed = true }
+                        }
+                    } else {
+                        appLockManager.disable()
+                    }
+                }
+            ))
+            .labelsHidden()
+            .tint(.appPrimary)
+        }
+    }
+
+    /// Grace window picker — how long a backgrounded app stays
+    /// unlocked. `Menu` for the native dropdown, same as Appearance.
+    private var appLockGraceRow: some View {
+        Menu {
+            ForEach(AppLockManager.GracePeriod.allCases) { period in
+                Button {
+                    HapticManager.shared.lightTap()
+                    appLockManager.gracePeriod = period
+                } label: {
+                    if appLockManager.gracePeriod == period {
+                        Label(period.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(period.displayName)
+                    }
+                }
+            }
+        } label: {
+            SettingsRow(icon: "clock.fill", title: "Require After", showsChevron: false, style: .bare) {
+                HStack(spacing: 4) {
+                    SettingsRowValue(text: appLockManager.gracePeriod.displayName)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    private var privacyDashboardRow: some View {
+        NavigationLink {
+            PrivacyDashboardView()
+                .environmentObject(viewModel)
+        } label: {
+            SettingsRow(
+                icon: "hand.raised.fill",
+                title: "Privacy",
+                showsChevron: true,
+                style: .bare
+            ) {
+                SettingsRowValue(text: "On-device")
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Manage
+
+    /// Navigation-style rows that open dedicated managers for the
+    /// app's three first-class collections. Surfacing `Manage
+    /// Categories` here closes a real discoverability gap — it used
+    /// to be reachable only by drilling into the category picker
+    /// inside Add Expense.
+    private var manageSection: some View {
+        SettingsGroup(title: "Manage") {
             budgetManagementRow
+            categoriesRow
             subscriptionsRow
         }
         .sheet(isPresented: $showingBudgetList) {
@@ -514,10 +633,18 @@ struct ProfileView: View {
                 .environmentObject(categoryViewModel)
                 .environmentObject(proManager)
         }
+        .sheet(isPresented: $showingCategories) {
+            ManageCategoriesView()
+                .environmentObject(categoryViewModel)
+                .environmentObject(viewModel)
+        }
         .sheet(isPresented: $showingSubscriptions) {
-            NavigationView {
-                SubscriptionsView(expenseViewModel: viewModel)
-            }
+            // No NavigationView wrapper — `SubscriptionsView` ships
+            // its own custom page header and presents its own
+            // Add/Edit sheets internally. Wrapping it would just
+            // stack an empty nav-bar shelf above the title.
+            SubscriptionsView()
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -528,11 +655,36 @@ struct ProfileView: View {
     /// is also reachable as a filter chip inside the Activity tab.
     private var subscriptionsRow: some View {
         SettingsRow(icon: "creditcard.and.123", title: "Subscriptions", style: .bare) {
-            EmptyView()
+            // Live count badge — matches the Budgets ("N active") and
+            // Categories ("N custom") rows so all three Manage rows
+            // answer "is there anything in here?" without a tap.
+            if subscriptionViewModel.activeSubscriptionsCount > 0 {
+                Text("\(subscriptionViewModel.activeSubscriptionsCount) active")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
         .onTapGesture {
             HapticManager.shared.lightTap()
             showingSubscriptions = true
+        }
+    }
+
+    /// Categories management — newly surfaced from Settings (the screen
+    /// itself has always existed; it was just buried inside the Add
+    /// Expense category picker). Default + custom categories, with the
+    /// existing swipe-to-delete + restore flow.
+    private var categoriesRow: some View {
+        SettingsRow(icon: "square.grid.2x2.fill", title: "Categories", style: .bare) {
+            if !categoryViewModel.customCategories.isEmpty {
+                Text("\(categoryViewModel.customCategories.count) custom")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            showingCategories = true
         }
     }
 
@@ -546,36 +698,7 @@ struct ProfileView: View {
         }
     }
 
-    /// Appearance picker — uses `Menu` so iOS owns the dropdown.
-    /// Replaces the prior inline accordion which added ~50 lines and felt
-    /// non-native.
-    private var appearanceMenuRow: some View {
-        Menu {
-            ForEach(ExpenseViewModel.AppearanceMode.allCases, id: \.self) { mode in
-                Button {
-                    HapticManager.shared.lightTap()
-                    viewModel.appearanceMode = mode
-                } label: {
-                    if viewModel.appearanceMode == mode {
-                        Label(mode.rawValue, systemImage: "checkmark")
-                    } else {
-                        Text(mode.rawValue)
-                    }
-                }
-            }
-        } label: {
-            SettingsRow(icon: "moon.fill", title: "Appearance", showsChevron: false, style: .bare) {
-                HStack(spacing: 4) {
-                    SettingsRowValue(text: viewModel.appearanceMode.rawValue)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                }
-            }
-        }
-    }
-
-    /// Default time frame picker via `Menu` (same rationale as appearance).
+    /// Default time frame picker via `Menu` so iOS owns the dropdown.
     private var timeFrameMenuRow: some View {
         Menu {
             ForEach(ExpenseViewModel.TimeFrame.allCases, id: \.self) { timeFrame in
@@ -612,55 +735,51 @@ struct ProfileView: View {
         }
         .onTapGesture {
             HapticManager.shared.lightTap()
-            if proManager.isPro {
-                showingBudgetList = true
-            } else {
-                showingPaywall = true
-            }
+            // One overall budget is free — the list itself handles
+            // the "add another" Pro lock, so everyone gets in.
+            showingBudgetList = true
         }
     }
 
     // MARK: - Personalization
 
-    /// Pro-gated personalization controls (theme + app icon). Lives between
-    /// Preferences and Reminders so it reads as "your visual identity"
-    /// without competing with the system-level appearance toggle that stays
-    /// in Preferences.
+    /// Personalization controls. The Theme & Appearance row opens the
+    /// unified Appearance studio (mode + accent theme + matching icon);
+    /// the App Icon row keeps its dedicated full-catalog picker. The old
+    /// standalone light/dark Menu row in General was folded into the
+    /// studio so "how the app looks" lives in exactly one place.
     private var personalizationSection: some View {
         SettingsGroup(title: "Personalization") {
-            colorThemeRow
+            themeAppearanceRow
             appIconRow
         }
     }
 
-    /// Color Theme row. Trailing slot shows a circular swatch in the active
-    /// theme's primary color so the user can see what's applied at a glance,
-    /// plus the theme name for clarity. Free users see a "Pro" pill instead.
-    private var colorThemeRow: some View {
-        SettingsRow(icon: "paintpalette.fill", title: "Color Theme", showsChevron: true, style: .bare) {
+    /// Theme & Appearance row. Trailing slot shows a duotone swatch in the
+    /// active theme's color pair plus the theme name so the user can see
+    /// what's applied at a glance. No Pro chip here — the mode selector
+    /// inside is free for everyone, and theme gating happens on Apply.
+    private var themeAppearanceRow: some View {
+        SettingsRow(icon: "paintpalette.fill", title: "Theme & Appearance", showsChevron: true, style: .bare) {
             HStack(spacing: Theme.Spacing.sm) {
-                if proManager.isPro {
-                    Text(themeStore.currentTheme.displayName)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Circle()
-                        .fill(themeStore.currentTheme.primaryColor)
-                        .frame(width: 18, height: 18)
-                        .overlay(
-                            Circle().stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                } else {
-                    proLockChip
-                }
+                Text(themeStore.currentTheme.displayName)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Circle()
+                    .fill(themeStore.currentTheme.heroGradient)
+                    .frame(width: 18, height: 18)
+                    .overlay(
+                        Circle().stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                    )
             }
         }
         .contentShape(Rectangle())
         .onTapGesture {
             HapticManager.shared.lightTap()
-            // Open the picker for everyone — free users can preview themes
-            // and discover the Pro upsell from inside the picker, which is
-            // a higher-converting moment than dropping them straight into
-            // the paywall.
+            // Open the studio for everyone — free users can switch mode,
+            // preview themes, and discover the Pro upsell from inside,
+            // which is a higher-converting moment than dropping them
+            // straight into the paywall.
             showingThemePicker = true
         }
     }
@@ -717,339 +836,47 @@ struct ProfileView: View {
         .background(Capsule().fill(Color.appPrimary.opacity(0.14)))
     }
 
-    // MARK: - Reminders
+    // MARK: - Notifications
 
-    /// Notifications grouped under the friendlier label "Reminders".
-    /// Schedule rows now use a consistent "Schedule" label (instead of mixed
-    /// "Schedule" / "Monthly Schedule" / "Backup Schedule"), and shorter
-    /// subtitles to reduce visual weight.
-    private var remindersSection: some View {
-        SettingsGroup(title: "Reminders") {
-            weeklySummaryToggleRow
-            if weeklySummaryEnabled {
-                scheduleRow(
-                    label: "Schedule",
-                    value: weeklySummaryScheduleText(),
-                    enabled: weeklySummaryEnabled
+    /// Single nav row that hides the 4–9 reminder + insight rows
+    /// behind a focused sub-page. The trailing value shows the live
+    /// "N active" count so the state is glanceable without opening
+    /// the sub-page; tapping pushes the dedicated
+    /// `NotificationsSettingsView` where every toggle + schedule
+    /// lives.
+    private var notificationsSection: some View {
+        SettingsGroup(title: "Notifications") {
+            NavigationLink {
+                NotificationsSettingsView()
+                    .environmentObject(viewModel)
+                    .environmentObject(proManager)
+            } label: {
+                SettingsRow(
+                    icon: "bell.fill",
+                    title: "Reminders & Insights",
+                    showsChevron: true,
+                    style: .bare
                 ) {
-                    scheduleTempWeekday = weeklySummaryWeekday
-                    scheduleTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
-                    showingWeeklySummarySchedule = true
+                    SettingsRowValue(text: activeNotificationsLabel)
                 }
             }
-
-            monthlyDigestToggleRow
-            if monthlyDigestEnabled {
-                scheduleRow(
-                    label: "Schedule",
-                    value: monthlyDigestScheduleText(),
-                    enabled: monthlyDigestEnabled
-                ) {
-                    monthlyTempDayOfMonth = monthlyDigestDayOfMonth
-                    monthlyTempTime = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
-                    showingMonthlyDigestSchedule = true
-                }
-            }
-
-            backupReminderToggleRow
-            if backupReminderEnabled {
-                scheduleRow(
-                    label: "Schedule",
-                    value: backupReminderScheduleText(),
-                    enabled: backupReminderEnabled
-                ) {
-                    backupTempDayOfMonth = backupReminderDayOfMonth
-                    backupTempTime = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
-                    showingBackupReminderSchedule = true
-                }
-            }
-
-            smartInsightsToggleRow
-        }
-        .sheet(isPresented: $showingWeeklySummarySchedule) {
-            weeklySummaryScheduleSheet
-        }
-        .sheet(isPresented: $showingMonthlyDigestSchedule) {
-            monthlyDigestScheduleSheet
-        }
-        .sheet(isPresented: $showingBackupReminderSchedule) {
-            backupReminderScheduleSheet
+            .buttonStyle(.plain)
         }
     }
 
-    /// Shared schedule row helper — was previously three near-duplicate `var`s.
-    private func scheduleRow(
-        label: String,
-        value: String,
-        enabled: Bool,
-        onTap: @escaping () -> Void
-    ) -> some View {
-        SettingsRow(icon: "calendar.badge.clock", title: label, style: .bare) {
-            SettingsRowValue(text: value)
-        }
-        .opacity(enabled ? 1.0 : 0.5)
-        .onTapGesture {
-            guard enabled else { return }
-            HapticManager.shared.lightTap()
-            onTap()
-        }
-    }
+    /// "Off" when nothing's enabled, "1 active" / "3 active" otherwise.
+    /// Driven by the four `@AppStorage` booleans that `NotificationsSettingsView`
+    /// also writes to, so this stays live without notification glue.
+    private var activeNotificationsLabel: String {
+        let count = [
+            weeklySummaryEnabled,
+            monthlyDigestEnabled,
+            backupReminderEnabled,
+            smartInsightsEnabled
+        ].filter { $0 }.count
 
-    private var weeklySummaryToggleRow: some View {
-        SettingsRow(
-            icon: "bell.badge.fill",
-            title: "Weekly Digest",
-            subtitle: "Spending summary every week.",
-            showsChevron: false,
-            style: .bare
-        ) {
-            Toggle("", isOn: Binding(
-                get: { weeklySummaryEnabled },
-                set: { newValue in
-                    HapticManager.shared.lightTap()
-                    Task {
-                        if newValue {
-                            let ok = await NotificationScheduler.ensureAuthorized()
-                            await MainActor.run {
-                                weeklySummaryEnabled = ok
-                                if !ok { activeAlert = .notificationPermission }
-                            }
-                        } else {
-                            await MainActor.run { weeklySummaryEnabled = false }
-                        }
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
-                    }
-                }
-            ))
-            .labelsHidden()
-            .tint(.appPrimary)
-        }
-    }
-
-    /// Pro-gated Smart Insights toggle. When the user is not Pro the row
-    /// stays visible (so the existence of the feature is discoverable) but
-    /// taps route into the paywall instead of flipping the switch — that's
-    /// a much better acquisition surface than a hidden setting.
-    private var smartInsightsToggleRow: some View {
-        SettingsRow(
-            icon: "sparkles",
-            title: "Smart Insights",
-            subtitle: proManager.isPro
-                ? "One push only when something interesting happens."
-                : "Unlock weekly highlights powered by your data.",
-            showsChevron: false,
-            style: .bare
-        ) {
-            if proManager.isPro {
-                Toggle("", isOn: Binding(
-                    get: { smartInsightsEnabled },
-                    set: { newValue in
-                        HapticManager.shared.lightTap()
-                        Task {
-                            if newValue {
-                                let ok = await NotificationScheduler.ensureAuthorized()
-                                await MainActor.run {
-                                    smartInsightsEnabled = ok
-                                    if !ok { activeAlert = .notificationPermission }
-                                }
-                            } else {
-                                await MainActor.run { smartInsightsEnabled = false }
-                            }
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(
-                                viewModel: viewModel,
-                                isPro: proManager.isPro
-                            )
-                        }
-                    }
-                ))
-                .labelsHidden()
-                .tint(.appPrimary)
-            } else {
-                // Compact "Pro" pill that visually mirrors the Statistics
-                // teaser. Tapping anywhere on the row opens the paywall.
-                HStack(spacing: 4) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("Pro")
-                        .font(.system(size: 11, weight: .bold))
-                }
-                .foregroundColor(.appPrimary)
-                .padding(.horizontal, Theme.Spacing.sm)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.appPrimary.opacity(0.14)))
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            // Free users opening the paywall via a row tap is the most
-            // common entry point in the rest of the app — keep parity here.
-            if !proManager.isPro {
-                HapticManager.shared.lightTap()
-                showingPaywall = true
-            }
-        }
-    }
-
-    private var weeklySummaryScheduleSheet: some View {
-        NavigationView {
-            Form {
-                Picker("Day", selection: $scheduleTempWeekday) {
-                    ForEach(1...7, id: \.self) { weekday in
-                        Text(weekdayName(weekday)).tag(weekday)
-                    }
-                }
-
-                DatePicker("Time", selection: $scheduleTempTime, displayedComponents: [.hourAndMinute])
-            }
-            .navigationTitle("Weekly Digest")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showingWeeklySummarySchedule = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let comps = Calendar.current.dateComponents([.hour, .minute], from: scheduleTempTime)
-                        weeklySummaryWeekday = scheduleTempWeekday
-                        weeklySummaryHour = comps.hour ?? 9
-                        weeklySummaryMinute = comps.minute ?? 0
-                        showingWeeklySummarySchedule = false
-
-                        Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var monthlyDigestToggleRow: some View {
-        SettingsRow(
-            icon: "calendar.badge.clock",
-            title: "Monthly Digest",
-            subtitle: "Recap of last month's spending.",
-            showsChevron: false,
-            style: .bare
-        ) {
-            Toggle("", isOn: Binding(
-                get: { monthlyDigestEnabled },
-                set: { newValue in
-                    HapticManager.shared.lightTap()
-                    Task {
-                        if newValue {
-                            let ok = await NotificationScheduler.ensureAuthorized()
-                            await MainActor.run {
-                                monthlyDigestEnabled = ok
-                                if !ok { activeAlert = .notificationPermission }
-                            }
-                        } else {
-                            await MainActor.run { monthlyDigestEnabled = false }
-                        }
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
-                    }
-                }
-            ))
-            .labelsHidden()
-            .tint(.appPrimary)
-        }
-    }
-
-    private var monthlyDigestScheduleSheet: some View {
-        NavigationView {
-            Form {
-                Picker("Day of month", selection: $monthlyTempDayOfMonth) {
-                    ForEach(1...28, id: \.self) { d in
-                        Text("\(d)").tag(d)
-                    }
-                }
-                DatePicker("Time", selection: $monthlyTempTime, displayedComponents: [.hourAndMinute])
-            }
-            .navigationTitle("Monthly Digest")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showingMonthlyDigestSchedule = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let comps = Calendar.current.dateComponents([.hour, .minute], from: monthlyTempTime)
-                        monthlyDigestDayOfMonth = monthlyTempDayOfMonth
-                        monthlyDigestHour = comps.hour ?? 9
-                        monthlyDigestMinute = comps.minute ?? 0
-                        showingMonthlyDigestSchedule = false
-
-                        Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var backupReminderToggleRow: some View {
-        SettingsRow(
-            icon: "externaldrive.fill.badge.timemachine",
-            title: "Backup Reminder",
-            subtitle: "Monthly nudge to export to Files.",
-            showsChevron: false,
-            style: .bare
-        ) {
-            Toggle("", isOn: Binding(
-                get: { backupReminderEnabled },
-                set: { newValue in
-                    HapticManager.shared.lightTap()
-                    Task {
-                        if newValue {
-                            let ok = await NotificationScheduler.ensureAuthorized()
-                            await MainActor.run {
-                                backupReminderEnabled = ok
-                                if !ok { activeAlert = .notificationPermission }
-                            }
-                        } else {
-                            await MainActor.run { backupReminderEnabled = false }
-                        }
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
-                    }
-                }
-            ))
-            .labelsHidden()
-            .tint(.appPrimary)
-        }
-    }
-
-    private var backupReminderScheduleSheet: some View {
-        NavigationView {
-            Form {
-                Picker("Day of month", selection: $backupTempDayOfMonth) {
-                    ForEach(1...28, id: \.self) { d in
-                        Text("\(d)").tag(d)
-                    }
-                }
-                DatePicker("Time", selection: $backupTempTime, displayedComponents: [.hourAndMinute])
-            }
-            .navigationTitle("Backup Reminder")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showingBackupReminderSchedule = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let comps = Calendar.current.dateComponents([.hour, .minute], from: backupTempTime)
-                        backupReminderDayOfMonth = backupTempDayOfMonth
-                        backupReminderHour = comps.hour ?? 9
-                        backupReminderMinute = comps.minute ?? 0
-                        showingBackupReminderSchedule = false
-
-                        Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel, isPro: proManager.isPro)
-                        }
-                    }
-                }
-            }
-        }
+        if count == 0 { return "Off" }
+        return "\(count) active"
     }
 
     // MARK: - Data section
@@ -1126,11 +953,22 @@ struct ProfileView: View {
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             SettingsGroup(title: "About") {
+                SettingsRow(icon: "star.fill", iconTint: .yellow, title: "Rate CashLens", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        openWriteReview()
+                    }
+
                 SettingsRow(icon: "heart.fill", iconTint: .pink, title: "Support the App", style: .bare)
                     .onTapGesture {
                         HapticManager.shared.lightTap()
                         showingDonationSheet = true
                     }
+
+                // Always visible (Guideline 3.1.1): even a user who is
+                // currently Pro via a donor grant may need to restore a
+                // real StoreKit purchase — e.g. after moving devices.
+                restorePurchasesRow
 
                 SettingsRow(icon: "doc.text.fill", title: "About CashLens", style: .bare)
                     .onTapGesture {
@@ -1148,6 +986,54 @@ struct ProfileView: View {
         .sheet(isPresented: $showingDonationSheet) {
             NavigationView { DonationView() }
         }
+        // Attached here (not on the ScrollView) so it can't collide
+        // with the `alert(item:)` that owns the clear-all-data flow.
+        .alert("Restore Purchases", isPresented: Binding(
+            get: { restoreResultMessage != nil },
+            set: { if !$0 { restoreResultMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { restoreResultMessage = nil }
+        } message: {
+            Text(restoreResultMessage ?? "")
+        }
+    }
+
+    private var restorePurchasesRow: some View {
+        SettingsRow(
+            icon: "arrow.clockwise",
+            title: "Restore Purchases",
+            subtitle: proManager.isPro ? nil : "Already Pro on another device?",
+            showsChevron: false,
+            style: .bare
+        ) {
+            if isRestoringPurchases {
+                ProgressView()
+            }
+        }
+        .onTapGesture {
+            guard !isRestoringPurchases else { return }
+            HapticManager.shared.lightTap()
+            isRestoringPurchases = true
+            let wasProBefore = proManager.isPro
+            Task {
+                await proManager.restorePurchases()
+                isRestoringPurchases = false
+                if proManager.isPro {
+                    HapticManager.shared.success()
+                    restoreResultMessage = wasProBefore
+                        ? "Your purchases are up to date — Pro is active."
+                        : "Pro is back — everything is unlocked."
+                } else {
+                    restoreResultMessage = "No previous purchases were found for this Apple ID."
+                }
+            }
+        }
+    }
+
+    private func openWriteReview() {
+        // Same App Store ID used by the in-app feedback flow.
+        guard let url = URL(string: "https://apps.apple.com/app/id6743153951?action=write-review") else { return }
+        UIApplication.shared.open(url)
     }
 
     /// Compact 3-up community icon row. Way less visual real estate than the
@@ -1234,7 +1120,7 @@ struct ProfileView: View {
     private var versionFooter: some View {
         HStack {
             Spacer()
-            Text("CashLens · v\(versionString)")
+            Text("CashLens · v\(Self.versionString)")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.secondary.opacity(0.7))
             Spacer()
@@ -1366,42 +1252,6 @@ struct ProfileView: View {
             .frame(width: 1, height: 30)
     }
 
-    // MARK: - Schedule helpers
-
-    private func weeklySummaryScheduleText() -> String {
-        let time = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return "\(weekdayName(weeklySummaryWeekday)) • \(df.string(from: time))"
-    }
-
-    private func monthlyDigestScheduleText() -> String {
-        let time = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return "Day \(max(1, min(28, monthlyDigestDayOfMonth))) • \(df.string(from: time))"
-    }
-
-    private func backupReminderScheduleText() -> String {
-        let time = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return "Day \(max(1, min(28, backupReminderDayOfMonth))) • \(df.string(from: time))"
-    }
-
-    private func weekdayName(_ weekday: Int) -> String {
-        let symbols = Calendar.current.weekdaySymbols
-        let index = max(1, min(7, weekday)) - 1
-        return symbols[index]
-    }
-
-    private func makeTimeDate(hour: Int, minute: Int) -> Date {
-        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        comps.hour = hour
-        comps.minute = minute
-        return Calendar.current.date(from: comps) ?? Date()
-    }
-
     // MARK: - Backup Health Status
 
     private enum BackupHealthStatus: Equatable {
@@ -1479,6 +1329,14 @@ struct ProfileView: View {
         }
     }
 
+    /// Hoisted so the backup card doesn't allocate a fresh formatter on
+    /// every render. Medium date style is locale-stable; main-actor only.
+    private static let backupDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f
+    }()
+
     private func formatBackupDate(_ date: Date) -> String {
         let calendar = Calendar.current
         let now = Date()
@@ -1492,9 +1350,7 @@ struct ProfileView: View {
             if days < 7 {
                 return "\(days) days ago"
             } else {
-                let formatter = DateFormatter()
-                formatter.dateStyle = .medium
-                return formatter.string(from: date)
+                return Self.backupDateFormatter.string(from: date)
             }
         }
     }
@@ -1508,6 +1364,7 @@ struct ProfileView_Previews: PreviewProvider {
             .environmentObject(ExpenseViewModel())
             .environmentObject(ProManager.shared)
             .environmentObject(BudgetViewModel())
+            .environmentObject(SubscriptionViewModel())
             .environmentObject(CategoryViewModel())
     }
 }

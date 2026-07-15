@@ -1,6 +1,6 @@
 import Foundation
 
-struct Expense: Identifiable, Codable {
+struct Expense: Identifiable, Codable, Equatable {
     var id = UUID()
     var title: String
     var amount: Double
@@ -473,29 +473,43 @@ extension Expense {
             throw ImportError.parseError("Invalid CSV expense format: expected 8 fields, got \(fields.count)")
         }
         
-        // Try multiple date formats for better compatibility
+        // Try multiple date formats for better compatibility.
+        //
+        // Machine formats first: the app's own CSV export writes ISO 8601,
+        // and it must re-import on any device locale — so ISO and the
+        // fixed formats are tried with a pinned `en_US_POSIX` locale
+        // before falling back to the user's locale styles for
+        // hand-edited files.
         let dateString = parseCSVField(fields[1]) // Date is now field 1 (after ID)
         var date: Date?
         
-        // Try medium style first (matches export format)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateStyle = .medium
-        date = dateFormatter.date(from: dateString)
+        // 1. ISO 8601 (the app's own export format).
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        date = iso.date(from: dateString)
         
-        // If that fails, try other common formats
+        // 2. Fixed formats, locale-pinned.
         if date == nil {
-            dateFormatter.dateFormat = "MMM d, yyyy"
-            date = dateFormatter.date(from: dateString)
+            let posixFormatter = DateFormatter()
+            posixFormatter.locale = Locale(identifier: "en_US_POSIX")
+            for format in ["yyyy-MM-dd'T'HH:mm:ssXXXXX", "MMM d, yyyy", "yyyy-MM-dd", "MM/dd/yyyy"] {
+                posixFormatter.dateFormat = format
+                if let parsed = posixFormatter.date(from: dateString) {
+                    date = parsed
+                    break
+                }
+            }
         }
         
+        // 3. Locale-aware styles (legacy in-locale exports, manual edits).
         if date == nil {
-            dateFormatter.dateFormat = "yyyy-MM-dd"
-            date = dateFormatter.date(from: dateString)
-        }
-        
-        if date == nil {
-            dateFormatter.dateFormat = "MM/dd/yyyy"
-            date = dateFormatter.date(from: dateString)
+            let styleFormatter = DateFormatter()
+            styleFormatter.dateStyle = .medium
+            date = styleFormatter.date(from: dateString)
+            if date == nil {
+                styleFormatter.dateStyle = .short
+                date = styleFormatter.date(from: dateString)
+            }
         }
         
         // Parse ID from CSV or generate new one as fallback

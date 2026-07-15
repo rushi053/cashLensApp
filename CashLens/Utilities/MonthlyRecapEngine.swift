@@ -1,19 +1,21 @@
 import Foundation
 
-/// Computes the "Monthly Recap" — the Spotify-Wrapped-style story
-/// that summarizes the user's previous month in a handful of
-/// glanceable cards. Pure value type, runs off-main, deterministic.
+/// Computes the "Monthly Recap" — the month-in-review story CashLens
+/// surfaces at the start of every new month (a Today card for the
+/// first few days, plus a permanent row in Insights). Pure value
+/// type, runs off-main, deterministic.
 ///
-/// The output is a `MonthlyRecap` containing both the headline
-/// numbers and a derived "award" — a single playful badge that
-/// characterizes the month ("Restraint Master", "Big Splurger", etc).
-/// The view layer renders pages in a fixed order; the engine only
-/// returns nil pages when there genuinely isn't enough data (e.g.
-/// no streak to report), and the view skips them.
+/// v2 rebuild of the original engine (deleted with the old paged
+/// recap screen, recovered from git history): same headline stats —
+/// total vs previous month, top category, biggest expense, no-spend
+/// days, busiest day, a derived "award" — plus two cheap additions
+/// the new card layout wants: the month's best no-spend *streak* and
+/// the month's subscription total (fixed vs variable framing).
 ///
-/// Threading: this struct is `Sendable` and `compute(...)` does no
-/// I/O — call it from `Task.detached` so the main actor isn't
-/// blocked while the data flows through.
+/// Threading: `Sendable`, does no I/O — call `compute(...)` from
+/// `Task.detached`. Callers must gate on
+/// `ExpenseViewModel.waitUntilFullyHydrated()` first so the engine
+/// sees the complete month, not the windowed launch slice.
 struct MonthlyRecap: Sendable, Equatable {
     let month: Date                  // first-of-the-month for the period covered
     let totalSpent: Double
@@ -21,7 +23,6 @@ struct MonthlyRecap: Sendable, Equatable {
     let expenseCount: Int
 
     /// Top category (display name + amount + percentage of total).
-    /// `categoryName` falls back to "Other" if the user only logged uncategorised entries.
     let topCategoryName: String?
     let topCategoryAmount: Double
     let topCategoryShare: Double      // 0...1
@@ -32,15 +33,20 @@ struct MonthlyRecap: Sendable, Equatable {
     let biggestExpenseDay: Int        // 1...31
 
     /// Number of days during the month with **no** expenses.
-    /// `nil` for the (vanishingly rare) case where every day had spend.
     let noSpendDays: Int
+
+    /// Longest run of consecutive no-spend days inside the month.
+    let bestNoSpendStreak: Int
 
     /// Highest single-day spend total (sum across the day).
     let busiestDayAmount: Double
     let busiestDayDate: Date?         // exact date so the view can say "Friday the 14th"
 
-    /// Derived "award" — a single playful characterisation of the
-    /// month. Computed by `compute(...)` from the other fields.
+    /// Total of subscription-generated expenses in the month — the
+    /// "fixed costs" line on the recap.
+    let subscriptionTotal: Double
+
+    /// Derived "award" — a single calm characterisation of the month.
     let award: Award
 
     enum Award: String, Sendable, Equatable {
@@ -89,38 +95,52 @@ struct MonthlyRecap: Sendable, Equatable {
         }
     }
 
-    /// Convenience: the % delta vs prior month, signed.
-    /// Returns nil when there's no prior data to compare against.
+    /// The % delta vs prior month, signed. `nil` when there's no
+    /// prior data to compare against.
     var monthOverMonthDelta: Double? {
         guard previousMonthTotal > 0 else { return nil }
         return (totalSpent - previousMonthTotal) / previousMonthTotal
     }
+
+    /// True when there's enough substance to show the recap at all.
+    var isWorthShowing: Bool { expenseCount > 0 }
 }
 
 /// Pure computation. Caller passes already-loaded expense arrays so
 /// the engine never touches Core Data directly — keeps it Sendable
 /// and trivially unit-testable.
 enum MonthlyRecapEngine {
-    /// `categoryDisplayName` lets the engine resolve custom category
-    /// names without holding a Core Data reference — pass a closure
-    /// that maps an `Expense` to its human label (same pattern the
-    /// notification scheduler uses).
+
+    /// Number of days at the start of a month during which the Today
+    /// recap card is offered. Shared by TodayView (card visibility)
+    /// so the window lives in exactly one place.
+    static let todayCardWindowDays = 5
+
+    /// Build a recap for the month containing `targetMonth`.
+    /// `customCategoryNames` maps custom-category ids to display names
+    /// (a plain dictionary, not a closure, so the call site can hand
+    /// it across the `Task.detached` boundary safely).
     static func compute(
         targetMonth: Date,
         thisMonthExpenses: [Expense],
         previousMonthExpenses: [Expense],
-        categoryDisplayName: (Expense) -> String,
+        customCategoryNames: [UUID: String],
         calendar: Calendar = .current
     ) -> MonthlyRecap {
         let total = thisMonthExpenses.netTotal()
         let previousTotal = previousMonthExpenses.netTotal()
 
+        func displayName(for e: Expense) -> String {
+            if e.category == .custom, let id = e.customCategoryId, let name = customCategoryNames[id] {
+                return name
+            }
+            return e.category.displayName
+        }
+
         // --- Category breakdown ---
         var byCategory: [String: Double] = [:]
-        for e in thisMonthExpenses {
-            guard !e.isRefund else { continue }
-            let name = categoryDisplayName(e)
-            byCategory[name, default: 0] += e.amount
+        for e in thisMonthExpenses where !e.isRefund {
+            byCategory[displayName(for: e), default: 0] += e.amount
         }
         let topPair = byCategory.max { $0.value < $1.value }
         let topName = topPair?.key
@@ -135,13 +155,11 @@ enum MonthlyRecapEngine {
             calendar.component(.day, from: $0.date)
         } ?? 0
 
-        // --- No-spend days ---
+        // --- No-spend days + best in-month streak ---
         let monthInterval = calendar.dateInterval(of: .month, for: targetMonth)
         let totalDays: Int = {
             guard let monthInterval else { return 30 }
-            // Days in the month (intervals are half-open, so we round)
-            let days = calendar.dateComponents([.day], from: monthInterval.start, to: monthInterval.end).day ?? 30
-            return days
+            return calendar.dateComponents([.day], from: monthInterval.start, to: monthInterval.end).day ?? 30
         }()
         var daysWithSpend: Set<Int> = []
         for e in thisMonthExpenses where !e.isRefund {
@@ -149,15 +167,30 @@ enum MonthlyRecapEngine {
         }
         let noSpend = max(0, totalDays - daysWithSpend.count)
 
+        var bestStreak = 0
+        var run = 0
+        for day in 1...max(totalDays, 1) {
+            if daysWithSpend.contains(day) {
+                bestStreak = max(bestStreak, run)
+                run = 0
+            } else {
+                run += 1
+            }
+        }
+        bestStreak = max(bestStreak, run)
+
         // --- Busiest day ---
         var dayTotals: [Date: Double] = [:]
         for e in thisMonthExpenses where !e.isRefund {
-            let day = calendar.startOfDay(for: e.date)
-            dayTotals[day, default: 0] += e.amount
+            dayTotals[calendar.startOfDay(for: e.date), default: 0] += e.amount
         }
         let busiest = dayTotals.max { $0.value < $1.value }
 
-        // --- Award derivation ---
+        // --- Subscription total (fixed costs) ---
+        let subscriptionTotal = thisMonthExpenses
+            .filter { $0.isFromSubscription && !$0.isRefund }
+            .reduce(0) { $0 + $1.amount }
+
         let award = deriveAward(
             previousTotal: previousTotal,
             currentTotal: total,
@@ -177,10 +210,44 @@ enum MonthlyRecapEngine {
             biggestExpenseAmount: biggest?.amount ?? 0,
             biggestExpenseDay: biggestDay,
             noSpendDays: noSpend,
+            bestNoSpendStreak: bestStreak,
             busiestDayAmount: busiest?.value ?? 0,
             busiestDayDate: busiest?.key,
+            subscriptionTotal: subscriptionTotal,
             award: award
         )
+    }
+
+    /// Convenience: slice a full expense array into (target month,
+    /// previous month) and compute. `month` can be any date inside the
+    /// target month.
+    static func compute(
+        month: Date,
+        allExpenses: [Expense],
+        customCategoryNames: [UUID: String],
+        calendar: Calendar = .current
+    ) -> MonthlyRecap? {
+        guard let interval = calendar.dateInterval(of: .month, for: month),
+              let prevAnchor = calendar.date(byAdding: .month, value: -1, to: interval.start),
+              let prevInterval = calendar.dateInterval(of: .month, for: prevAnchor) else { return nil }
+
+        let thisMonth = allExpenses.filter { $0.date >= interval.start && $0.date < interval.end }
+        let prevMonth = allExpenses.filter { $0.date >= prevInterval.start && $0.date < prevInterval.end }
+
+        return compute(
+            targetMonth: interval.start,
+            thisMonthExpenses: thisMonth,
+            previousMonthExpenses: prevMonth,
+            customCategoryNames: customCategoryNames,
+            calendar: calendar
+        )
+    }
+
+    /// Stable "yyyy-MM" key for a month — used to persist "recap seen"
+    /// state in UserDefaults.
+    static func monthKey(for date: Date, calendar: Calendar = .current) -> String {
+        let comps = calendar.dateComponents([.year, .month], from: date)
+        return String(format: "%04d-%02d", comps.year ?? 0, comps.month ?? 0)
     }
 
     private static func deriveAward(

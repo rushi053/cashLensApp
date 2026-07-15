@@ -19,6 +19,7 @@ struct CashLensWidgetsBundle: WidgetBundle {
     var body: some Widget {
         // Home Screen
         SpendingWidget()        // Free for everyone (the "hero" surface)
+        QuickLogWidget()        // Free with 1 template; all templates Pro
         BudgetWidget()          // Pro
         SubscriptionsWidget()   // Pro
         StreakWidget()          // Pro

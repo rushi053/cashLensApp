@@ -27,7 +27,9 @@ extension BudgetEntity {
             categoryFilter: categoryFilter,
             alertAtPercentages: percentages,
             isActive: isActive,
-            createdAt: createdAt ?? Date()
+            createdAt: createdAt ?? Date(),
+            customStartDate: customStartDate,
+            customEndDate: customEndDate
         )
     }
 
@@ -41,6 +43,8 @@ extension BudgetEntity {
         entity.isActive = budget.isActive
         entity.createdAt = budget.createdAt
         entity.alertAtPercentages = budget.alertAtPercentages as NSArray
+        entity.customStartDate = budget.customStartDate
+        entity.customEndDate = budget.customEndDate
 
         switch budget.categoryFilter {
         case .overall:
@@ -66,6 +70,8 @@ extension BudgetEntity {
         period = budget.period.rawValue
         isActive = budget.isActive
         alertAtPercentages = budget.alertAtPercentages as NSArray
+        customStartDate = budget.customStartDate
+        customEndDate = budget.customEndDate
 
         switch budget.categoryFilter {
         case .overall:

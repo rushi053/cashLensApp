@@ -17,18 +17,29 @@ struct ExpenseCalendarView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
 
+    /// v2: the calendar is also a first-class view mode inside the
+    /// Activity tab (List | Calendar toggle). When embedded there it
+    /// must not wrap itself in a `NavigationView` or show the sheet
+    /// chrome (Close button) — Activity provides the navigation
+    /// context. The legacy sheet presentation passes `false`
+    /// (default) and keeps its existing behavior.
+    var isEmbedded: Bool = false
+
     @State private var visibleMonth: Date = Calendar.current.startOfMonth(for: Date())
     @State private var selectedDay: Date? = nil
     @State private var monthAggregate: MonthAggregate = .empty
     @State private var aggregationTask: Task<Void, Never>? = nil
     @State private var editingExpense: Expense? = nil
     @State private var animateGridIn = false
+    /// Guards the `.onAppear` work. When embedded as Activity's
+    /// calendar mode the view stays mounted across tab switches, so
+    /// without this every revisit to the tab re-ran a full month
+    /// aggregation (data changes are already covered by the
+    /// `viewModel.$expenses` subscription, which also emits once on
+    /// mount) and re-entered the entrance-animation window.
+    @State private var hasAppeared = false
 
-    private let calendar: Calendar = {
-        var c = Calendar.current
-        c.firstWeekday = Calendar.current.firstWeekday
-        return c
-    }()
+    private let calendar = Calendar.current
 
     private static let monthFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -43,72 +54,52 @@ struct ExpenseCalendarView: View {
     }()
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: Theme.Spacing.lg) {
-                        monthNavRow
-                        weekdayHeader
-                        monthGrid
-                            .opacity(animateGridIn ? 1 : 0)
-                            .animation(Theme.Motion.snappy, value: animateGridIn)
-
-                        monthSummaryStrip
-
-                        if let day = selectedDay {
-                            dayDetailSection(for: day)
-                                .transition(
-                                    .move(edge: .bottom)
-                                    .combined(with: .opacity)
-                                )
-                        } else {
-                            calendarHintCard
-                        }
-                    }
-                    .padding(.horizontal, Theme.Spacing.lg)
-                    .padding(.top, Theme.Spacing.sm)
-                    .padding(.bottom, Theme.Spacing.xxxl)
-                }
-            }
-            .navigationTitle("Calendar")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        HapticManager.shared.lightTap()
-                        dismiss()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.secondary)
-                            .frame(width: 30, height: 30)
-                            .background(Color(.systemGray5))
-                            .clipShape(Circle())
-                    }
-                    .accessibilityLabel("Close calendar")
-                }
-
-                if selectedDay != nil {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            HapticManager.shared.lightTap()
-                            withAnimation(Theme.Motion.snappy) { selectedDay = nil }
-                        } label: {
-                            HStack(spacing: 2) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text("Month")
-                                    .font(.system(size: 14, weight: .semibold))
+        Group {
+            if isEmbedded {
+                // Activity tab hosts us inside its own navigation
+                // context — no NavigationView, no sheet chrome.
+                calendarContent
+            } else {
+                NavigationView {
+                    calendarContent
+                        .navigationTitle("Calendar")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            // "Done" text action — matches the other
+                            // nav-chrome utility sheets instead of a
+                            // one-off grey X chip.
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                Button("Done") {
+                                    HapticManager.shared.lightTap()
+                                    dismiss()
+                                }
+                                .fontWeight(.semibold)
+                                .accessibilityLabel("Close calendar")
                             }
-                            .foregroundColor(.appPrimary)
+
+                            if selectedDay != nil {
+                                ToolbarItem(placement: .navigationBarLeading) {
+                                    Button {
+                                        HapticManager.shared.lightTap()
+                                        withAnimation(Theme.Motion.snappy) { selectedDay = nil }
+                                    } label: {
+                                        HStack(spacing: 2) {
+                                            Image(systemName: "chevron.left")
+                                                .font(.system(size: 12, weight: .semibold))
+                                            Text("Month")
+                                                .font(.system(size: 14, weight: .semibold))
+                                        }
+                                        .foregroundColor(.appPrimary)
+                                    }
+                                }
+                            }
                         }
-                    }
                 }
             }
         }
         .onAppear {
+            guard !hasAppeared else { return }
+            hasAppeared = true
             recompute()
             withAnimation(Theme.Motion.emphasized.delay(0.05)) {
                 animateGridIn = true
@@ -150,6 +141,42 @@ struct ExpenseCalendarView: View {
         }
     }
 
+    /// Shared month-grid content used by both the legacy sheet
+    /// presentation and the embedded Activity view mode.
+    private var calendarContent: some View {
+        ZStack {
+            Color(uiColor: .systemBackground).ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: Theme.Spacing.lg) {
+                    monthNavRow
+                    weekdayHeader
+                    monthGrid
+                        .opacity(animateGridIn ? 1 : 0)
+                        .animation(Theme.Motion.snappy, value: animateGridIn)
+
+                    monthSummaryStrip
+
+                    if let day = selectedDay {
+                        dayDetailSection(for: day)
+                            .transition(
+                                .move(edge: .bottom)
+                                .combined(with: .opacity)
+                            )
+                    } else {
+                        calendarHintCard
+                    }
+                }
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.top, Theme.Spacing.sm)
+                // Embedded in the Activity tab the content must clear
+                // the floating/custom tab bar; as a sheet the smaller
+                // inset is enough.
+                .padding(.bottom, isEmbedded ? Theme.Spacing.tabBarInset : Theme.Spacing.xxxl)
+            }
+        }
+    }
+
     // MARK: - Month Nav
 
     private var monthNavRow: some View {
@@ -164,6 +191,7 @@ struct ExpenseCalendarView: View {
                     .background(Circle().fill(Color.appPrimary.opacity(0.1)))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Previous month")
 
             Spacer(minLength: 0)
 
@@ -206,6 +234,7 @@ struct ExpenseCalendarView: View {
                     )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Next month")
             .disabled(!canMoveForward)
         }
         .padding(.horizontal, Theme.Spacing.sm)
@@ -373,14 +402,18 @@ struct ExpenseCalendarView: View {
 
     private func cellBackground(isSelected: Bool, isToday: Bool) -> Color {
         if isSelected { return .appPrimary }
-        if isToday { return Color.appPrimary.opacity(0.12) }
-        return Color(.tertiarySystemBackground)
+        if isToday { return Color.appPrimary.opacity(0.10) }
+        // v2: cells sit inside a white card-surface grid. A neutral
+        // grey fill (the old tertiary-system colour) muddied them; an
+        // almost-invisible primary tint reads as "tappable" without
+        // adding noise.
+        return Color.primary.opacity(0.025)
     }
 
     private func cellStroke(isSelected: Bool, isToday: Bool) -> Color {
         if isSelected { return Color.appPrimary }
         if isToday { return Color.appPrimary.opacity(0.5) }
-        return Color.primary.opacity(0.05)
+        return Color.primary.opacity(0.04)
     }
 
     @ViewBuilder
@@ -491,9 +524,13 @@ struct ExpenseCalendarView: View {
     }
 
     private func dayDetailSection(for day: Date) -> some View {
-        let entries = viewModel.expenses
-            .filter { calendar.isDate($0.date, inSameDayAs: day) }
-            .sorted { $0.date > $1.date }
+        // PERF: dictionary lookup into the month aggregate that the
+        // detached aggregation pass already built. This used to
+        // filter + sort the **entire** expenses array on the main
+        // thread (with `calendar.isDate(_:inSameDayAs:)` per element)
+        // on every body evaluation while a day was selected — a
+        // 10–30ms main-thread scan per render at 50k rows.
+        let entries = monthAggregate.byDay[calendar.startOfDay(for: day)]?.entries ?? []
         let net = entries.netTotal()
 
         return VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -511,27 +548,34 @@ struct ExpenseCalendarView: View {
             if entries.isEmpty {
                 emptyDayState
             } else {
-                VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(entries) { expense in
+                // v2: bare rows wrapped in a single elevated card with
+                // hairline dividers — matches the day-group treatment
+                // in AllExpensesView, so the calendar's day-drilldown
+                // and the Activity tab share an identical visual.
+                VStack(spacing: 0) {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { idx, expense in
                         Button {
                             HapticManager.shared.lightTap()
                             editingExpense = expense
                         } label: {
-                            // PERF: `.equatable()` lets SwiftUI skip
-                            // rebuilding the card subtree when only an
-                            // unrelated piece of state changes — matches
-                            // the pattern already used in `HomeView` and
-                            // `AllExpensesView`.
                             ExpenseCard(
                                 expense: expense,
                                 viewModel: viewModel,
-                                categoryViewModel: categoryViewModel
+                                categoryViewModel: categoryViewModel,
+                                style: .bare
                             )
                             .equatable()
                         }
                         .buttonStyle(.plain)
+
+                        if idx < entries.count - 1 {
+                            Divider()
+                                .padding(.leading, Theme.Spacing.xxl + 26)
+                                .opacity(0.4)
+                        }
                     }
                 }
+                .cardSurface()
             }
         }
         .padding(.top, Theme.Spacing.sm)
@@ -560,13 +604,17 @@ struct ExpenseCalendarView: View {
 
     // MARK: - Aggregation
 
-    /// Per-day aggregation that backs the calendar cells. Captures only what
-    /// the view needs: the resolved dot colors (already category-mapped),
-    /// the net total, and the transaction count.
+    /// Per-day aggregation that backs the calendar cells and the day
+    /// drill-down: the resolved dot colors (already category-mapped),
+    /// the net total, the transaction count, and the day's expenses
+    /// (date-descending) so `dayDetailSection` is a dictionary lookup
+    /// instead of a full-array scan. Memory stays bounded — only the
+    /// visible month's expenses are retained.
     private struct DayAggregate {
         let netTotal: Double
         let transactionCount: Int
         let dotColors: [Color]
+        let entries: [Expense]
     }
 
     private struct MonthAggregate {
@@ -603,6 +651,7 @@ struct ExpenseCalendarView: View {
             // Bucket expenses by start-of-day; only consider this month.
             var amountsByDay: [Date: Double] = [:]
             var countsByDay: [Date: Int] = [:]
+            var entriesByDay: [Date: [Expense]] = [:]
             // Per-day per-category amount → used to pick the "top 3"
             // categories for the dot row.
             var perDayCatTotals: [Date: [String: Double]] = [:]
@@ -614,6 +663,7 @@ struct ExpenseCalendarView: View {
                 let signed = expense.signedAmount
                 amountsByDay[day, default: 0] += signed
                 countsByDay[day, default: 0] += 1
+                entriesByDay[day, default: []].append(expense)
 
                 let key: String = {
                     if expense.category == .custom, let id = expense.customCategoryId {
@@ -637,7 +687,8 @@ struct ExpenseCalendarView: View {
                 byDay[day] = DayAggregate(
                     netTotal: total,
                     transactionCount: count,
-                    dotColors: dotColors
+                    dotColors: dotColors,
+                    entries: (entriesByDay[day] ?? []).sorted { $0.date > $1.date }
                 )
             }
 

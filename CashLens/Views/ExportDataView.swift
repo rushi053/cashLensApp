@@ -165,11 +165,12 @@ struct ExportDataView: View {
     // MARK: - Background
 
     private var backgroundLayer: some View {
+        // v2: calm tinted background — same treatment as the Paywall
+        // and the rest of the v2 surfaces. The prior LinearGradient
+        // flood read as "color-washed brochure" rather than a tool.
         ZStack {
-            Color.systemBackground.ignoresSafeArea()
-            LinearGradient.appPrimarySoft
-                .ignoresSafeArea()
-                .opacity(0.85)
+            Color(uiColor: .systemBackground).ignoresSafeArea()
+            Color.appPrimary.opacity(0.06).ignoresSafeArea()
         }
     }
 
@@ -177,19 +178,11 @@ struct ExportDataView: View {
 
     private var heroSection: some View {
         VStack(spacing: Theme.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient.appPrimaryDiagonal)
-                    .frame(width: 72, height: 72)
-                    .shadow(color: Color.appPrimary.opacity(0.28), radius: 14, x: 0, y: 8)
-                Image(systemName: "arrow.up.doc.fill")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundColor(.white)
-            }
+            HeroGlyph(systemName: "arrow.up.doc.fill")
 
             VStack(spacing: Theme.Spacing.xs) {
                 Text("Back Up Your Data")
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .multilineTextAlignment(.center)
                 Text("Save a copy you can restore later, or open in any spreadsheet.")
                     .font(.subheadline)
@@ -227,14 +220,7 @@ struct ExportDataView: View {
         }
         .padding(Theme.Spacing.md)
         .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                .fill(Color.secondarySystemBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                .strokeBorder(Color.appPrimary.opacity(0.08), lineWidth: 1)
-        )
+        .cardSurface()
     }
 
     private var divider: some View {
@@ -310,18 +296,18 @@ struct ExportDataView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(isSelected
-                              ? AnyShapeStyle(LinearGradient.appPrimaryDiagonal)
-                              : AnyShapeStyle(Color.tertiarySystemBackground))
+                              ? Color.appPrimary
+                              : Color.appPrimary.opacity(0.10))
                         .frame(width: 52, height: 52)
                     Image(systemName: format.icon)
                         .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(isSelected ? .white : .secondary)
+                        .foregroundColor(isSelected ? .white : .appPrimary)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(format.rawValue)
-                            .font(.system(size: 17, weight: .bold))
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
                         if format == .json {
                             Text("RECOMMENDED")
@@ -329,9 +315,7 @@ struct ExportDataView: View {
                                 .tracking(0.6)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
-                                .background(
-                                    Capsule().fill(LinearGradient.appPrimaryDiagonal)
-                                )
+                                .background(Capsule().fill(Color.appPrimary))
                                 .foregroundColor(.white)
                         }
                     }
@@ -348,7 +332,7 @@ struct ExportDataView: View {
                         .frame(width: 24, height: 24)
                     if isSelected {
                         Circle()
-                            .fill(LinearGradient.appPrimaryDiagonal)
+                            .fill(Color.appPrimary)
                             .frame(width: 14, height: 14)
                             .transition(.scale.combined(with: .opacity))
                     }
@@ -358,18 +342,18 @@ struct ExportDataView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                    .fill(Color.secondarySystemBackground)
+                    .fill(isSelected ? Color.appPrimary.opacity(0.08) : Color(uiColor: .systemBackground))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? Color.appPrimary.opacity(0.45) : Color.primary.opacity(0.05),
-                        lineWidth: isSelected ? 1.5 : 1
+                    .stroke(
+                        isSelected ? Color.appPrimary.opacity(0.45) : Color.primary.opacity(0.06),
+                        lineWidth: isSelected ? 1.5 : 0.5
                     )
             )
             .shadow(
-                color: isSelected ? Color.appPrimary.opacity(0.12) : Color.black.opacity(0.03),
-                radius: isSelected ? 10 : 4,
+                color: isSelected ? Color.appPrimary.opacity(0.14) : Color.black.opacity(0.04),
+                radius: isSelected ? 10 : 6,
                 x: 0,
                 y: isSelected ? 4 : 2
             )
@@ -414,10 +398,7 @@ struct ExportDataView: View {
             }
             .padding(Theme.Spacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                    .fill(Color.secondarySystemBackground)
-            )
+            .cardSurface()
         }
         .animation(Theme.Motion.tap, value: exportFormat)
     }
@@ -443,9 +424,9 @@ struct ExportDataView: View {
                     .foregroundColor(.white)
                     .padding(.vertical, Theme.Spacing.md + 4)
                     .frame(maxWidth: .infinity)
-                    .background(LinearGradient.appPrimaryDiagonal)
+                    .background(Color.appPrimary)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-                    .shadow(color: Color.appPrimary.opacity(0.32), radius: 14, x: 0, y: 6)
+                    .shadow(color: Color.appPrimary.opacity(0.30), radius: 12, x: 0, y: 6)
                 }
                 .buttonStyle(ScaleButtonStyle())
                 .disabled(isExporting)
@@ -535,25 +516,9 @@ struct ExportDataView: View {
     }
 }
 
-// MARK: - Section entrance modifier
-
-private struct SectionEntrance: ViewModifier {
-    let order: Int
-    let animate: Bool
-
-    private var delay: Double { Double(order) * 0.06 }
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(animate ? 1 : 0)
-            .offset(y: animate ? 0 : 12)
-            .animation(
-                .spring(response: 0.55, dampingFraction: 0.82, blendDuration: 0)
-                    .delay(delay),
-                value: animate
-            )
-    }
-}
+// The section entrance cascade lives in `Design/ViewModifiers.swift`
+// (`SectionEntrance`) — shared with TodayView, StatisticsView, and
+// ImportDataView.
 
 // MARK: - Share sheet
 

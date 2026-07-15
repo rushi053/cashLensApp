@@ -19,17 +19,9 @@ struct FeedbackRequestView: View {
                 // Header with animation
                 VStack(spacing: 20) {
                     // Animated icon
-                    ZStack {
-                        Circle()
-                            .fill(Color.appPrimary.opacity(0.15))
-                            .frame(width: 80, height: 80)
-                        
-                        Image(systemName: "heart.circle.fill")
-                            .font(.system(size: 40, weight: .medium))
-                            .foregroundColor(.appPrimary)
-                            .scaleEffect(showingAnimation ? 1.0 : 0.8)
-                            .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.1), value: showingAnimation)
-                    }
+                    HeroGlyph(systemName: "heart.circle.fill", size: 48)
+                        .scaleEffect(showingAnimation ? 1.0 : 0.8)
+                        .animation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.1), value: showingAnimation)
                     
                     // Title and message
                     VStack(spacing: 12) {

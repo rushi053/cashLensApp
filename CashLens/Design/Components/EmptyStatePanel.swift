@@ -1,45 +1,56 @@
 import SwiftUI
 
-/// Canonical empty-state layout: large icon in a tinted circle, title, message, optional CTA.
+/// Canonical empty-state layout, in the restrained system style
+/// (`ContentUnavailableView` language): a large hierarchical symbol,
+/// quiet typography, optional CTA.
 ///
-/// Replaces the ~6 hand-rolled empty states across Home, All Expenses, Budgets,
-/// Subscriptions, Statistics, and Quick Search.
+/// Deliberately NO tinted circle bubble behind the icon — that
+/// treatment reads as template/stock. Hierarchical rendering gives
+/// the glyph built-in depth (multi-tone from one color) and matches
+/// how Apple's own apps draw empty screens.
+///
+/// Icon guidance for call sites: prefer OUTLINE variants over `.fill`
+/// (fills at 40pt+ look heavy), and pick a glyph that describes the
+/// *content that will appear*, not a generic placeholder.
 struct EmptyStatePanel<Action: View>: View {
     let icon: String
     let title: String
     let message: String
-    var tint: Color = .appPrimary
     @ViewBuilder var action: () -> Action
 
+    @State private var appeared = false
+
     var body: some View {
-        VStack(spacing: Theme.Spacing.xxl) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(0.12))
-                    .frame(width: 110, height: 110)
-                Image(systemName: icon)
-                    .font(.system(size: 44, weight: .regular))
-                    .foregroundColor(tint)
-            }
+        VStack(spacing: 0) {
+            Image(systemName: icon)
+                .font(.system(size: 42, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
+                .symbolEffect(.bounce, options: .nonRepeating, value: appeared)
+                .padding(.bottom, Theme.Spacing.lg)
 
-            VStack(spacing: Theme.Spacing.sm) {
-                Text(title)
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .multilineTextAlignment(.center)
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .padding(.bottom, Theme.Spacing.sm)
 
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, Theme.Spacing.xxl)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                // Cap the measure so long copy wraps into a tidy block
+                // instead of two edge-to-edge lines.
+                .frame(maxWidth: 300)
 
             action()
+                .padding(.top, Theme.Spacing.xl)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, Theme.Spacing.xxl)
+        .padding(.horizontal, Theme.Spacing.xxl)
+        .padding(.vertical, Theme.Spacing.xxxl)
+        .onAppear { appeared = true }
     }
 }
 
@@ -47,18 +58,16 @@ extension EmptyStatePanel where Action == EmptyView {
     init(
         icon: String,
         title: String,
-        message: String,
-        tint: Color = .appPrimary
+        message: String
     ) {
         self.icon = icon
         self.title = title
         self.message = message
-        self.tint = tint
         self.action = { EmptyView() }
     }
 }
 
-// MARK: - Compact variant (used inline inside lists, not as a full screen)
+// MARK: - Compact variant (used inline inside lists/cards, not as a full screen)
 
 struct InlineEmptyState: View {
     let icon: String
@@ -66,21 +75,26 @@ struct InlineEmptyState: View {
     var message: String? = nil
 
     var body: some View {
-        VStack(spacing: Theme.Spacing.md) {
+        VStack(spacing: Theme.Spacing.sm) {
             Image(systemName: icon)
-                .font(.system(size: Theme.Icon.emptyState, weight: .regular))
-                .foregroundColor(.secondary)
+                .font(.system(size: 28, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tertiary)
+                .padding(.bottom, Theme.Spacing.xs)
 
             Text(title)
-                .font(.headline)
-                .foregroundColor(.secondary)
+                .font(Theme.Typography.rowTitle)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
 
             if let message {
                 Text(message)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 260)
             }
         }
         .frame(maxWidth: .infinity)
@@ -93,9 +107,9 @@ struct InlineEmptyState: View {
 #Preview {
     VStack {
         EmptyStatePanel(
-            icon: "target",
-            title: "No Budgets Yet",
-            message: "Create a budget to track your spending and get alerts when you're close to the limit."
+            icon: "gauge.with.needle",
+            title: "Give Your Money a Plan",
+            message: "Set a weekly or monthly cap and CashLens will track your pace before you overshoot."
         ) {
             PrimaryGradientButton(title: "Create Your First Budget", width: .hug) {}
         }
@@ -103,9 +117,9 @@ struct InlineEmptyState: View {
         Divider().padding(.vertical)
 
         InlineEmptyState(
-            icon: "doc.text.magnifyingglass",
-            title: "No expenses found",
-            message: "Add your first expense by tapping the + button"
+            icon: "tray",
+            title: "No expenses yet",
+            message: "Tap + to log your first one."
         )
     }
     .padding()

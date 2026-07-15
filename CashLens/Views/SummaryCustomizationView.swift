@@ -49,7 +49,7 @@ struct SummaryCustomizationView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(uiColor: .systemBackground).ignoresSafeArea()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.Spacing.xxl) {
@@ -73,15 +73,7 @@ struct SummaryCustomizationView: View {
 
     private var closeRow: some View {
         HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .frame(width: 36, height: 36)
-                    .background(Color(.systemGray6))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(ScaleButtonStyle())
+            SheetCloseButton(action: { dismiss() })
             Spacer()
         }
         .padding(.horizontal, Theme.Spacing.xl)
@@ -92,8 +84,10 @@ struct SummaryCustomizationView: View {
 
     private var headerBlock: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            // Design-system token (was a one-off 30pt rounded) so the
+            // browse-sheet titles match Today / Insights / Recap.
             Text("Customize Home")
-                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .font(Theme.Typography.pageTitle)
                 .foregroundColor(.primary)
 
             Text("Pick up to 4 categories to pin on Home for at-a-glance spending.")
@@ -279,7 +273,7 @@ struct SummaryCustomizationView: View {
             .padding(.horizontal, Theme.Spacing.xl)
             .padding(.top, Theme.Spacing.xs)
             .padding(.bottom, Theme.Spacing.xxl + 8)
-            .background(Color(.systemGroupedBackground))
+            .background(Color(uiColor: .systemBackground))
         }
     }
 

@@ -79,7 +79,7 @@ struct CurrencyPickerView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color(.systemGroupedBackground).ignoresSafeArea()
+            Color(uiColor: .systemBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
@@ -152,45 +152,30 @@ struct CurrencyPickerView: View {
         // way to explain the relabel-not-convert distinction in one
         // sentence. Keep this concrete; abstract phrasing didn't
         // land in user testing of similar disclosures.
-        return "Your existing entries will be relabeled — only the symbol changes, not the numbers. \(from)100 will display as \(to)100. CashLens does not convert amounts using exchange rates."
+        // Lead with the concrete entry count when the full table has
+        // hydrated; before that the in-memory array may only hold the
+        // recent launch window, so fall back to generic phrasing rather
+        // than understate how much data is affected.
+        let entriesPhrase = viewModel.isFullyHydrated
+            ? "Your \(viewModel.expenses.count) expenses"
+            : "Your existing entries"
+        return "\(entriesPhrase) will keep their numeric values and be relabeled — only the symbol changes, not the numbers. \(from)100 will display as \(to)100. CashLens does not convert amounts using exchange rates."
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            // X close (hidden during initial setup so the user can't escape
-            // before picking a currency — they have a Continue button instead).
-            if !isInitialSetup {
-                Button {
-                    HapticManager.shared.lightTap()
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.primary)
-                        .frame(width: 32, height: 32)
-                        .background(Color.secondarySystemBackground)
-                        .clipShape(Circle())
-                }
-            } else {
-                Color.clear.frame(width: 32, height: 32)
-            }
-
-            Spacer()
-
-            VStack(spacing: 2) {
-                Text(isInitialSetup ? "Choose Your Currency" : "Currency")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                if isInitialSetup {
-                    Text("You can change this anytime in Settings")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
+        // Shared SheetHeader. The X is hidden during initial setup so
+        // the user can't escape before picking a currency — they get
+        // the Continue pill instead; the divider stays off because
+        // the search field directly below provides the visual break.
+        SheetHeader(
+            title: isInitialSetup ? "Choose Your Currency" : "Currency",
+            subtitle: isInitialSetup ? "You can change this anytime in Settings" : nil,
+            showsCloseButton: !isInitialSetup,
+            showsDivider: false,
+            onClose: { dismiss() }
+        ) {
             Button {
                 HapticManager.shared.mediumTap()
                 dismiss()
@@ -204,10 +189,6 @@ struct CurrencyPickerView: View {
                     .clipShape(Capsule())
             }
         }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.top, Theme.Spacing.md)
-        .padding(.bottom, Theme.Spacing.md)
-        .background(Color(.systemGroupedBackground))
     }
 
     // MARK: - Search
@@ -484,19 +465,11 @@ struct CurrencyPickerView: View {
     // MARK: - Empty / error states
 
     private var emptyState: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 36, weight: .light))
-                .foregroundColor(.secondary)
-            Text("No matches")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-            Text("Try a different region, code, or country name.")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.vertical, Theme.Spacing.xxl)
-        .frame(maxWidth: .infinity)
+        InlineEmptyState(
+            icon: "text.magnifyingglass",
+            title: "No matches",
+            message: "Try a different region, code, or country name."
+        )
         .background(Color.secondarySystemBackground)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous))
     }
@@ -533,7 +506,14 @@ struct CurrencyPickerView: View {
         //
         // Both cases would only confuse the user with an alert about
         // entries that don't exist.
-        if isInitialSetup || viewModel.expenses.isEmpty {
+        //
+        // The empty check also requires `isFullyHydrated`: right after
+        // a cold launch the in-memory array may hold only the recent
+        // window (or nothing yet) while rows still sit on disk — and
+        // `syncCurrencyAcrossStoredData()` rewrites *all* stored rows.
+        // When hydration hasn't finished, fall through to the explicit
+        // confirmation instead of silently relabeling.
+        if isInitialSetup || (viewModel.isFullyHydrated && viewModel.expenses.isEmpty) {
             commitCurrency(currency)
             return
         }
@@ -554,6 +534,11 @@ struct CurrencyPickerView: View {
         withAnimation(Theme.Motion.snappy) {
             viewModel.selectedCurrency = currency
         }
+        // The bulk relabel is intentionally explicit — `selectedCurrency`'s
+        // didSet no longer rewrites stored data, so this commit path is
+        // the ONLY place the (user-confirmed) rewrite runs. No-op when
+        // the store is empty (initial setup).
+        viewModel.syncCurrencyAcrossStoredData()
         RecentCurrenciesStore.record(currency)
         recentCurrencies = RecentCurrenciesStore.load()
     }

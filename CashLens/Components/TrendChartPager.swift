@@ -336,8 +336,9 @@ struct TrendChartPager: View {
     private func emptyPage(icon: String, label: String) -> some View {
         VStack(spacing: Theme.Spacing.md) {
             Image(systemName: icon)
-                .font(.system(size: 28, weight: .regular))
-                .foregroundColor(.secondary.opacity(0.5))
+                .font(.system(size: 28, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tertiary)
             Text(label)
                 .font(.subheadline)
                 .foregroundColor(.secondary)

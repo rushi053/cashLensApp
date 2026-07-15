@@ -16,7 +16,21 @@ struct ForecastChart: View {
     let accent: Color
     let formattedAmount: (Double) -> String
 
+    /// Raw scrub position from `chartXSelection`; snapped to the
+    /// nearest day point for the lollipop cursor. Added in the v2
+    /// Swift Charts pass so Forecast scrubs the same way the Trend
+    /// chart does — drag to read any day's actual or projected total.
+    @State private var rawSelectedDate: Date? = nil
+
     private var today: Date { Calendar.current.startOfDay(for: Date()) }
+
+    /// Day point nearest the scrub position, or `nil` when idle.
+    private var selectedPoint: ForecastEngine.DayPoint? {
+        guard let raw = rawSelectedDate, !forecast.points.isEmpty else { return nil }
+        return forecast.points.min {
+            abs($0.date.timeIntervalSince(raw)) < abs($1.date.timeIntervalSince(raw))
+        }
+    }
 
     private var historicalPoints: [ForecastEngine.DayPoint] {
         forecast.points.filter { $0.actual != nil }
@@ -113,7 +127,52 @@ struct ForecastChart: View {
                 .foregroundStyle(.yellow)
                 .symbolSize(40)
             }
+
+            // Scrub lollipop — cursor + highlighted dot + callout with
+            // the day's actual (history) or projected (future) total.
+            if let selected = selectedPoint {
+                let isActual = selected.actual != nil
+                let value = selected.actual ?? selected.projected
+
+                RuleMark(x: .value("Selected", selected.date))
+                    .foregroundStyle(Color.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .annotation(
+                        position: .top,
+                        spacing: 4,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                    ) {
+                        VStack(spacing: 1) {
+                            Text(formattedAmount(value))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundColor(.primary)
+                            Text("\(shortDateLabel(selected.date)) · \(isActual ? "actual" : "projected")")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, Theme.Spacing.sm)
+                        .padding(.vertical, Theme.Spacing.xs)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.systemBackground)
+                                .shadow(color: Theme.Shadow.elevatedColor, radius: 4, y: 2)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(accent.opacity(0.35), lineWidth: Theme.Stroke.thin)
+                        )
+                    }
+
+                PointMark(
+                    x: .value("Selected", selected.date),
+                    y: .value("Amount", value)
+                )
+                .symbolSize(80)
+                .foregroundStyle(accent)
+            }
         }
+        .chartXSelection(value: $rawSelectedDate)
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                 AxisGridLine()
@@ -152,9 +211,15 @@ struct ForecastChart: View {
         }
     }
 
-    private func shortDateLabel(_ date: Date) -> String {
+    // Hoisted — the scrub callout calls this on every drag tick, and a
+    // per-call DateFormatter alloc (~50µs) would jitter the cursor.
+    private static let shortDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MMM d"
-        return f.string(from: date)
+        return f
+    }()
+
+    private func shortDateLabel(_ date: Date) -> String {
+        Self.shortDateFormatter.string(from: date)
     }
 }

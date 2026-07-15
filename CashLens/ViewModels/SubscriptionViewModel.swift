@@ -325,9 +325,9 @@ class SubscriptionViewModel: NSObject, ObservableObject {
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {
                     print("Error scheduling notification: \(error.localizedDescription)")
-                } else {
-                    print("Successfully scheduled notification for \(subscription.name)")
                 }
+                // No success log — it printed the subscription name
+                // (user financial data) into the device console.
             }
         }
     }
@@ -368,20 +368,65 @@ class SubscriptionViewModel: NSObject, ObservableObject {
     // MARK: - Manual Payment Processing
     
     func markSubscriptionAsPaid(_ subscription: Subscription) async {
+        // Fail atomically: without the expense pipeline we'd advance the
+        // due date while silently dropping the payment record — the cycle
+        // would look paid with no expense to show for it. The dependency
+        // is wired in `CashLensApp.init` so this should never be nil; the
+        // guard is the last line of defense.
+        guard let expenseViewModel else {
+            print("markSubscriptionAsPaid: expenseViewModel is nil — refusing to advance due date")
+            return
+        }
+        
         // Create expense from subscription
         var expense = subscription.toExpense()
         expense.isFromSubscription = true
         expense.subscriptionId = subscription.id
         
-        // Add expense through the expense view model
-        expenseViewModel?.addExpense(expense)
+        // SAFETY: only advance the due date when the payment record
+        // actually persisted. Advancing after a failed save would make
+        // the cycle look paid with no expense to show for it.
+        guard expenseViewModel.addExpense(expense) else {
+            print("markSubscriptionAsPaid: expense save failed — due date not advanced")
+            return
+        }
         
-        // Update subscription's next due date
+        // Update subscription's next due date (anchor-based; see
+        // `Subscription.updateNextDueDate`)
         var updatedSubscription = subscription
         updatedSubscription.updateNextDueDate()
         await updateSubscription(updatedSubscription)
-        
-        print("Marked subscription as paid: \(subscription.name) - Next due: \(updatedSubscription.formattedNextDueDate)")
+    }
+    
+    // MARK: - Foreground Reconciliation
+    
+    /// Roll every active subscription whose due date has passed forward to
+    /// its next **future** startDate-anchored occurrence, persist it, and
+    /// re-arm its reminder. Called from the scenePhase-active handler in
+    /// `CashLensApp` — without this, nothing ever advances a past-due
+    /// `nextDueDate` except a manual "mark as paid", so overdue rows sit
+    /// with negative `daysUntilNext` forever and reminders (scheduled as
+    /// one-shot notifications) die after a single cycle.
+    ///
+    /// Deliberately does NOT auto-log expenses for missed cycles — we
+    /// can't know whether the user actually paid; we only fix the date.
+    ///
+    /// A subscription due *today* is left alone so the user can still see
+    /// it as due and mark it paid; only dates before today's start roll.
+    /// Re-scheduling goes through `updateSubscriptionInternal` →
+    /// `syncNotification`, which cancels before scheduling, so repeated
+    /// foregrounds can't stack duplicate reminders.
+    func reconcileOverdueSubscriptions() {
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+        for subscription in subscriptions where subscription.isActive && subscription.nextDueDate < startOfToday {
+            var updated = subscription
+            updated.nextDueDate = Subscription.nextOccurrence(
+                after: Date(),
+                anchor: updated.startDate,
+                frequency: updated.frequency
+            )
+            updateSubscriptionInternal(updated)
+        }
     }
     
     // Setup listener for currency updates

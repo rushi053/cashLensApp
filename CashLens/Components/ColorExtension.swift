@@ -133,6 +133,9 @@ extension Color {
     // theme bleed would feel inconsistent.
     static var appPrimary: Color { ThemeStore.activeTheme.primaryColor }
     static var appSecondary: Color { ThemeStore.activeTheme.secondaryColor }
+    /// Primary blended 45% toward the theme's secondary — the far stop of
+    /// the sanctioned hero duotone (`LinearGradient.appDuotone`).
+    static var appPrimaryBlend: Color { ThemeStore.activeTheme.blendedColor }
     static let appAccent = teaRose
     
     // Category colors mapping
@@ -192,6 +195,27 @@ extension Color {
         let g = min(uiColor[1] + percentage, 1.0)
         let b = min(uiColor[2] + percentage, 1.0)
         return Color(UIColor(red: r, green: g, blue: b, alpha: 1.0))
+    }
+}
+
+// MARK: - UIColor blending
+
+extension UIColor {
+    /// Linear RGB interpolation toward `other`. `amount` 0 → self,
+    /// 1 → other. Used to derive each theme's duotone end stop from its
+    /// primary/secondary pair without shipping a third hand-tuned hex.
+    func mixed(with other: UIColor, amount: CGFloat) -> UIColor {
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        other.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        let t = min(max(amount, 0), 1)
+        return UIColor(
+            red: r1 + (r2 - r1) * t,
+            green: g1 + (g2 - g1) * t,
+            blue: b1 + (b2 - b1) * t,
+            alpha: a1 + (a2 - a1) * t
+        )
     }
 }
 

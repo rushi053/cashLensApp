@@ -3,9 +3,11 @@ import SwiftUI
 /// The canonical primary CTA used across the app: "Create Budget", "Add Your First Expense",
 /// "Backup Now", "Save Changes", etc.
 ///
-/// Name retained for backwards compatibility with existing call sites,
-/// but the fill is now a **solid** `Color.appPrimary` (no gradient) to
-/// match the app-wide no-gradient design language.
+/// Fill is the sanctioned hero duotone (`LinearGradient.appDuotone`) —
+/// primary → primary-blended-toward-secondary — so the active theme's
+/// designed color pair shows on every primary action, not just a flat
+/// accent swap. This is one of the few duotone surfaces in the app;
+/// everything non-hero stays solid.
 struct PrimaryGradientButton: View {
     let title: String
     var icon: String? = nil
@@ -32,7 +34,7 @@ struct PrimaryGradientButton: View {
             .frame(maxWidth: width == .expanded ? .infinity : nil)
             .padding(.horizontal, width == .hug ? Theme.Spacing.xxl : Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.lg)
-            .background(Color.appPrimary)
+            .background(LinearGradient.appDuotone)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             .primaryGlow(strength: isEnabled ? 0.3 : 0)
         }

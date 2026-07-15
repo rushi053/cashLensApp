@@ -4,13 +4,21 @@ import CoreData
 extension ExpenseViewModel {
     // MARK: - Core Data Operations (Expenses)
     
-    func addExpense(_ expense: Expense) {
+    /// Returns whether the expense was actually persisted, so callers
+    /// with follow-on state changes (e.g. advancing a subscription's due
+    /// date after "Mark paid") can bail out when the save fails.
+    @discardableResult
+    func addExpense(_ expense: Expense) -> Bool {
         // Ensure the expense uses the current selected currency
         var newExpense = expense
         newExpense.currency = selectedCurrency
         
         _ = ExpenseEntity.fromExpense(newExpense, context: viewContext)
-        saveContext()
+        // SAFETY: Only mirror the row in-memory if the save actually
+        // committed — otherwise the UI shows an expense that isn't on
+        // disk and it vanishes on the next reload. `saveContext()`
+        // already surfaced the failure via the save-error banner.
+        guard saveContext() else { return false }
         // PERF: Skip the O(N) reload — sorted-insert the new row into
         // the in-memory array instead. See the contract on
         // `applyIncrementalInsert` for why this is safe (the entity
@@ -18,6 +26,7 @@ extension ExpenseViewModel {
         applyIncrementalInsert(newExpense)
         
         FeedbackManager.shared.incrementSuccessfulAction()
+        return true
     }
     
     func updateExpense(_ expense: Expense) {
@@ -49,7 +58,10 @@ extension ExpenseViewModel {
                     entity.tags = nil
                 }
 
-                saveContext()
+                // SAFETY: mirror in-memory only if the save committed —
+                // otherwise the UI would show an edit that isn't on disk
+                // and it would silently revert on the next reload.
+                guard saveContext() else { return }
                 // PERF: Apply the edit in-memory instead of refetching
                 // the entire table. The in-memory `expense` already
                 // reflects every field we just wrote into the entity,
@@ -119,8 +131,11 @@ extension ExpenseViewModel {
                     for entity in results {
                         viewContext.delete(entity)
                     }
-                    saveContext()
                 }
+                // SAFETY: single save, and bail before the in-memory
+                // mutation if it didn't commit — the UI must not drop
+                // rows that are still on disk.
+                guard saveContext() else { return }
             }
             
             // PERF: Drop the deleted rows from the in-memory array
@@ -151,7 +166,9 @@ extension ExpenseViewModel {
             for entity in results {
                 viewContext.delete(entity)
             }
-            saveContext()
+            // SAFETY: only update the UI (and delete receipt files) when
+            // the delete actually committed.
+            guard saveContext() else { return }
             // PERF: Single-row in-memory remove instead of full reload.
             applyIncrementalDelete(ids: [id])
             cleanupReceiptFiles(receiptPaths)
@@ -200,7 +217,9 @@ extension ExpenseViewModel {
             for entity in entities {
                 viewContext.delete(entity)
             }
-            saveContext()
+            // SAFETY: only update the UI (and delete receipt files) when
+            // the delete actually committed.
+            guard saveContext() else { return }
             // PERF: Bulk in-memory remove instead of full reload.
             applyIncrementalDelete(ids: ids)
             cleanupReceiptFiles(receiptPaths)
@@ -224,7 +243,8 @@ extension ExpenseViewModel {
                 entity.category = category.rawValue
                 entity.customCategoryId = (category == .custom) ? customCategoryId : nil
             }
-            saveContext()
+            // SAFETY: mirror in-memory only on a committed save.
+            guard saveContext() else { return }
             // PERF: Mutate the in-memory rows in place — dates didn't
             // change, so we don't need to resort. Single linear pass
             // followed by one publish, instead of a full reload.
@@ -261,7 +281,8 @@ extension ExpenseViewModel {
                     entity.tags = existing as NSArray
                 }
             }
-            saveContext()
+            // SAFETY: mirror in-memory only on a committed save.
+            guard saveContext() else { return }
             // PERF: Mirror the tag append in-memory instead of full
             // reload. We re-derive tags from the same source-of-truth
             // (the persisted entity) but cheaply since we already know
@@ -290,14 +311,19 @@ extension ExpenseViewModel {
     ///   • BHD / KWD / OMR / JOD / …         → 3 decimals
     ///   • everything else                   → 2 decimals
     ///
-    /// **Concurrency.** Allocates a per-call `NumberFormatter` rather
-    /// than mutating a shared instance. `formattedAmount` is called
-    /// from background `Task.detached` work in `StatisticsView`, the
-    /// forecast pipeline, and the widget snapshot builder — sharing
-    /// + mutating one formatter across those raced and produced
-    /// corrupt output under contention. The per-call cost is on the
-    /// order of microseconds; even formatting hundreds of values for
-    /// a stats refresh is invisible at human timescales.
+    /// **Concurrency.** Uses a lock-guarded cache of immutable
+    /// formatters (see `AmountFormatterCache`) rather than a shared
+    /// mutable instance. `formattedAmount` is called from background
+    /// `Task.detached` work in `StatisticsView`, the forecast pipeline,
+    /// and the widget snapshot builder — a previous shared instance
+    /// that was *mutated* at format time raced and produced corrupt
+    /// output. The cached formatters are configured exactly once and
+    /// only ever read afterward (`string(from:)`), which
+    /// NSNumberFormatter documents as safe since iOS 7.
+    ///
+    /// PERF: the interim fix allocated a fresh `NumberFormatter` per
+    /// call (~50µs each) — real cost when materializing lazy rows
+    /// during a fast scroll, where this runs once per `ExpenseCard`.
     func formattedAmount(_ amount: Double) -> String {
         let digits = selectedCurrency.fractionDigits
         let zeroFallback = digits == 0 ? "0" : "0." + String(repeating: "0", count: digits)
@@ -306,13 +332,15 @@ extension ExpenseViewModel {
             return "\(selectedCurrency.symbol)\(zeroFallback)"
         }
 
-        let safeAmount = max(amount, 0.0)
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = digits
-        formatter.maximumFractionDigits = digits
-        let formatted = formatter.string(from: NSNumber(value: safeAmount)) ?? zeroFallback
-        return "\(selectedCurrency.symbol)\(formatted)"
+        // Format the real signed value — the old `max(amount, 0)` clamp
+        // hid refund-heavy periods behind a fake $0.00 total. Format the
+        // magnitude and prepend the sign manually so negatives read
+        // "-$12.50" rather than the formatter's "$-12.50".
+        let formatter = AmountFormatterCache.formatter(fractionDigits: digits)
+        let formatted = formatter.string(from: NSNumber(value: abs(amount))) ?? zeroFallback
+        // Don't show "-$0.00" when a tiny negative rounds to zero.
+        let sign = (amount < 0 && formatted != zeroFallback) ? "-" : ""
+        return "\(sign)\(selectedCurrency.symbol)\(formatted)"
     }
 
     /// Parse a user-typed amount string into a `Double`. Builds its
@@ -346,6 +374,31 @@ extension ExpenseViewModel {
         }
         
         return nil
+    }
+}
+
+/// Thread-safe cache of amount formatters keyed by fraction-digit count
+/// (the only axis `formattedAmount` varies on — the currency symbol is
+/// prepended separately). Each formatter is fully configured under the
+/// lock before it's published to callers and never mutated afterward,
+/// so concurrent `string(from:)` calls from detached stats / widget /
+/// forecast work are safe.
+private enum AmountFormatterCache {
+    private static let lock = NSLock()
+    private static var formatters: [Int: NumberFormatter] = [:]
+
+    static func formatter(fractionDigits: Int) -> NumberFormatter {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = formatters[fractionDigits] {
+            return cached
+        }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = fractionDigits
+        formatter.maximumFractionDigits = fractionDigits
+        formatters[fractionDigits] = formatter
+        return formatter
     }
 }
 

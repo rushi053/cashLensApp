@@ -34,10 +34,13 @@ let cream = "#F0E8D8"
 let darkInk = "#1B1D22"
 let pureWhite = "#FFFFFF"
 
+// bgHex values mirror each theme's `primaryLightHex` in
+// `CashLens/Models/AppTheme.swift` — keep them in sync so the
+// "Complete the look" theme↔icon pairing stays truthful.
 let iconCatalog: [IconSpec] = [
-    IconSpec(id: "AppIcon-Ocean",     bgHex: "#3D8BF5", coinHex: cream),
-    IconSpec(id: "AppIcon-Forest",    bgHex: "#2FA060", coinHex: cream),
-    IconSpec(id: "AppIcon-Sunset",    bgHex: "#EE6B2D", coinHex: cream),
+    IconSpec(id: "AppIcon-Ocean",     bgHex: "#2E7CF6", coinHex: cream),
+    IconSpec(id: "AppIcon-Forest",    bgHex: "#23A55E", coinHex: cream),
+    IconSpec(id: "AppIcon-Sunset",    bgHex: "#F4693B", coinHex: cream),
     IconSpec(id: "AppIcon-Berry",     bgHex: "#D8417A", coinHex: cream),
     IconSpec(id: "AppIcon-Graphite",  bgHex: "#4D5563", coinHex: cream),
     IconSpec(id: "AppIcon-MonoLight", bgHex: pureWhite, coinHex: darkInk),

@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import CoreData
 import Combine
+import UserNotifications
 
 @MainActor
 class CategoryViewModel: NSObject, ObservableObject {
@@ -71,12 +72,54 @@ class CategoryViewModel: NSObject, ObservableObject {
         }
     }
     
-    // Delete a custom category
+    // Delete a custom category.
+    //
+    // Also cleans up everything that references the deleted id so no
+    // dangling `customCategoryId` survives:
+    //   • Subscriptions retarget to "Other" (they're real recurring
+    //     bills — keep them, relabel them).
+    //   • Budgets filtered to this category are deleted (a cap on a
+    //     category that no longer exists is meaningless; silently
+    //     retargeting it to all-spending would misfire alerts).
+    //   • Expenses are handled by the caller via
+    //     `ExpenseViewModel.moveExpensesFromDeletedCustomCategory`,
+    //     which also mirrors the change into its in-memory array.
+    //
+    // Subscription/Budget view models observe the same viewContext via
+    // fetched-results controllers, so their published arrays update on
+    // this save without extra wiring.
     func deleteCustomCategory(id: UUID) {
         let fetchRequest: NSFetchRequest<CustomCategoryEntity> = CustomCategoryEntity.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-        
+
+        let subscriptionFetch: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
+        subscriptionFetch.predicate = NSPredicate(format: "customCategoryId == %@", id as CVarArg)
+
+        let budgetFetch: NSFetchRequest<BudgetEntity> = BudgetEntity.fetchRequest()
+        budgetFetch.predicate = NSPredicate(format: "categoryFilterCustomId == %@", id as CVarArg)
+
         do {
+            for subscription in try viewContext.fetch(subscriptionFetch) {
+                subscription.category = Expense.Category.other.rawValue
+                subscription.customCategoryId = nil
+            }
+
+            for budgetEntity in try viewContext.fetch(budgetFetch) {
+                // Same cleanup `BudgetViewModel.deleteBudget` performs:
+                // drop alert-crossing state and any queued notification
+                // so a deleted budget can't buzz from beyond the grave.
+                let budget = budgetEntity.toBudget()
+                BudgetAlertState.clearTracking(for: budget)
+                let prefix = "budget_alert_\(budget.id.uuidString)_"
+                UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                    let ids = requests.filter { $0.identifier.hasPrefix(prefix) }.map(\.identifier)
+                    if !ids.isEmpty {
+                        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+                    }
+                }
+                viewContext.delete(budgetEntity)
+            }
+
             let results = try viewContext.fetch(fetchRequest)
             for entity in results {
                 viewContext.delete(entity)
@@ -84,6 +127,47 @@ class CategoryViewModel: NSObject, ObservableObject {
             saveContext()
         } catch {
             print("Error deleting custom category: \(error.localizedDescription)")
+        }
+    }
+    
+    // Mirror of the cleanup above for *hiding a default category*.
+    // Hiding used to only retarget expenses (the caller handles that),
+    // leaving subscriptions billed under an invisible category and
+    // budgets tracking a filter whose spend just moved to "Other" —
+    // those budgets would sit at 0% forever while the real spending
+    // went uncounted.
+    func cleanupAfterHidingDefaultCategory(rawValue: String) {
+        let subscriptionFetch: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
+        subscriptionFetch.predicate = NSPredicate(
+            format: "category == %@ AND customCategoryId == nil", rawValue
+        )
+
+        let budgetFetch: NSFetchRequest<BudgetEntity> = BudgetEntity.fetchRequest()
+        budgetFetch.predicate = NSPredicate(
+            format: "categoryFilterType == %@ AND categoryFilterDefaultRaw == %@", "default", rawValue
+        )
+
+        do {
+            for subscription in try viewContext.fetch(subscriptionFetch) {
+                subscription.category = Expense.Category.other.rawValue
+            }
+
+            for budgetEntity in try viewContext.fetch(budgetFetch) {
+                let budget = budgetEntity.toBudget()
+                BudgetAlertState.clearTracking(for: budget)
+                let prefix = "budget_alert_\(budget.id.uuidString)_"
+                UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
+                    let ids = requests.filter { $0.identifier.hasPrefix(prefix) }.map(\.identifier)
+                    if !ids.isEmpty {
+                        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+                    }
+                }
+                viewContext.delete(budgetEntity)
+            }
+
+            saveContext()
+        } catch {
+            print("Error cleaning up after hiding default category: \(error.localizedDescription)")
         }
     }
     

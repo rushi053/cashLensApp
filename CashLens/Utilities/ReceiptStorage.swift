@@ -85,7 +85,9 @@ enum ReceiptStorage {
         let filename = "\(UUID().uuidString).jpg"
         let url = try receiptsDirectory().appendingPathComponent(filename)
         do {
-            try data.write(to: url, options: .atomic)
+            // `.completeFileProtection`: receipts are financial documents;
+            // keep them encrypted at rest whenever the device is locked.
+            try data.write(to: url, options: [.atomic, .completeFileProtection])
         } catch {
             throw Error.writeFailed(underlying: error)
         }

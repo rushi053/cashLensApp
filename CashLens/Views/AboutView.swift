@@ -1,206 +1,202 @@
 import SwiftUI
 
+/// AboutView — v2 redesign.
+///
+/// Calmer, scan-friendly hierarchy:
+/// - A right-sized logo hero (no oversized circle wash).
+/// - Sections live inside `cardSurface()` containers with semantic
+///   section titles and consistent typography.
+/// - Contact rows use the system-row pattern with leading icons rather
+///   than chunky inset cards, so the whole screen reads as one cohesive
+///   settings sub-page (Apple Settings → About style) instead of a
+///   scrollable brochure.
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
-    
-    // Get version and build from Info.plist
+
     private var versionString: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
         return "Version \(version) (\(build))"
     }
-    
+
     private var whatsNewTitle: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
-        return "What’s New in v\(version)"
+        return "What's New in v\(version)"
     }
-    
+
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(spacing: Theme.Spacing.xl) {
-                    // App Logo
-                    VStack(spacing: 16) {
-                        Image(systemName: "dollarsign.circle.fill")
-                            .font(.system(size: 80))
-                            .foregroundColor(.appPrimary)
-                            .padding()
-                            .background(
-                                Circle()
-                                    .fill(Color.appPrimary.opacity(0.1))
-                                    .frame(width: 160, height: 160)
-                            )
-                        
-                        Text("CashLens")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        
-                        Text(versionString)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 40)
-                    .padding(.bottom, 20)
-                    
-                    // App Description
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        Text("About CashLens")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        
-                        Text("CashLens is a comprehensive personal finance app designed to help you track expenses, manage subscriptions, and gain insights into your spending habits with beautiful visualizations.")
+                    appHero
+
+                    sectionCard(title: "About CashLens") {
+                        Text("CashLens is a personal finance app for the rest of us. Track expenses, manage subscriptions, see where your money goes — calmly, privately, and entirely on your device.")
                             .font(.body)
                             .foregroundColor(.primary)
-                            .multilineTextAlignment(.leading)
-                        
-                        Text("Key Features:")
-                            .font(.headline)
-                            .padding(.top, 8)
-                        
-                        VStack(alignment: .leading, spacing: 10) {
-                            featureRow(icon: "plus.circle.fill", text: "Track expenses with smart categorization")
-                            featureRow(icon: "arrow.clockwise.circle.fill", text: "Manage recurring subscriptions with notifications")
-                            featureRow(icon: "chart.pie.fill", text: "Beautiful spending statistics and insights")
-                            featureRow(icon: "tag.fill", text: "Create custom categories with personalized icons")
-                            featureRow(icon: "slider.horizontal.3", text: "Customize your Home summary cards (including custom categories)")
-                            featureRow(icon: "dollarsign.circle.fill", text: "Support for 150+ global currencies")
-                            featureRow(icon: "calendar", text: "Filter data by flexible time periods")
-                            featureRow(icon: "square.and.arrow.up", text: "Export data in CSV and JSON formats")
-                            featureRow(icon: "square.and.arrow.down", text: "Import data to restore complete financial history")
-                            featureRow(icon: "paintbrush.fill", text: "Customizable appearance with dark/light modes")
-                            featureRow(icon: "bell.fill", text: "Smart notifications: renewals, digests, and backup reminders (all opt‑in)")
-                            featureRow(icon: "shield.fill", text: "Local data storage - your privacy protected")
-                        }
-                        .padding(.leading, Theme.Spacing.xs)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(Theme.Spacing.lg)
-                    .cardSurface()
 
-                    // What's New Section
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        Text(whatsNewTitle)
-                            .font(.title2)
-                            .fontWeight(.bold)
-
+                    sectionCard(title: "Key Features") {
                         VStack(alignment: .leading, spacing: Theme.Spacing.sm + 2) {
-                            featureRow(icon: "bell.badge.fill", text: "Weekly & monthly digests (opt‑in) with deep links into your expenses")
-                            featureRow(icon: "externaldrive.fill.badge.timemachine", text: "Backup reminders (opt‑in) and one‑tap export to Files")
-                            featureRow(icon: "chart.pie.fill", text: "More visual statistics: category share + spending heatmap + cleaner trend chart")
-                            featureRow(icon: "calendar", text: "Date range filtering across Statistics & All Expenses")
-                            featureRow(icon: "tag.fill", text: "Custom categories everywhere: filters and Summary customization")
-                            featureRow(icon: "slider.horizontal.3", text: "More personalization: default Home time frame + improved UI polish")
-                            featureRow(icon: "checkmark.circle.fill", text: "Stability fixes and better data sync for subscriptions & categories")
+                            featureRow(icon: "speedometer", text: "Today verdict — know you're on track at a glance")
+                            featureRow(icon: "list.bullet.rectangle.portrait", text: "Activity timeline with smart search and calendar view")
+                            featureRow(icon: "chart.line.uptrend.xyaxis", text: "Insights, forecasts, and trend breakdowns")
+                            featureRow(icon: "target", text: "Budgets and alerts that nudge — never nag")
+                            featureRow(icon: "arrow.clockwise.circle.fill", text: "Subscriptions with renewal reminders")
+                            featureRow(icon: "doc.text.image.fill", text: "Receipt photos attached to any expense")
+                            featureRow(icon: "tag.fill", text: "Custom categories, tags, and pinned summaries")
+                            featureRow(icon: "shippingbox.fill", text: "Cross-device backup including receipt photos")
+                            featureRow(icon: "lock.shield.fill", text: "All data stored locally — yours, always")
                         }
-                        .padding(.leading, Theme.Spacing.xs)
+                    }
 
-                        Text("These updates focus on clarity, consistency, and helpful reminders—while keeping CashLens fast, private, and simple.")
+                    sectionCard(title: whatsNewTitle) {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm + 2) {
+                            featureRow(icon: "sparkles", text: "Redesigned Today, Activity, Insights, and You tabs")
+                            featureRow(icon: "rectangle.stack.fill", text: "New elevated card system across the app")
+                            featureRow(icon: "doc.text.image.fill", text: "Receipt photos with full archive backup")
+                            featureRow(icon: "creditcard.fill", text: "Payment method tracking and donut chart")
+                            featureRow(icon: "bell.badge.fill", text: "Proactive smart insight notifications (Pro)")
+                        }
+
+                        Text("Built around clarity, consistency, and respect for your attention.")
                             .font(Theme.Typography.caption)
                             .foregroundColor(.secondary)
                             .padding(.top, Theme.Spacing.xs)
                     }
-                    .padding(Theme.Spacing.lg)
-                    .cardSurface()
 
-                    // Contact Section
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        Text("Contact")
-                            .font(.title2)
-                            .fontWeight(.bold)
-
-                        Text("For any bugs, feature requests, or feedback, feel free to reach out!")
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                            .multilineTextAlignment(.leading)
-
-                        Link(destination: URL(string: "mailto:email@rushiraj.me")!) {
-                            HStack {
-                                Image(systemName: "envelope.fill")
-                                    .foregroundColor(.appPrimary)
-                                Text("email@rushiraj.me")
-                                    .foregroundColor(.primary)
-                                Spacer()
-                            }
-                            .padding(Theme.Spacing.sm + 2)
-                            .cardSurface(radius: Theme.Radius.chip, fill: Color.tertiarySystemBackground)
-                        }
-                        Link(destination: URL(string: "https://cashlens.app")!) {
-                            HStack {
-                                Image(systemName: "globe")
-                                    .foregroundColor(.appPrimary)
-                                Text("cashlens.app")
-                                    .foregroundColor(.primary)
-                                Spacer()
-                            }
-                            .padding(Theme.Spacing.sm + 2)
-                            .cardSurface(radius: Theme.Radius.chip, fill: Color.tertiarySystemBackground)
+                    sectionCard(title: "Contact") {
+                        VStack(spacing: 0) {
+                            contactRow(
+                                icon: "envelope.fill",
+                                title: "Email",
+                                value: "email@rushiraj.me",
+                                url: "mailto:email@rushiraj.me"
+                            )
+                            Divider().padding(.leading, 38).opacity(0.4)
+                            contactRow(
+                                icon: "globe",
+                                title: "Website",
+                                value: "cashlens.app",
+                                url: "https://cashlens.app"
+                            )
                         }
                     }
-                    .padding(Theme.Spacing.lg)
-                    .cardSurface()
 
-                    // Developer Info
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        Text("Developer")
-                            .font(.title2)
-                            .fontWeight(.bold)
-
-                        Text("CashLens was developed by Rushiraj Jadeja with a focus on creating an intuitive, powerful, and privacy-first personal finance experience.")
+                    sectionCard(title: "Privacy") {
+                        Text("CashLens stores your data only on your device. Nothing leaves your phone unless you ask it to (via export or backup). No accounts, no servers, no analytics that follow you around.")
                             .font(.body)
                             .foregroundColor(.primary)
-                            .multilineTextAlignment(.leading)
-
-                        Text("© 2025 Rushiraj Jadeja. All rights reserved.")
-                            .font(Theme.Typography.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.top, Theme.Spacing.xs)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(Theme.Spacing.lg)
-                    .cardSurface()
 
-                    // Privacy Policy
-                    VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                        Text("Privacy & Security")
-                            .font(.title2)
-                            .fontWeight(.bold)
-
-                        Text("CashLens respects your privacy. All your financial data is stored locally on your device and is never shared with third parties. Your subscription data, custom categories, and expense history remain completely private and under your control.")
-                            .font(.body)
-                            .foregroundColor(.primary)
-                            .multilineTextAlignment(.leading)
+                    sectionCard(title: "Developer") {
+                        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                            Text("Designed and built by Rushiraj Jadeja.")
+                                .font(.body)
+                                .foregroundColor(.primary)
+                            Text("© 2026 Rushiraj Jadeja. All rights reserved.")
+                                .font(Theme.Typography.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
-                    .padding(Theme.Spacing.lg)
-                    .cardSurface()
-                    
-                    Spacer()
                 }
-                .padding()
+                .padding(.horizontal, Theme.Spacing.lg)
+                .padding(.top, Theme.Spacing.md)
+                .padding(.bottom, Theme.Spacing.xxxl)
             }
+            .background(Color(uiColor: .systemBackground))
             .navigationBarTitle("About", displayMode: .inline)
-            .navigationBarItems(trailing: 
-                Button(action: {
-                    dismiss()
-                }) {
-                    Text("Done")
-                        .fontWeight(.bold)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
                         .foregroundColor(.appPrimary)
                 }
-            )
-            .background(Color.systemBackground)
+            }
         }
     }
-    
-    private func featureRow(icon: String, text: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 16))
-                .foregroundColor(.appPrimary)
-                .frame(width: 24, height: 24)
-            
-            Text(text)
-                .font(.body)
+
+    // MARK: - Hero
+
+    private var appHero: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            HeroGlyph(systemName: "dollarsign.circle.fill", size: 58)
+
+            VStack(spacing: 2) {
+                Text("CashLens")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text(versionString)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Theme.Spacing.lg)
+    }
+
+    // MARK: - Section card scaffold
+
+    @ViewBuilder
+    private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            Text(title)
+                .font(Theme.Typography.subsectionTitle)
                 .foregroundColor(.primary)
-            
-            Spacer()
+
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.lg)
+        .cardSurface()
+    }
+
+    private func featureRow(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.md) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.appPrimary)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(Color.appPrimary.opacity(0.12)))
+
+            Text(text)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func contactRow(icon: String, title: String, value: String, url: String) -> some View {
+        Link(destination: URL(string: url)!) {
+            HStack(spacing: Theme.Spacing.md) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.appPrimary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.appPrimary.opacity(0.12)))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                    Text(value)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.tertiaryLabel)
+            }
+            .padding(.vertical, Theme.Spacing.sm + 2)
+            .contentShape(Rectangle())
         }
     }
 }
@@ -209,4 +205,4 @@ struct AboutView_Previews: PreviewProvider {
     static var previews: some View {
         AboutView()
     }
-} 
+}

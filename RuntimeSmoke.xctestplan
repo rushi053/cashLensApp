@@ -1,0 +1,31 @@
+{
+  "configurations" : [
+    {
+      "id" : "A1B2C3D4-0000-0000-0000-000000000001",
+      "name" : "RuntimeSmoke",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "storeKitConfigurationFileReference" : {
+      "identifier" : "CashLens/Donations.storekit"
+    },
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:CashLens.xcodeproj",
+      "identifier" : "B2D466542D7F5EA200EAF1A9",
+      "name" : "CashLens"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:CashLens.xcodeproj",
+        "identifier" : "B2D466732D7F5EA300EAF1A9",
+        "name" : "CashLensUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

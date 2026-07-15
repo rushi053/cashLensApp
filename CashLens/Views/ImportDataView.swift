@@ -142,7 +142,7 @@ struct ImportDataView: View {
                 }
             }
             .sheet(isPresented: $showingPaywall) {
-                PaywallView()
+                PaywallView(context: .importFormats)
             }
             .onAppear {
                 withAnimation { animateIn = true }
@@ -153,11 +153,10 @@ struct ImportDataView: View {
     // MARK: - Background
 
     private var backgroundLayer: some View {
+        // v2: calm tinted background — matches Export, Paywall, Recap.
         ZStack {
-            Color.systemBackground.ignoresSafeArea()
-            LinearGradient.appPrimarySoft
-                .ignoresSafeArea()
-                .opacity(0.85)
+            Color(uiColor: .systemBackground).ignoresSafeArea()
+            Color.appPrimary.opacity(0.06).ignoresSafeArea()
         }
     }
 
@@ -165,19 +164,11 @@ struct ImportDataView: View {
 
     private var heroSection: some View {
         VStack(spacing: Theme.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient.appPrimaryDiagonal)
-                    .frame(width: 72, height: 72)
-                    .shadow(color: Color.appPrimary.opacity(0.28), radius: 14, x: 0, y: 8)
-                Image(systemName: "arrow.down.doc.fill")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundColor(.white)
-            }
+            HeroGlyph(systemName: "arrow.down.doc.fill")
 
             VStack(spacing: Theme.Spacing.xs) {
                 Text("Restore Your Data")
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .multilineTextAlignment(.center)
                 Text("Bring back a CashLens backup, or import from your bank, Mint, YNAB, or Apple Card.")
                     .font(.subheadline)
@@ -239,7 +230,7 @@ struct ImportDataView: View {
         HStack(alignment: .center, spacing: Theme.Spacing.md) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient.appPrimaryDiagonal)
+                    .fill(Color.appPrimary)
                     .frame(width: 36, height: 36)
                     .shadow(color: Color.appPrimary.opacity(0.25), radius: 6, x: 0, y: 3)
                 Text(number)
@@ -301,7 +292,7 @@ struct ImportDataView: View {
             HStack(alignment: .top) {
                 ZStack {
                     Circle()
-                        .fill(isPro ? AnyShapeStyle(LinearGradient.appPrimaryDiagonal) : AnyShapeStyle(Color.appPrimary.opacity(0.12)))
+                        .fill(isPro ? AnyShapeStyle(Color.appPrimary) : AnyShapeStyle(Color.appPrimary.opacity(0.12)))
                         .frame(width: 36, height: 36)
                     Image(systemName: icon)
                         .font(.system(size: 16, weight: .semibold))
@@ -364,7 +355,7 @@ struct ImportDataView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                .fill(LinearGradient.appPrimarySoft)
+                .fill(Color.appPrimary.opacity(0.10))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
@@ -393,7 +384,7 @@ struct ImportDataView: View {
                     .foregroundColor(.white)
                     .padding(.vertical, Theme.Spacing.md + 4)
                     .frame(maxWidth: .infinity)
-                    .background(LinearGradient.appPrimaryDiagonal)
+                    .background(Color.appPrimary)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                     .shadow(color: Color.appPrimary.opacity(0.32), radius: 14, x: 0, y: 6)
                 }
@@ -554,7 +545,7 @@ private struct ImportPreviewSheet: View {
             ZStack(alignment: .bottom) {
                 ZStack {
                     Color.systemBackground.ignoresSafeArea()
-                    LinearGradient.appPrimarySoft.opacity(0.6).ignoresSafeArea()
+                    Color.appPrimary.opacity(0.06).ignoresSafeArea()
                 }
 
                 ScrollView(showsIndicators: false) {
@@ -596,7 +587,7 @@ private struct ImportPreviewSheet: View {
         VStack(spacing: Theme.Spacing.md) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient.appPrimaryDiagonal)
+                    .fill(Color.appPrimary)
                     .frame(width: 64, height: 64)
                     .shadow(color: Color.appPrimary.opacity(0.28), radius: 12, x: 0, y: 6)
                 Image(systemName: formatIcon)
@@ -925,7 +916,7 @@ private struct ImportPreviewSheet: View {
                     .frame(maxWidth: .infinity)
                     .background(mode == .replace
                                 ? AnyShapeStyle(Color.red)
-                                : AnyShapeStyle(LinearGradient.appPrimaryDiagonal))
+                                : AnyShapeStyle(Color.appPrimary))
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                     .shadow(
                         color: (mode == .replace ? Color.red : Color.appPrimary).opacity(0.32),
@@ -956,7 +947,7 @@ private struct ImportSummarySheet: View {
             ZStack(alignment: .bottom) {
                 ZStack {
                     Color.systemBackground.ignoresSafeArea()
-                    LinearGradient.appPrimarySoft.opacity(0.6).ignoresSafeArea()
+                    Color.appPrimary.opacity(0.06).ignoresSafeArea()
                 }
 
                 ScrollView(showsIndicators: false) {
@@ -993,7 +984,7 @@ private struct ImportSummarySheet: View {
         VStack(spacing: Theme.Spacing.md) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient.appPrimaryDiagonal)
+                    .fill(Color.appPrimary)
                     .frame(width: 72, height: 72)
                     .shadow(color: Color.appPrimary.opacity(0.32), radius: 14, x: 0, y: 8)
                 Image(systemName: "checkmark.seal.fill")
@@ -1225,7 +1216,7 @@ private struct ImportSummarySheet: View {
                         .foregroundColor(.white)
                         .padding(.vertical, Theme.Spacing.md + 4)
                         .frame(maxWidth: .infinity)
-                        .background(LinearGradient.appPrimaryDiagonal)
+                        .background(Color.appPrimary)
                         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
                         .shadow(color: Color.appPrimary.opacity(0.32), radius: 14, x: 0, y: 6)
                 }

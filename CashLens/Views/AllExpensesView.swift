@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AllExpensesView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.bulkSelectionBinding) private var bulkSelectionBinding
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var proManager: ProManager
@@ -14,6 +15,23 @@ struct AllExpensesView: View {
     let isRootTab: Bool
     @State private var sortOption: SortOption = .dateDesc
     @State private var animateContent = false
+    /// Guards the `.onAppear` work (entrance animation + initial
+    /// recompute). As a tab root this view stays mounted across tab
+    /// switches, so without the guard every revisit re-ran a full
+    /// recompute with `resetPagination: true` — trashing the user's
+    /// scroll depth past 250 rows and re-flashing the list. Data
+    /// freshness while the tab is hidden is already covered by
+    /// `.onReceive(viewModel.$expenses)` below.
+    @State private var hasAppeared = false
+    /// PERF: TabView keeps this view permanently mounted, so the
+    /// `.onReceive(viewModel.$expenses)` below used to run a full
+    /// filter+sort+group recompute on **every** expense publish even
+    /// while the user was on another tab — invisible work contending
+    /// for the main actor right when they tap around. Mirror
+    /// StatisticsView's pattern: skip recomputes while hidden, flag
+    /// them pending, and run one catch-up pass on the next appear.
+    @State private var isTabVisible = false
+    @State private var recomputePending = false
     @State private var scrollToTop = false  // Track when to scroll to top
     @State private var selectedExpense: Expense?
     @State private var didApplyInitialFilter = false
@@ -26,13 +44,47 @@ struct AllExpensesView: View {
 
     /// Modal Calendar — month-grid browse surface that complements the
     /// chronological list. Sheet-presented so list state (filters, scroll
-    /// position, selection) is preserved on dismiss.
+    /// position, selection) is preserved on dismiss. Kept for the iPad
+    /// header button and any legacy deep-links; on iPhone the calendar
+    /// is now a first-class view mode (see `viewMode`).
     @State private var showingCalendar = false
+
+    /// First-class Activity view mode — List (chronological ledger) or
+    /// Calendar (month-grid browse). Promoted from a buried toolbar
+    /// icon to a visible header toggle; the calendar renders embedded
+    /// (`ExpenseCalendarView(isEmbedded: true)`) so switching modes
+    /// doesn't lose tab context. List state (filters, scroll position)
+    /// is preserved across switches because the list stays mounted in
+    /// state, just not rendered.
+    enum ViewMode: String, CaseIterable {
+        case list
+        case calendar
+
+        var icon: String {
+            switch self {
+            case .list: return "list.bullet"
+            case .calendar: return "calendar"
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .list: return "List"
+            case .calendar: return "Calendar"
+            }
+        }
+    }
+    @State private var viewMode: ViewMode = .list
 
     // Performance: cache computed results + paginate rendering for large datasets
     @State private var computedExpenses: [Expense] = []
     @State private var computedDateGroups: [(Date, [Expense])] = []
     @State private var totalMatchCount: Int = 0
+    /// Refund-aware net total of the *entire* filtered result set (not
+    /// just the visible pagination window). Shown next to the match
+    /// count so the screen answers "how much?" — the number users come
+    /// to a ledger to verify — without them summing rows in their head.
+    @State private var totalNetAmount: Double = 0
     @State private var displayLimit: Int = 250
     @State private var isRecomputing: Bool = false
 
@@ -111,21 +163,12 @@ struct AllExpensesView: View {
         Array(computedExpenses.prefix(max(0, min(displayLimit, computedExpenses.count))))
     }
     
-    // Sort expenses based on selected sort option
-    private func sortExpenses(_ expenses: [Expense]) -> [Expense] {
-        switch sortOption {
-        case .dateDesc:
-            return expenses.sorted { $0.date > $1.date }
-        case .dateAsc:
-            return expenses.sorted { $0.date < $1.date }
-        case .amountDesc:
-            return expenses.sorted { $0.amount > $1.amount }
-        case .amountAsc:
-            return expenses.sorted { $0.amount < $1.amount }
-        case .category:
-            return expenses.sorted { viewModel.categoryDisplayName(for: $0) < viewModel.categoryDisplayName(for: $1) }
-        }
-    }
+    // NOTE: Removed the dead `sortExpenses(_:)` helper. The live sort
+    // path runs inside `recomputeResults` (off-main, against snapshot
+    // data); the dead copy's `.category` branch also called
+    // `viewModel.categoryDisplayName(for:)` inside the sort comparator —
+    // at the time a Core Data fetch per comparison — making it a
+    // performance landmine if ever wired back up.
     
     private var shouldGroupByDate: Bool {
         sortOption == .dateAsc || sortOption == .dateDesc
@@ -245,9 +288,11 @@ struct AllExpensesView: View {
             }
             
             let finalGroups = groups
+            let netTotal = sorted.netTotal()
             await MainActor.run {
                 guard !Task.isCancelled else { return }
                 totalMatchCount = sorted.count
+                totalNetAmount = netTotal
                 computedExpenses = sorted
                 computedDateGroups = finalGroups
                 if resetPagination {
@@ -275,10 +320,14 @@ struct AllExpensesView: View {
     private var quickFiltersRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.sm + 2) {
+                // "All" is a *true* reset — it also clears the tag and
+                // date-range filters (it used to leave those active
+                // while lighting up as selected, which read as a lie).
+                // Its lit state now means exactly "nothing is filtered".
                 PillChip(
                     title: "All",
                     icon: "line.3.horizontal.decrease.circle",
-                    isSelected: filterCategory == nil && !showOnlySubscriptions,
+                    isSelected: !hasActiveFilters,
                     shape: .rounded
                 ) {
                     HapticManager.shared.selectionChanged()
@@ -286,6 +335,8 @@ struct AllExpensesView: View {
                         filterCategory = nil
                         filterCustomCategoryId = nil
                         showOnlySubscriptions = false
+                        filterTag = nil
+                        useDateRangeFilter = false
                         scrollToTop = true
                     }
                 }
@@ -343,85 +394,255 @@ struct AllExpensesView: View {
                         }
                     }
                 }
+
+                // Tags chip — only appears when the user has at least
+                // one tag in use. Collapses the entire former tags row
+                // into one menu-backed pill, eliminating an extra
+                // strip of horizontal scrolling at the top of the
+                // screen. For free users it's a paywall entry point;
+                // for Pro users it's a quick switcher.
+                tagsFilterChip
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.top, Theme.Spacing.xs + 2)
         }
     }
 
-    /// Pro-only tag filter strip. Appears only when there is at least one tag in use.
-    /// Free users see a subtle upgrade nudge in its place.
+    /// Compact replacement for the old always-visible tags row.
+    /// Behaviour matrix:
+    ///   • No tags exist anywhere      → chip hidden entirely
+    ///   • Pro user, no active filter  → "Tags ▾" → menu to pick
+    ///   • Pro user, active filter     → "#test ✕" → tap to clear,
+    ///                                   long-press menu to swap
+    ///   • Free user                   → "Tags ✨" → paywall
     @ViewBuilder
-    private var tagsFilterRow: some View {
+    private var tagsFilterChip: some View {
         let stats = viewModel.tagStats
         let orderedTags = stats.popularTags
 
-        if orderedTags.isEmpty {
-            EmptyView()
-        } else if proManager.isPro {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.xs + 2) {
-                    TagChip(
-                        "all",
-                        style: filterTag == nil ? .selected : .standard,
-                        onTap: {
+        if !orderedTags.isEmpty {
+            if proManager.isPro {
+                Menu {
+                    if filterTag != nil {
+                        Button(role: .destructive) {
+                            HapticManager.shared.selectionChanged()
                             withAnimation(Theme.Motion.snappy) {
                                 filterTag = nil
                                 scrollToTop = true
                             }
+                        } label: {
+                            Label("Clear tag filter", systemImage: "xmark.circle")
                         }
-                    )
-
-                    ForEach(orderedTags, id: \.self) { tag in
-                        TagChip(
-                            tag,
-                            style: filterTag == tag ? .selected : .standard,
-                            count: stats.usageCounts[tag],
-                            onTap: {
-                                HapticManager.shared.selectionChanged()
-                                withAnimation(Theme.Motion.snappy) {
-                                    filterTag = (filterTag == tag) ? nil : tag
-                                    scrollToTop = true
-                                }
-                            }
-                        )
+                        Divider()
                     }
+                    ForEach(orderedTags, id: \.self) { tag in
+                        Button {
+                            HapticManager.shared.selectionChanged()
+                            withAnimation(Theme.Motion.snappy) {
+                                filterTag = (filterTag == tag) ? nil : tag
+                                scrollToTop = true
+                            }
+                        } label: {
+                            if let count = stats.usageCounts[tag] {
+                                Label("#\(tag) (\(count))", systemImage: filterTag == tag ? "checkmark" : "number")
+                            } else {
+                                Label("#\(tag)", systemImage: filterTag == tag ? "checkmark" : "number")
+                            }
+                        }
+                    }
+                } label: {
+                    tagChipLabel
                 }
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.top, Theme.Spacing.xs + 2)
-            }
-        } else {
-            Button {
-                HapticManager.shared.lightTap()
-                showingTagPaywall = true
-            } label: {
-                HStack(spacing: Theme.Spacing.sm) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.appPrimary)
-                    Text("Filter by tag with Pro")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundColor(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
+                // No haptic on the Menu label — the system menu fires
+                // its own feedback on open, and the old lightTap here
+                // double-buzzed (design review haptic map).
+            } else {
+                Button {
+                    HapticManager.shared.lightTap()
+                    showingTagPaywall = true
+                } label: {
+                    tagChipLabelProUpsell
                 }
-                .padding(.horizontal, Theme.Spacing.md + 2)
-                .padding(.vertical, Theme.Spacing.sm + 2)
-                .background(
-                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                        .fill(LinearGradient.appPrimarySoft)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                        .stroke(Color.appPrimary.opacity(0.2), lineWidth: 1)
-                )
+                .buttonStyle(ScaleButtonStyle())
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.top, Theme.Spacing.xs + 2)
         }
+    }
+
+    /// Pill label for the Pro tags-filter chip. Renders the active
+    /// `#tag` inline (with an X-circle to communicate "tap to dismiss
+    /// via menu") when a filter is set, or a plain "Tags ▾" affordance
+    /// when nothing is active.
+    private var tagChipLabel: some View {
+        HStack(spacing: 6) {
+            if let activeTag = filterTag {
+                Text("#\(activeTag)")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .opacity(0.8)
+            } else {
+                Image(systemName: "tag")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Tags")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .opacity(0.7)
+            }
+        }
+        .foregroundColor(filterTag != nil ? .white : .appPrimary)
+        .padding(.vertical, Theme.Spacing.xs + 2)
+        .padding(.horizontal, Theme.Spacing.md)
+        .background(
+            Group {
+                if filterTag != nil {
+                    Color.appPrimary
+                } else {
+                    Color.tertiarySystemBackground
+                }
+            }
+        )
+        .clipShape(Capsule())
+        .animation(nil, value: filterTag)
+    }
+
+    /// Free-tier label for the tags chip — same shape, sparkle icon
+    /// instead of chevron, hairline outlined treatment to signal "Pro".
+    private var tagChipLabelProUpsell: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 12, weight: .bold))
+            Text("Tags")
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+        }
+        .foregroundColor(.appPrimary)
+        .padding(.vertical, Theme.Spacing.xs + 2)
+        .padding(.horizontal, Theme.Spacing.md)
+        .background(
+            Capsule().fill(Color.appPrimary.opacity(0.08))
+        )
+        .overlay(
+            Capsule().stroke(Color.appPrimary.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    /// Promoted search + view-mode header row. Search used to hide
+    /// behind a toolbar magnifying glass; it's now a visible
+    /// field-styled button that opens `QuickSearchView` (kept as the
+    /// app's single search surface rather than embedding a second
+    /// search implementation). The List | Calendar toggle promotes
+    /// the month-grid from a buried toolbar icon to a first-class
+    /// view mode.
+    private var searchAndModeRow: some View {
+        HStack(spacing: Theme.Spacing.sm + 2) {
+            searchFieldButton
+            viewModeToggle
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+    }
+
+    private var searchFieldButton: some View {
+        Button {
+            HapticManager.shared.lightTap()
+            showingQuickSearch = true
+        } label: {
+            HStack(spacing: Theme.Spacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Text("Search expenses")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, Theme.Spacing.sm + 2)
+            .padding(.horizontal, Theme.Spacing.md)
+            .fieldCard(radius: Theme.Radius.row)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Search expenses")
+    }
+
+    private var viewModeToggle: some View {
+        HStack(spacing: 2) {
+            ForEach(ViewMode.allCases, id: \.self) { mode in
+                Button {
+                    guard viewMode != mode else { return }
+                    HapticManager.shared.selectionChanged()
+                    withAnimation(Theme.Motion.snappy) {
+                        // Bulk selection only exists in list mode — exit
+                        // it cleanly before the mode swap so the FAB and
+                        // action bar can't get stranded.
+                        if isSelecting {
+                            selectedIds.removeAll()
+                            isSelecting = false
+                        }
+                        viewMode = mode
+                    }
+                } label: {
+                    Image(systemName: mode.icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(viewMode == mode ? .white : .secondary)
+                        .frame(width: 40, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: Theme.Radius.chip - 2, style: .continuous)
+                                .fill(viewMode == mode ? Color.appPrimary : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(mode.label) view")
+                .accessibilityAddTraits(viewMode == mode ? [.isSelected] : [])
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                .fill(Color.tertiarySystemBackground)
+        )
+    }
+
+    /// In-content page header for the Activity tab root — pageTitle
+    /// on the leading edge (matching Today's and Insights' in-content
+    /// titles) with the Select toggle where the toolbar button used
+    /// to live. Only rendered when `isRootTab` on iPhone; the sheet
+    /// presentation keeps its inline nav bar, and iPad keeps its own
+    /// custom header.
+    private var activityPageHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("Activity")
+                .font(Theme.Typography.pageTitle)
+                .foregroundColor(.primary)
+
+            Spacer()
+
+            if viewMode == .list {
+                selectModeButton
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.top, Theme.Spacing.xl)
+    }
+
+    /// "Select" / "Done" toggle shared by the in-content header
+    /// (tab root) and the nav-bar toolbar (sheet presentation).
+    private var selectModeButton: some View {
+        Button {
+            HapticManager.shared.lightTap()
+            withAnimation(Theme.Motion.snappy) {
+                if isSelecting {
+                    // Leaving select mode — also clear any picks.
+                    selectedIds.removeAll()
+                }
+                isSelecting.toggle()
+            }
+        } label: {
+            Text(isSelecting ? "Done" : "Select")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.appPrimary)
+        }
+        .accessibilityLabel(isSelecting ? "Exit select mode" : "Select expenses")
+        .disabled(totalMatchCount == 0 && !isSelecting)
     }
 
     private var sortBar: some View {
@@ -433,9 +654,13 @@ struct AllExpensesView: View {
 
             Text(countLabel)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
+                .monospacedDigit()
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.75)
+                .contentTransition(.numericText())
+                .animation(Theme.Motion.snappy, value: totalMatchCount)
+                .accessibilityLabel(countAccessibilityLabel)
         }
         .padding(.horizontal, Theme.Spacing.lg)
     }
@@ -482,11 +707,21 @@ struct AllExpensesView: View {
             // Ensure layout (pill width) never animates when the label changes.
             .animation(nil, value: sortOption)
         }
-        .simultaneousGesture(TapGesture().onEnded { HapticManager.shared.lightTap() })
+        // No haptic on the Menu label — the system menu fires its own
+        // feedback on open; the old lightTap double-buzzed.
     }
 
-    /// Date-range pill. Shows the active range inline (e.g. "Apr 1 – Apr 22") when
-    /// filtering is on, giving users clear feedback without opening the picker.
+    /// Date-range button. Compact icon-only chip when no range is
+    /// active — saves horizontal real estate in the sort bar and
+    /// avoids competing visually with the sort pill. When a range is
+    /// active, the button expands inline to show the picked window
+    /// (e.g. "Apr 1 – Apr 22") so the user can see the active state
+    /// without opening the picker.
+    ///
+    /// Icon sized at 16pt (vs the 13pt used inside the sort pill) so
+    /// the icon-only form has roughly the same visual weight as the
+    /// pill sitting next to it — the previous 13pt looked deflated
+    /// and easy to miss as a tappable target.
     private var dateRangePill: some View {
         Button {
             HapticManager.shared.lightTap()
@@ -494,17 +729,19 @@ struct AllExpensesView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: useDateRangeFilter ? "calendar.badge.checkmark" : "calendar")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: useDateRangeFilter ? 13 : 16, weight: .semibold))
                     .contentTransition(.identity)
-                Text(dateRangeLabel)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                    .contentTransition(.identity)
+                if useDateRangeFilter {
+                    Text(dateRangeLabel)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                        .contentTransition(.identity)
+                }
             }
             .fixedSize(horizontal: true, vertical: false)
             .foregroundColor(useDateRangeFilter ? .white : .appPrimary)
-            .padding(.vertical, Theme.Spacing.xs + 2)
-            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.vertical, useDateRangeFilter ? Theme.Spacing.xs + 2 : 8)
+            .padding(.horizontal, useDateRangeFilter ? Theme.Spacing.md : 14)
             .background(
                 Group {
                     if useDateRangeFilter {
@@ -520,6 +757,7 @@ struct AllExpensesView: View {
             .animation(nil, value: rangeEndDate)
         }
         .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel(useDateRangeFilter ? "Date range: \(dateRangeLabel)" : "Filter by date range")
     }
 
     private var dateRangeLabel: String {
@@ -529,12 +767,19 @@ struct AllExpensesView: View {
         return "\(formatter.string(from: rangeStartDate)) – \(formatter.string(from: rangeEndDate))"
     }
 
+    /// "34 · ₹12,450" — match count plus the refund-aware net total of
+    /// the filtered set. The word "expenses" is dropped in favor of the
+    /// amount because "how much?" is the question users actually bring
+    /// to a ledger; the count alone made them sum rows mentally.
     private var countLabel: String {
-        switch totalMatchCount {
-        case 0: return "No results"
-        case 1: return "1 expense"
-        default: return "\(totalMatchCount) expenses"
-        }
+        guard totalMatchCount > 0 else { return "No results" }
+        return "\(totalMatchCount) · \(viewModel.formattedAmount(totalNetAmount))"
+    }
+
+    private var countAccessibilityLabel: String {
+        guard totalMatchCount > 0 else { return "No results" }
+        let noun = totalMatchCount == 1 ? "expense" : "expenses"
+        return "\(totalMatchCount) \(noun) totaling \(viewModel.formattedAmount(totalNetAmount))"
     }
 
     var body: some View {
@@ -591,12 +836,44 @@ struct AllExpensesView: View {
                         .padding(.vertical, Theme.Spacing.md)
                     }
                     
-                    VStack(spacing: Theme.Spacing.lg) {
+                    // v2 nav fix: as the Activity tab root the screen
+                    // draws its own in-content page title (same
+                    // treatment as Today and Insights) instead of a
+                    // UIKit large-title bar. The legacy NavigationView
+                    // large title was the only one of the four tabs
+                    // whose chrome re-laid itself out on every tab
+                    // switch — the "different animation" on Activity.
+                    if isRootTab && !isIPad {
+                        activityPageHeader
+                            .opacity(animateContent ? 1 : 0)
+                            .offset(y: animateContent ? 0 : -10)
+                    }
+
+                    // Promoted header — visible search field + List |
+                    // Calendar toggle. Always on screen in both view
+                    // modes so switching back is one tap.
+                    searchAndModeRow
+                        .padding(.top, Theme.Spacing.sm)
+                        .opacity(animateContent ? 1 : 0)
+                        .offset(y: animateContent ? 0 : -10)
+
+                    if viewMode == .calendar {
+                        // First-class calendar mode — embedded month grid
+                        // (no NavigationView / sheet chrome of its own).
+                        ExpenseCalendarView(isEmbedded: true)
+                            .padding(.top, Theme.Spacing.sm)
+                            .transition(.opacity)
+                    } else {
+                    // Compacted filter header. The former tags row is
+                    // gone — tags now live as a single chip at the end
+                    // of `quickFiltersRow`, cutting one full strip of
+                    // horizontal scrolling. Tighter vertical spacing
+                    // (md instead of lg) since there are fewer rows.
+                    VStack(spacing: Theme.Spacing.md) {
                         sortBar
                         quickFiltersRow
-                        tagsFilterRow
                     }
-                    .padding(.top, Theme.Spacing.sm)
+                    .padding(.top, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.sm)
                     .background(Color.systemBackground)
                     .opacity(animateContent ? 1 : 0)
@@ -619,70 +896,42 @@ struct AllExpensesView: View {
                         expenseList
                             .opacity(animateContent ? 1 : 0)
                     }
+                    }
                 }
+                .animation(Theme.Motion.snappy, value: viewMode)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .navigationTitle(isIPad ? "" : (isRootTab ? "Activity" : "All Expenses"))
-            .navigationBarTitleDisplayMode(isRootTab ? .large : .inline)
-            .navigationBarHidden(isIPad) // Hide navigation bar on iPad
+            .navigationTitle(isIPad || isRootTab ? "" : "All Expenses")
+            .navigationBarTitleDisplayMode(.inline)
+            // Hidden on iPad (custom header above) AND as the tab
+            // root, where the in-content `activityPageHeader` draws
+            // the title. The old UIKit large-title bar re-ran its
+            // expand/settle layout on every tab switch — the one tab
+            // whose appearance visibly animated.
+            .navigationBarHidden(isIPad || isRootTab)
             .toolbar {
-                if !isIPad {
-                    if !isRootTab {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button(action: {
-                                dismiss()
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Text("Back")
-                                        .fontWeight(.medium)
-                                }
-                                .foregroundColor(.appPrimary)
+                if !isIPad && !isRootTab {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: {
+                            dismiss()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Back")
+                                    .fontWeight(.medium)
                             }
+                            .foregroundColor(.appPrimary)
                         }
                     }
 
+                    // Calendar + search toolbar icons are gone on iPhone —
+                    // both are promoted to the always-visible header row
+                    // (`searchAndModeRow`). Select only applies to the
+                    // list, so it hides in calendar mode.
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        HStack(spacing: Theme.Spacing.md) {
-                            if !isSelecting {
-                                Button {
-                                    HapticManager.shared.lightTap()
-                                    showingCalendar = true
-                                } label: {
-                                    Image(systemName: "calendar")
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundColor(.appPrimary)
-                                }
-                                .accessibilityLabel("Browse by calendar")
-
-                                Button {
-                                    HapticManager.shared.lightTap()
-                                    showingQuickSearch = true
-                                } label: {
-                                    Image(systemName: "magnifyingglass")
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundColor(.appPrimary)
-                                }
-                                .accessibilityLabel("Search expenses")
-                            }
-
-                            Button {
-                                HapticManager.shared.lightTap()
-                                withAnimation(Theme.Motion.snappy) {
-                                    if isSelecting {
-                                        // Leaving select mode — also clear any picks.
-                                        selectedIds.removeAll()
-                                    }
-                                    isSelecting.toggle()
-                                }
-                            } label: {
-                                Text(isSelecting ? "Done" : "Select")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.appPrimary)
-                            }
-                            .accessibilityLabel(isSelecting ? "Exit select mode" : "Select expenses")
-                            .disabled(totalMatchCount == 0 && !isSelecting)
+                        if viewMode == .list {
+                            selectModeButton
                         }
                     }
                 }
@@ -699,18 +948,45 @@ struct AllExpensesView: View {
                     .environmentObject(categoryViewModel)
             }
             .onAppear {
+                isTabVisible = true
+                // A publish arrived while this tab was hidden — run the
+                // single catch-up pass now that the work is visible.
+                if recomputePending {
+                    recomputePending = false
+                    recomputeResults(resetPagination: false)
+                }
+                // Once per view lifetime (≈ once per session for the
+                // tab root, which stays mounted across tab switches).
+                // Re-running this on every tab revisit replayed the
+                // entrance motion window and reset pagination/scroll —
+                // the other tabs guard their appearance work the same
+                // way (see StatisticsView's onAppear PERF note).
+                guard !hasAppeared else { return }
+                hasAppeared = true
+                // Consume the deep-link / notification filter before the
+                // first recompute so the list renders pre-filtered. This
+                // must live on the main view's appearance (it used to sit
+                // on the date-range sheet's content, which deep-link
+                // presentations never open — so their filter was ignored).
+                applyInitialFilterIfNeeded()
                 withAnimation(Theme.Motion.emphasized.delay(0.1)) {
                     animateContent = true
                 }
-                scrollToTop = false
                 recomputeResults(resetPagination: true)
             }
             .onReceive(viewModel.$expenses) { latest in
-                // Use the value the publisher just emitted instead of reading
-                // `viewModel.expenses` again — `@Published` sends in `willSet`,
-                // so the property could still be momentarily stale on the
-                // receive tick.
-                recomputeResults(resetPagination: false, using: latest)
+                // PERF: while the tab is hidden, don't burn a full
+                // filter+sort+group pass the user can't see — just flag
+                // it; `onAppear` runs one catch-up recompute. While
+                // visible, use the value the publisher just emitted
+                // instead of reading `viewModel.expenses` again —
+                // `@Published` sends in `willSet`, so the property could
+                // still be momentarily stale on the receive tick.
+                if isTabVisible {
+                    recomputeResults(resetPagination: false, using: latest)
+                } else {
+                    recomputePending = true
+                }
             }
             .onChange(of: sortOption) {
                 recomputeResults(resetPagination: true)
@@ -737,10 +1013,16 @@ struct AllExpensesView: View {
                 recomputeResults(resetPagination: true)
             }
             .sheet(isPresented: $showingTagPaywall) {
-                PaywallView()
+                PaywallView(context: .tags)
             }
             .onChange(of: categoryViewModel.customCategories) {
-                recomputeResults(resetPagination: false)
+                // Only affects display names in the category sort — no
+                // reason to pay for it while hidden either.
+                if isTabVisible {
+                    recomputeResults(resetPagination: false)
+                } else {
+                    recomputePending = true
+                }
             }
         }
         .if(isIPad) { view in
@@ -788,6 +1070,22 @@ struct AllExpensesView: View {
             }
         }
         .animation(Theme.Motion.snappy, value: isSelecting)
+        // Mirror the local selection flag up to the root tab view so it
+        // can hide the floating "+" button while the inline action bar
+        // is on screen (otherwise the FAB sits on top of the Delete
+        // button and steals the tap).
+        .onChange(of: isSelecting) { _, newValue in
+            bulkSelectionBinding.wrappedValue = newValue
+        }
+        .onDisappear {
+            isTabVisible = false
+            // Safety net: if the user navigates away while still in
+            // selection mode (rare but possible), reset the root flag
+            // so the FAB reappears on the next tab.
+            if bulkSelectionBinding.wrappedValue {
+                bulkSelectionBinding.wrappedValue = false
+            }
+        }
         .alert("Delete \(selectedIds.count) expense\(selectedIds.count == 1 ? "" : "s")?", isPresented: $showingBulkDeleteConfirm) {
             Button("Delete", role: .destructive) {
                 bulkDelete()
@@ -803,7 +1101,7 @@ struct AllExpensesView: View {
             bulkTagSheet
         }
         .sheet(isPresented: $showingBulkTagPaywall) {
-            PaywallView()
+            PaywallView(context: .tags)
         }
     }
 
@@ -825,6 +1123,38 @@ struct AllExpensesView: View {
         } else {
             HapticManager.shared.lightTap()
             selectedExpense = expense
+        }
+    }
+
+    /// Long-press menu shared by both row styles (date-grouped and
+    /// flat amount/category sorts) — previously only the date-grouped
+    /// rows had Edit / Select / Delete, so switching to "Highest
+    /// Amount" silently lost row actions. Empty while selecting.
+    @ViewBuilder
+    private func rowContextMenuItems(for expense: Expense) -> some View {
+        if !isSelecting {
+            Button {
+                selectedExpense = expense
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+
+            Button {
+                HapticManager.shared.lightTap()
+                withAnimation(Theme.Motion.snappy) {
+                    isSelecting = true
+                    selectedIds.insert(expense.id)
+                }
+            } label: {
+                Label("Select", systemImage: "checkmark.circle")
+            }
+
+            Button(role: .destructive) {
+                HapticManager.shared.mediumTap()
+                deleteExpense(expense)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 
@@ -960,6 +1290,7 @@ struct AllExpensesView: View {
         guard !ids.isEmpty else { return }
 
         let beforeCount = computedExpenses.count
+        let removedNet = computedExpenses.filter { ids.contains($0.id) }.netTotal()
         computedExpenses.removeAll { ids.contains($0.id) }
         let removedCount = beforeCount - computedExpenses.count
 
@@ -976,6 +1307,8 @@ struct AllExpensesView: View {
         }
 
         totalMatchCount = max(0, totalMatchCount - removedCount)
+        totalNetAmount -= removedNet
+        if totalMatchCount == 0 { totalNetAmount = 0 }
     }
 
     // MARK: - Bulk Category Picker
@@ -1120,22 +1453,77 @@ struct AllExpensesView: View {
         }
     }
 
+    /// One-tap windows for the ranges people actually reach for —
+    /// two wheel-picker interactions collapse into a single tap and
+    /// the sheet dismisses itself with the filter applied.
+    private var dateRangePresets: [(label: String, range: () -> (Date, Date))] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        return [
+            ("Last 7 days", { (cal.date(byAdding: .day, value: -6, to: today) ?? today, Date()) }),
+            ("Last 30 days", { (cal.date(byAdding: .day, value: -29, to: today) ?? today, Date()) }),
+            ("This month", {
+                let start = cal.dateInterval(of: .month, for: Date())?.start ?? today
+                return (start, Date())
+            }),
+            ("Last month", {
+                let thisMonthStart = cal.dateInterval(of: .month, for: Date())?.start ?? today
+                let start = cal.date(byAdding: .month, value: -1, to: thisMonthStart) ?? today
+                let end = cal.date(byAdding: .day, value: -1, to: thisMonthStart) ?? today
+                return (start, end)
+            })
+        ]
+    }
+
+    private func applyPresetRange(_ preset: (label: String, range: () -> (Date, Date))) {
+        HapticManager.shared.selectionChanged()
+        let (start, end) = preset.range()
+        rangeStartDate = start
+        rangeEndDate = end
+        useDateRangeFilter = true
+        showingDateRangePicker = false
+        scrollToTop = true
+    }
+
     private var dateRangeSheet: some View {
         NavigationView {
             Form {
-                Toggle("Filter by date range", isOn: $useDateRangeFilter)
-                
-                DatePicker("Start", selection: $rangeStartDate, displayedComponents: [.date])
-                    .disabled(!useDateRangeFilter)
-                DatePicker("End", selection: $rangeEndDate, displayedComponents: [.date])
-                    .disabled(!useDateRangeFilter)
-                
-                if useDateRangeFilter {
-                    Button("Clear Date Filter") {
-                        HapticManager.shared.selectionChanged()
-                        useDateRangeFilter = false
+                Section {
+                    ForEach(dateRangePresets, id: \.label) { preset in
+                        Button {
+                            applyPresetRange(preset)
+                        } label: {
+                            HStack {
+                                Text(preset.label)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Image(systemName: "arrow.right.circle")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.appPrimary)
+                            }
+                        }
                     }
-                    .foregroundColor(.red)
+                } header: {
+                    Text("Quick ranges")
+                }
+
+                Section {
+                    Toggle("Filter by date range", isOn: $useDateRangeFilter)
+
+                    DatePicker("Start", selection: $rangeStartDate, displayedComponents: [.date])
+                        .disabled(!useDateRangeFilter)
+                    DatePicker("End", selection: $rangeEndDate, displayedComponents: [.date])
+                        .disabled(!useDateRangeFilter)
+
+                    if useDateRangeFilter {
+                        Button("Clear Date Filter") {
+                            HapticManager.shared.selectionChanged()
+                            useDateRangeFilter = false
+                        }
+                        .foregroundColor(.red)
+                    }
+                } header: {
+                    Text("Custom range")
                 }
             }
             .navigationTitle("Date Range")
@@ -1157,28 +1545,34 @@ struct AllExpensesView: View {
                 }
             }
         }
-        .onAppear {
-            guard !didApplyInitialFilter, let initialFilter else { return }
-            didApplyInitialFilter = true
-            
-            if initialFilter.useDateRangeFilter,
-               let start = initialFilter.rangeStartDate,
-               let end = initialFilter.rangeEndDate {
-                useDateRangeFilter = true
-                rangeStartDate = start
-                rangeEndDate = end
-            }
-            
-            showOnlySubscriptions = initialFilter.showOnlySubscriptions
-            
-            if let raw = initialFilter.filterCategoryRawValue,
-               let cat = Expense.Category(rawValue: raw) {
-                filterCategory = cat
-                filterCustomCategoryId = initialFilter.filterCustomCategoryId
-            } else {
-                filterCategory = nil
-                filterCustomCategoryId = nil
-            }
+    }
+
+    /// One-shot application of the deep-link / notification filter
+    /// (`initialFilter`), run from the main view's first appearance —
+    /// covers both the Activity tab root and the sheet presentation
+    /// deep links use. Once-per-lifetime via `didApplyInitialFilter`
+    /// (same pattern as `hasAppeared`).
+    private func applyInitialFilterIfNeeded() {
+        guard !didApplyInitialFilter, let initialFilter else { return }
+        didApplyInitialFilter = true
+
+        if initialFilter.useDateRangeFilter,
+           let start = initialFilter.rangeStartDate,
+           let end = initialFilter.rangeEndDate {
+            useDateRangeFilter = true
+            rangeStartDate = start
+            rangeEndDate = end
+        }
+
+        showOnlySubscriptions = initialFilter.showOnlySubscriptions
+
+        if let raw = initialFilter.filterCategoryRawValue,
+           let cat = Expense.Category(rawValue: raw) {
+            filterCategory = cat
+            filterCustomCategoryId = initialFilter.filterCustomCategoryId
+        } else {
+            filterCategory = nil
+            filterCustomCategoryId = nil
         }
     }
     
@@ -1197,7 +1591,7 @@ struct AllExpensesView: View {
     private var emptyStateView: some View {
         if hasActiveFilters {
             EmptyStatePanel(
-                icon: "line.3.horizontal.decrease.circle",
+                icon: "line.3.horizontal.decrease",
                 title: "No expenses match these filters",
                 message: "Try clearing a filter, or search for something specific."
             ) {
@@ -1232,10 +1626,13 @@ struct AllExpensesView: View {
                 }
             }
         } else {
+            // Copy matched to Today's first-run tone (the review
+            // flagged this state as flat next to Today's "Start with
+            // one expense." hero).
             EmptyStatePanel(
-                icon: "doc.text.magnifyingglass",
-                title: "No expenses found",
-                message: "Add some expenses to see them here"
+                icon: "list.bullet.rectangle.portrait",
+                title: "Nothing here yet",
+                message: "Your ledger starts with one tap — hit + to log the first one."
             )
         }
     }
@@ -1286,6 +1683,9 @@ struct AllExpensesView: View {
                                 .onTapGesture {
                                     handleRowTap(expense: expense)
                                 }
+                                .contextMenu {
+                                    rowContextMenuItems(for: expense)
+                                }
                                 .onAppear {
                                     if idx == max(0, visibleExpenses.count - 1) {
                                         loadMoreIfNeeded()
@@ -1298,16 +1698,25 @@ struct AllExpensesView: View {
                     Color.clear.frame(height: isSelecting ? 96 : 40)
                 }
             }
-            .onChange(of: sortOption) {
+            // `scrollToTop` is the one-shot signal every filter/sort
+            // mutation raises (chips, sort menu, date-range Done, tag
+            // menu, Clear Filters). It previously had no listener, so
+            // changing filters while scrolled deep left the user
+            // stranded mid-way through a *different* result set.
+            .onChange(of: scrollToTop) { _, needsScroll in
+                guard needsScroll else { return }
+                scrollToTop = false
                 withAnimation {
                     scrollView.scrollTo("top", anchor: .top)
                 }
             }
-            .onChange(of: viewModel.selectedCategory) {
-                withAnimation {
-                    scrollView.scrollTo("top", anchor: .top)
-                }
-            }
+            // NOTE: removed a dead `.onChange(of: viewModel.selectedCategory)`
+            // scroll-to-top — that property is the *Home* screen's filter;
+            // Activity's own filters live in local @State and already
+            // raise `scrollToTop`. The listener just added an equality
+            // check on every Home filter change while this tab stayed
+            // mounted, and could yank Activity's scroll position for a
+            // filter it doesn't even apply.
         }
     }
     
@@ -1431,41 +1840,12 @@ struct AllExpensesView: View {
                 handleRowTap(expense: expense)
             }
             .contextMenu {
-                if !isSelecting {
-                    Button {
-                        selectedExpense = expense
-                    } label: {
-                        Label("Edit", systemImage: "pencil")
-                    }
-
-                    Button {
-                        HapticManager.shared.lightTap()
-                        withAnimation(Theme.Motion.snappy) {
-                            isSelecting = true
-                            selectedIds.insert(expense.id)
-                        }
-                    } label: {
-                        Label("Select", systemImage: "checkmark.circle")
-                    }
-
-                    Button(role: .destructive) {
-                        HapticManager.shared.mediumTap()
-                        deleteExpense(expense)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                }
+                rowContextMenuItems(for: expense)
             }
-            .swipeActions(edge: .trailing) {
-                if !isSelecting {
-                    Button(role: .destructive) {
-                        HapticManager.shared.mediumTap()
-                        deleteExpense(expense)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                }
-            }
+            // NOTE: no `.swipeActions` here — that modifier only works
+            // inside a `List`; on this LazyVStack it was silently dead
+            // code. Row deletion lives in the context menu and bulk
+            // select instead.
             .opacity(animateContent ? 1 : 0)
             .offset(y: animateContent ? 0 : 10)
             // Simplified animation - only for initial appearance, not for every change

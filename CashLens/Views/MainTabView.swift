@@ -35,10 +35,22 @@ struct MainTabView: View {
     /// to re-evaluate the body and the tint visually lags behind.
     @EnvironmentObject private var themeStore: ThemeStore
     @StateObject private var feedbackManager = FeedbackManager.shared
+    @EnvironmentObject private var proManager: ProManager
     @State private var selectedTab: Tab = .today
     @State private var showingAddExpense = false
     @State private var showingCurrencyPicker = false
     @State private var showingFeedbackRequest = false
+
+    // MARK: - Post-value paywall trigger
+
+    /// Expense count captured when the add sheet opens, so the
+    /// trigger can detect the save that *crosses* the threshold.
+    /// `nil` when the sheet opened before full hydration — during the
+    /// launch window `viewModel.expenses` only holds the recent hot
+    /// window, and a capture there would fake a threshold crossing
+    /// when the full history publishes mid-sheet.
+    @State private var expenseCountAtAddSheetOpen: Int? = nil
+    @State private var showingAutoPaywall = false
 
     // Tab bar configuration (legacy custom tab bar only)
     private let tabBarHeight: CGFloat = 60
@@ -105,7 +117,101 @@ struct MainTabView: View {
         // non-blocking, auto-dismissing card. No save site needs to
         // know about the UI.
         .saveErrorBannerHost()
+        // Success sibling of the error banner: a short-lived floating
+        // capsule ("Added ₹450 to Food") posted by the add/edit expense
+        // save paths via `SaveConfirmationReporter.report(...)`. Mounted
+        // here so it appears over the presenting tab as the save sheet
+        // slides away.
+        .saveConfirmationToastHost()
+        // Post-value paywall: watches the add-expense sheet (both the
+        // modern and legacy tab paths present through the same
+        // `showingAddExpense` binding) and evaluates the trigger when
+        // it closes — never during the save moment itself.
+        .onChange(of: showingAddExpense) { _, isPresented in
+            if isPresented {
+                // Only trust the count once the full history has
+                // published; a hot-window count would read as a fake
+                // crossing (e.g. 8 → 300) when hydration completes.
+                expenseCountAtAddSheetOpen = viewModel.isFullyHydrated
+                    ? viewModel.expenses.count
+                    : nil
+            } else {
+                maybeShowPostValuePaywall()
+            }
+        }
+        .sheet(isPresented: $showingAutoPaywall) {
+            PaywallView(context: .insights)
+                // Spend the once-ever shot only when the paywall is
+                // actually on screen — writing the flags before the
+                // 1.2s presentation delay meant a kill/background in
+                // that window consumed the auto-show invisibly.
+                .onAppear {
+                    let defaults = UserDefaults.standard
+                    defaults.set(true, forKey: UserDefaultsKeys.hasAutoShownPaywall)
+                    defaults.set(Date(), forKey: UserDefaultsKeys.lastAutoPaywallDate)
+                }
+        }
+        // One-time thank-you when a past donor's grandfather grant is
+        // first applied. Same consume-on-appear contract as the
+        // win-back sheet below: if presentation is blocked, ProManager
+        // re-queues at the next launch scan.
+        .sheet(item: $proManager.pendingDonorThanks) { grant in
+            DonorThanksView(grant: grant)
+                .onAppear { proManager.markDonorThanksShown() }
+        }
+        // One-time win-back after a Pro → free lapse. ProManager arms
+        // this on foreground; at most once per lapse, never after
+        // "No thanks", never for grandfathered donors.
+        .sheet(isPresented: $proManager.shouldShowWinBack) {
+            WinBackView()
+                .environmentObject(proManager)
+                // Consume the once-per-lapse shot only now that the
+                // sheet is actually on screen. If another sheet had
+                // blocked presentation, the pending flag survives for
+                // the next foreground instead of being spent invisibly.
+                .onAppear { proManager.markWinBackShown() }
+        }
     }
+
+    /// Evaluates `PaywallTrigger` after the add sheet dismisses and,
+    /// on a hit, presents the paywall once after a short delay — so
+    /// the save toast lands first and the moment never feels
+    /// interrupted.
+    private func maybeShowPostValuePaywall() {
+        // Both ends of the crossing must come from the fully hydrated
+        // dataset — bail if the sheet opened pre-hydration (no trusted
+        // capture) or hydration still hasn't finished now.
+        guard viewModel.isFullyHydrated,
+              let previousCount = expenseCountAtAddSheetOpen else { return }
+        let defaults = UserDefaults.standard
+        let trigger = PaywallTrigger(
+            previousCount: previousCount,
+            currentCount: viewModel.expenses.count,
+            isPro: proManager.isPro,
+            hasAutoShownBefore: defaults.bool(forKey: UserDefaultsKeys.hasAutoShownPaywall),
+            lastAutoShowDate: defaults.object(forKey: UserDefaultsKeys.lastAutoPaywallDate) as? Date
+        )
+        guard trigger.shouldAutoShow else { return }
+
+        // NOTE: the once-ever flags are written from the paywall
+        // sheet's `onAppear`, not here — see the sheet above.
+
+        // Long enough for the sheet's dismissal animation and a beat
+        // of the confirmation toast; short enough to still read as a
+        // response to what the user just did.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            // If the user locked/backgrounded during the delay, skip —
+            // a sheet would otherwise present above the lock overlay.
+            guard !AppLockManager.shared.isLocked else { return }
+            showingAutoPaywall = true
+        }
+    }
+
+    /// True while a child tab (currently only AllExpensesView) is in
+    /// bulk-select mode. Driven via `\.bulkSelectionBinding` env key
+    /// so the child writes upward without us reaching into its
+    /// internal state, and we read here to gate the FAB.
+    @State private var isBulkSelecting: Bool = false
 
     /// FAB shows on every tab except `You`. The v1 app hid the FAB
     /// behind Home only — the IA audit caught this as a tap-cost
@@ -113,8 +219,12 @@ struct MainTabView: View {
     /// the expense they just thought of). v2 keeps the FAB present
     /// anywhere the user is thinking about money. The settings tab
     /// (`You`) is the only place where it would feel like noise.
+    ///
+    /// Also hidden in bulk-selection mode — Activity surfaces an
+    /// inline action bar at the bottom there, and a floating "+"
+    /// would overlap (and visually compete with) those actions.
     private var shouldShowFAB: Bool {
-        selectedTab != .you
+        selectedTab != .you && !isBulkSelecting
     }
 
     // MARK: - iOS 26+ native Liquid Glass tab bar
@@ -130,7 +240,11 @@ struct MainTabView: View {
 
         return TabView(selection: $selectedTab) {
             SwiftUI.Tab("Today", systemImage: "sun.max.fill", value: Tab.today) {
-                TodayView(onSeeAllActivity: { selectedTab = .activity })
+                TodayView(
+                    onSeeAllActivity: { selectedTab = .activity },
+                    onOpenInsights: { selectedTab = .insights },
+                    onRequestAddExpense: { showingAddExpense = true }
+                )
                     .environmentObject(viewModel)
                     .id("today-\(themeId)")
             }
@@ -149,24 +263,35 @@ struct MainTabView: View {
             }
 
             SwiftUI.Tab("You", systemImage: "person.crop.circle.fill", value: Tab.you) {
-                ProfileView(isRootTab: true)
+                ProfileView()
                     .environmentObject(viewModel)
                     .id("you-\(themeId)")
             }
         }
         .tint(.appPrimary)
+        .environment(\.bulkSelectionBinding, $isBulkSelecting)
+        .animation(Theme.Motion.snappy, value: isBulkSelecting)
         .overlay(alignment: .bottomTrailing) {
-            if shouldShowFAB {
-                let isPad = UIDevice.current.userInterfaceIdiom == .pad
-                FloatingAddButton(
-                    action: { showingAddExpense = true },
-                    isIPad: isPad
-                )
-                .padding(.trailing, isPad ? 30 : 20)
-                // Sit just above the floating Liquid Glass tab bar with a
-                // small visual gap so the FAB feels grouped, not isolated.
-                .padding(.bottom, isPad ? 82 : 68)
+            // ZStack + scoped `.animation(value:)` so the FAB's
+            // insert/remove transition runs on its own clock instead of
+            // joining the system's tab-switch transaction — hiding it
+            // when landing on You must never retime the bar's own
+            // selection animation.
+            ZStack {
+                if shouldShowFAB {
+                    let isPad = UIDevice.current.userInterfaceIdiom == .pad
+                    FloatingAddButton(
+                        action: { showingAddExpense = true },
+                        isIPad: isPad
+                    )
+                    .padding(.trailing, isPad ? 30 : 20)
+                    // Sit just above the floating Liquid Glass tab bar with a
+                    // small visual gap so the FAB feels grouped, not isolated.
+                    .padding(.bottom, isPad ? 82 : 68)
+                    .transition(.scale.combined(with: .opacity))
+                }
             }
+            .animation(Theme.Motion.snappy, value: shouldShowFAB)
         }
         .overlay {
             if showingFeedbackRequest {
@@ -213,7 +338,11 @@ struct MainTabView: View {
             ZStack {
                 // Main content
                 TabView(selection: $selectedTab) {
-                    TodayView(onSeeAllActivity: { selectedTab = .activity })
+                    TodayView(
+                        onSeeAllActivity: { selectedTab = .activity },
+                        onOpenInsights: { selectedTab = .insights },
+                        onRequestAddExpense: { showingAddExpense = true }
+                    )
                         .environmentObject(viewModel)
                         .tag(Tab.today)
                         .id("today-\(themeId)")
@@ -229,43 +358,56 @@ struct MainTabView: View {
                         .tag(Tab.insights)
                         .id("insights-\(themeId)")
 
-                    ProfileView(isRootTab: true)
+                    ProfileView()
                         .environmentObject(viewModel)
                         .tag(Tab.you)
                         .id("you-\(themeId)")
                 }
+                .environment(\.bulkSelectionBinding, $isBulkSelecting)
+                .animation(Theme.Motion.snappy, value: isBulkSelecting)
 
                 // Floating Add Button - visible on Today + Activity
-                if shouldShowFAB {
-                    VStack {
-                        Spacer()
-                        HStack {
+                // (hidden in bulk-select mode so it doesn't overlap
+                // the inline selection action bar). Wrapped in a ZStack
+                // with a scoped animation so its show/hide transition
+                // animates on its own clock and never retimes the tab
+                // switch itself.
+                ZStack {
+                    if shouldShowFAB {
+                        VStack {
                             Spacer()
-                            FloatingAddButton(
-                                action: { showingAddExpense = true },
-                                isIPad: isIPad(geometry)
-                            )
-                            .padding(.trailing, isIPad(geometry) ? 30 : 20)
-                            .padding(.bottom, tabBarHeight + geometry.safeAreaInsets.bottom + (isIPad(geometry) ? 20 : 10))
+                            HStack {
+                                Spacer()
+                                FloatingAddButton(
+                                    action: { showingAddExpense = true },
+                                    isIPad: isIPad(geometry)
+                                )
+                                .padding(.trailing, isIPad(geometry) ? 30 : 20)
+                                .padding(.bottom, tabBarHeight + geometry.safeAreaInsets.bottom + (isIPad(geometry) ? 20 : 10))
+                                .transition(.scale.combined(with: .opacity))
+                            }
                         }
                     }
                 }
+                .animation(Theme.Motion.snappy, value: shouldShowFAB)
 
                 // Custom tab bar
                 VStack {
                     Spacer()
 
-                    // Tab bar background and items
-                    VStack(spacing: 0) {
-                        Rectangle()
-                            .fill(Color.systemBackground)
-                            .frame(height: tabBarHeight)
-                            .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: -4)
-
-                        Rectangle()
-                            .fill(Color.systemBackground)
-                            .frame(height: geometry.safeAreaInsets.bottom)
-                    }
+                    // Tab bar background and items. Real system material
+                    // (`.bar`) instead of the old flat fill + shadow, so
+                    // content scrolling underneath reads through it the
+                    // way it does under native bars — with the design
+                    // system's hairline as the top edge.
+                    Rectangle()
+                        .fill(.bar)
+                        .frame(height: tabBarHeight + geometry.safeAreaInsets.bottom)
+                        .overlay(alignment: .top) {
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.08))
+                                .frame(height: Theme.Stroke.hairline)
+                        }
                     .overlay(
                         VStack(spacing: 0) {
                             HStack(spacing: 0) {
@@ -392,9 +534,17 @@ struct TabButton: View {
                 Image(systemName: icon)
                     .font(.system(size: isIPad ? 24 : 20, weight: .medium))
 
+                // Scaled via UIFontMetrics so the label follows Dynamic
+                // Type (the bar itself stays fixed-height, like the
+                // native tab bar, so extreme sizes truncate gracefully).
                 Text(label)
-                    .font(.system(size: isIPad ? 11 : 9, weight: .medium))
+                    .font(.system(
+                        size: UIFontMetrics(forTextStyle: .caption2)
+                            .scaledValue(for: isIPad ? 11 : 9),
+                        weight: .medium
+                    ))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
             .foregroundColor(isSelected ? .appPrimary : .secondary)
             .frame(maxWidth: .infinity)
@@ -409,6 +559,26 @@ struct TabButton: View {
 /// would have been per-launch only, so this is a safe rename.
 enum Tab: String {
     case today, activity, insights, you
+}
+
+// MARK: - Bulk selection environment binding
+//
+// Lets a child tab (currently AllExpensesView) tell the root tab
+// view "I'm in bulk-select mode" so the root can hide the floating
+// "+" button while a contextual action bar is on screen. Using a
+// Binding keeps the source of truth in the child; MainTabView only
+// reads it to gate the FAB. Defaults to a no-op binding so any
+// view written without awareness of this key still compiles and
+// renders normally outside the tab container (e.g. in previews).
+private struct BulkSelectionBindingKey: EnvironmentKey {
+    static let defaultValue: Binding<Bool> = .constant(false)
+}
+
+extension EnvironmentValues {
+    var bulkSelectionBinding: Binding<Bool> {
+        get { self[BulkSelectionBindingKey.self] }
+        set { self[BulkSelectionBindingKey.self] = newValue }
+    }
 }
 
 struct MainTabView_Previews: PreviewProvider {

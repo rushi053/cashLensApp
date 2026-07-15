@@ -15,9 +15,11 @@ struct FloatingAddButton: View {
             action()
         }) {
             ZStack {
-                // Background circle with shadow
+                // Background circle with shadow. Duotone fill (the one
+                // sanctioned gradient) so the theme's designed color pair
+                // shows on the app's most prominent brand element.
                 Circle()
-                    .fill(Color.appPrimary)
+                    .fill(LinearGradient.appDuotone)
                     .frame(width: isIPad ? 66 : 56, height: isIPad ? 66 : 56)
                     .shadow(color: Color.appPrimary.opacity(0.3), radius: 8, x: 0, y: 4)
                     .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 2)
@@ -28,11 +30,30 @@ struct FloatingAddButton: View {
                     .foregroundColor(.white)
             }
         }
-        .buttonStyle(PlainButtonStyle())
-        // PERF: Removed `.scaleEffect(1.0)` + `.animation(..., value: 1.0)`.
-        // The animation was keyed on a constant — it never actually fired
-        // but every diff cycle still considered it. Removing it makes the
-        // SwiftUI dependency graph for this view a pure leaf.
+        // Press feedback restored per the design review ("FAB has no
+        // press feedback — the comment even notes the scale animation
+        // was removed"). Scale-down + a 45° icon rotation on press so
+        // the + feels mechanical, springing back on release. The
+        // rotation lives in the style (driven by `isPressed`) so it
+        // costs nothing while idle — unlike the old constant-keyed
+        // animation this one only fires on actual presses.
+        .buttonStyle(FABPressStyle())
+        // Icon-only button on the app's single most important action —
+        // VoiceOver must not read this as just "plus".
+        .accessibilityLabel("Add expense")
+    }
+}
+
+/// Press style for the floating + button: 0.9 scale with the plus
+/// rotating to 45° (reads as "about to become ×/open"). No haptic here
+/// — the action closure already fires the medium tap, and doubling it
+/// was exactly the "buzzy, not crafted" pattern the review called out.
+private struct FABPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .rotationEffect(.degrees(configuration.isPressed ? 45 : 0))
+            .animation(.spring(response: 0.35, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 

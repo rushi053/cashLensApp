@@ -16,9 +16,10 @@ import Foundation
 /// 3. **Recency weighting** — each day in history gets a weight of
 ///    `exp(-daysAgo / decayHalfLifeDays)` so a habit change shows up quickly
 ///    rather than being averaged out by ancient data.
-/// 4. **Subscription overlay** — known `Subscription.nextDueDate`s within the
-///    horizon are walked forward by their cadence and added as one-time
-///    spikes on the day they actually fall on. Inactive subs are ignored.
+/// 4. **Subscription overlay** — known subscription occurrences within the
+///    horizon are generated anchor-based (`Subscription.nextOccurrence`,
+///    startDate + n·frequency) and added as one-time spikes on the day
+///    they actually fall on. Inactive subs are ignored.
 /// 5. **Confidence band** — ±1 standard deviation of daily residuals from the
 ///    weekday mean. Wider when history is short or volatile, narrower when
 ///    patterns are stable. We clamp the low end at 0 (you can't spend negative
@@ -224,29 +225,52 @@ enum ForecastEngine {
         // Top driver category (over the discretionary history, weighted by recency).
         let topDriver = computeTopDriver(history: discretionaryHistory, today: today, calendar: calendar)
 
-        // Subscription overlay: walk each active sub forward through the horizon.
+        // Subscription overlay: anchor-based occurrence generation
+        // (Wave 1 follow-up). The old code walked cycle-to-cycle with
+        // `calculateNextDueDate`, which drifts for month-end anchors —
+        // a monthly sub anchored Jan 31 became Feb 28 → Mar 28 → …,
+        // permanently losing the billing day. `nextOccurrence` computes
+        // every occurrence as startDate + n·frequency, so the projection
+        // clamps only in short months and returns to the true anchor day
+        // in longer ones.
         let horizonStart = calendar.date(byAdding: .day, value: 1, to: today) ?? today
         let horizonEndExclusive = calendar.date(byAdding: .day, value: horizonDays + 1, to: today) ?? today
         var subscriptionByDay: [Date: Double] = [:]
         var subscriptionTotal: Double = 0
         for sub in upcomingSubscriptions where sub.isActive {
-            var due = sub.nextDueDate
-            // Hard iteration cap so a malformed (non-advancing) cadence
-            // can never spin the loop forever. 400 covers daily subs that
-            // are months in the past plus a 90-day horizon comfortably.
-            var safety = 0
-            while due < horizonStart && safety < 400 {
-                let next = Subscription.calculateNextDueDate(from: due, frequency: sub.frequency)
-                guard next > due else { break }
-                due = next
-                safety += 1
+            // First occurrence inside the horizon. Honour the stored
+            // `nextDueDate` when it already lands in the future (it's
+            // the date the app shows the user), otherwise re-derive
+            // from the anchor — this is where overdue subs used to pay
+            // the cycle-by-cycle drift tax.
+            var due: Date
+            if sub.nextDueDate >= horizonStart {
+                due = sub.nextDueDate
+            } else {
+                due = Subscription.nextOccurrence(
+                    after: today,
+                    anchor: sub.startDate,
+                    frequency: sub.frequency,
+                    calendar: calendar
+                )
             }
-            safety = 0
+
+            // Hard iteration cap so a malformed (non-advancing) cadence
+            // can never spin the loop forever. 400 covers daily subs
+            // across a 90-day horizon comfortably.
+            var safety = 0
             while due < horizonEndExclusive && safety < 400 {
-                let day = calendar.startOfDay(for: due)
-                subscriptionByDay[day, default: 0] += sub.amount
-                subscriptionTotal += sub.amount
-                let next = Subscription.calculateNextDueDate(from: due, frequency: sub.frequency)
+                if due >= horizonStart {
+                    let day = calendar.startOfDay(for: due)
+                    subscriptionByDay[day, default: 0] += sub.amount
+                    subscriptionTotal += sub.amount
+                }
+                let next = Subscription.nextOccurrence(
+                    after: due,
+                    anchor: sub.startDate,
+                    frequency: sub.frequency,
+                    calendar: calendar
+                )
                 guard next > due else { break }
                 due = next
                 safety += 1

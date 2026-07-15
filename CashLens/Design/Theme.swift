@@ -19,7 +19,11 @@ enum Theme {
         static let xxl: CGFloat = 24
         static let xxxl: CGFloat = 32
         /// Inset applied to scroll views so content clears the custom tab bar.
-        static let tabBarInset: CGFloat = 120
+        /// Trimmed from 120 → 100 in the v2 polish pass: both tab bar paths
+        /// (native Liquid Glass on iOS 26, material bar on 18–25) now let
+        /// content read through them, so the old opaque-bar safety margin
+        /// was just dead space at the bottom of every scroll view.
+        static let tabBarInset: CGFloat = 100
     }
 
     // MARK: - Corner Radius
@@ -49,9 +53,24 @@ enum Theme {
     // MARK: - Typography
 
     /// Semantic type tokens. Use these instead of `.title3`, `.subheadline` etc.
+    ///
+    /// **Dynamic Type.** Every token scales with the user's content size
+    /// setting. Tokens whose point size matches a semantic text style at
+    /// the default (Large) category use `Font.system(_:design:weight:)`
+    /// directly (free live-scaling). Tokens with non-standard sizes
+    /// (`pageTitle` 32pt, `numericSmall` 14pt) are computed properties
+    /// that run the base size through `UIFontMetrics` against the
+    /// closest style — computed (not stored) so the value is re-resolved
+    /// on every render and picks up size-category changes, since SwiftUI
+    /// re-evaluates view bodies when Dynamic Type changes. All tokens
+    /// are pixel-identical to the previous fixed sizes at the default
+    /// (Large) setting.
     enum Typography {
         /// Tab-level screen titles: "Statistics", "Subscriptions", the user's name on Home.
-        static let pageTitle: Font = .system(size: 32, weight: .bold)
+        /// 32pt base (deliberately 2pt under `.largeTitle`'s 34pt), scaled against `.largeTitle`.
+        static var pageTitle: Font {
+            .system(size: UIFontMetrics(forTextStyle: .largeTitle).scaledValue(for: 32), weight: .bold)
+        }
         /// In-page section headers: "Summary", "Categories", "Recent Expenses".
         static let sectionTitle: Font = .title3.bold()
         /// Subsection within a section (e.g. "Due Soon").
@@ -61,9 +80,25 @@ enum Theme {
         /// Supporting metadata.
         static let caption: Font = .caption
         /// Numeric readouts (percentages, amounts).
-        static let numeric: Font = .system(size: 20, weight: .bold, design: .rounded)
+        /// `.title3` is exactly 20pt at the default category — a clean
+        /// semantic match for the previous fixed 20pt.
+        static let numeric: Font = .system(.title3, design: .rounded, weight: .bold)
         /// Small numeric readouts (mini cards, inline stats).
-        static let numericSmall: Font = .system(size: 14, weight: .semibold, design: .rounded)
+        /// 14pt base sits between `.footnote` (13) and `.subheadline` (15);
+        /// scaled against `.subheadline` as the closest role match.
+        static var numericSmall: Font {
+            .system(size: UIFontMetrics(forTextStyle: .subheadline).scaledValue(for: 14), weight: .semibold, design: .rounded)
+        }
+        /// Hero money numerals (Today verdict "SPENT", Insights "TOTAL
+        /// SPENT"). One token so every hero number in the app is the same
+        /// size — the design review flagged Today's 46pt vs Insights' 40pt
+        /// as the one numeric inconsistency. Scaled against `.largeTitle`
+        /// but capped (~1.4×) so an AX5 user gets a bigger-but-sane hero;
+        /// call sites keep their `minimumScaleFactor` for long amounts.
+        static var heroNumeric: Font {
+            let scaled = UIFontMetrics(forTextStyle: .largeTitle).scaledValue(for: 46)
+            return .system(size: min(scaled, 64), weight: .bold, design: .rounded)
+        }
     }
 
     // MARK: - Shadow
@@ -146,37 +181,23 @@ extension View {
 
 // MARK: - Brand surface helpers
 //
-// These used to return real `LinearGradient` values, but the design
-// language is now strictly **solid** — no gradients anywhere in the app.
-// We keep the `LinearGradient` extension shape (rather than removing it
-// outright) so that every existing call site keeps compiling without
-// edits. Each helper returns a `LinearGradient` whose two colour stops
-// are the same colour, which renders pixel-identically to a solid fill.
+// The design language is solid-first: cards, chips, tints, and strokes
+// never use gradients. The ONE sanctioned exception is `appDuotone` —
+// a restrained primary → blended-primary run reserved for hero brand
+// moments (the FAB, primary CTAs). It exists so the user's chosen theme
+// reads as the designed *pair* it is (every `AppTheme` ships a secondary
+// color), not a single flat accent. The far stop is the primary mixed
+// 45% toward the secondary, so the run reads as a shift in temperature
+// rather than a two-color rainbow — white text stays legible across it.
 //
-// New code should prefer `Color.appPrimary` directly. These helpers exist
-// purely as a backwards-compatibility shim during the migration.
+// Everything else should keep using `Color.appPrimary` directly.
 
 extension LinearGradient {
-    /// Solid primary brand fill (CTAs, rings, brand surfaces).
-    /// Computed (`static var`) so the dynamically-resolved `Color.appPrimary`
-    /// — which reads `ThemeStore.activeTheme` — is freshly baked in on
-    /// every render, keeping the user's chosen accent theme reactive.
-    static var appPrimary: LinearGradient {
-        LinearGradient(colors: [.appPrimary, .appPrimary], startPoint: .leading, endPoint: .trailing)
-    }
-
-    /// Solid primary brand fill (alias kept for legacy diagonal call sites).
-    static var appPrimaryDiagonal: LinearGradient {
-        LinearGradient(colors: [.appPrimary, .appPrimary], startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-
-    /// Subtle tinted background fill (pro teaser, badges) — solid mauve at
-    /// low opacity. Renders identically to `Color.appPrimary.opacity(0.07)`.
-    static var appPrimarySoft: LinearGradient {
-        LinearGradient(
-            colors: [Color.appPrimary.opacity(0.07), Color.appPrimary.opacity(0.07)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    /// The sanctioned hero duotone (FAB, primary CTAs). Computed
+    /// (`static var`) so the dynamically-resolved theme colors — which
+    /// read `ThemeStore.activeTheme` — are freshly baked in on every
+    /// render, keeping the user's chosen accent theme reactive.
+    static var appDuotone: LinearGradient {
+        ThemeStore.activeTheme.heroGradient
     }
 }

@@ -28,8 +28,23 @@ final class ExpenseTemplateStore: ObservableObject {
 
     /// Storage key. Kept private to this type — adding it to
     /// `UserDefaultsKeys` would tempt callers to read the raw blob and bypass
-    /// the JSON encoding contract.
-    private static let storageKey = "expense_templates_v1"
+    /// the JSON encoding contract. `nonisolated` so the headless snapshot
+    /// reader below can access it off the main actor.
+    private nonisolated static let storageKey = "expense_templates_v1"
+
+    /// Thread-safe, read-only decode of the persisted templates in display
+    /// order (MRU first). Used by `QuickLogService` when rebuilding the
+    /// widget snapshot from a background context where touching the
+    /// `@MainActor` singleton isn't possible. Never mutates state.
+    nonisolated static func snapshotTemplates(defaults: UserDefaults = .standard) -> [ExpenseTemplate] {
+        guard let data = defaults.data(forKey: storageKey) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let templates = try? decoder.decode([ExpenseTemplate].self, from: data) else { return [] }
+        return templates.sorted { lhs, rhs in
+            (lhs.lastUsedAt ?? lhs.createdAt) > (rhs.lastUsedAt ?? rhs.createdAt)
+        }
+    }
 
     @Published private(set) var templates: [ExpenseTemplate] = []
 

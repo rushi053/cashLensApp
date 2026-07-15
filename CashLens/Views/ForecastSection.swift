@@ -386,13 +386,12 @@ struct ForecastSection: View {
                 HStack(alignment: .top, spacing: Theme.Spacing.md) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(LinearGradient.appPrimaryDiagonal)
+                            .fill(Color.appPrimary.opacity(0.14))
                             .frame(width: 52, height: 52)
-                            .shadow(color: Color.appPrimary.opacity(0.35), radius: 10, x: 0, y: 6)
 
                         Image(systemName: "chart.line.uptrend.xyaxis.circle.fill")
                             .font(.system(size: 28, weight: .semibold))
-                            .foregroundColor(.white)
+                            .foregroundColor(.appPrimary)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -434,8 +433,7 @@ struct ForecastSection: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.container, style: .continuous)
-                    .stroke(LinearGradient.appPrimary, lineWidth: 1.2)
-                    .opacity(0.35)
+                    .stroke(Color.appPrimary.opacity(0.30), lineWidth: 1)
             )
             .overlay(alignment: .topTrailing) {
                 Image(systemName: "lock.fill")
@@ -475,9 +473,13 @@ struct ForecastSection: View {
 
     // MARK: - Helpers
 
-    private func monthDay(_ date: Date) -> String {
+    private static let monthDayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MMM d"
-        return f.string(from: date)
+        return f
+    }()
+
+    private func monthDay(_ date: Date) -> String {
+        Self.monthDayFormatter.string(from: date)
     }
 }

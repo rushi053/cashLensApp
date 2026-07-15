@@ -50,26 +50,26 @@ struct WidgetTheme: Sendable {
 
     static let ocean = WidgetTheme(
         id: "ocean",
-        primaryLightHex: "#3D8BF5",
-        primaryDarkHex: "#5DA0FA",
+        primaryLightHex: "#2E7CF6",
+        primaryDarkHex: "#5C9CF5",
         secondaryLightHex: "#2EBFD8",
         secondaryDarkHex: "#5AD3E6"
     )
 
     static let forest = WidgetTheme(
         id: "forest",
-        primaryLightHex: "#2FA060",
-        primaryDarkHex: "#56C589",
-        secondaryLightHex: "#7DBE3A",
-        secondaryDarkHex: "#A8D560"
+        primaryLightHex: "#23A55E",
+        primaryDarkHex: "#4EC583",
+        secondaryLightHex: "#2FB98A",
+        secondaryDarkHex: "#5ACFA5"
     )
 
     static let sunset = WidgetTheme(
         id: "sunset",
-        primaryLightHex: "#EE6B2D",
-        primaryDarkHex: "#FF8B55",
-        secondaryLightHex: "#E89740",
-        secondaryDarkHex: "#F5B373"
+        primaryLightHex: "#F4693B",
+        primaryDarkHex: "#FF8A5C",
+        secondaryLightHex: "#F5A93F",
+        secondaryDarkHex: "#FFC078"
     )
 
     static let berry = WidgetTheme(
@@ -80,12 +80,13 @@ struct WidgetTheme: Sendable {
         secondaryDarkHex: "#BC75CC"
     )
 
+    // "Ink" in the app UI — id stays "graphite" for persistence.
     static let graphite = WidgetTheme(
         id: "graphite",
-        primaryLightHex: "#4D5563",
-        primaryDarkHex: "#A6ACB8",
-        secondaryLightHex: "#7B828F",
-        secondaryDarkHex: "#C2C8D2"
+        primaryLightHex: "#2C3038",
+        primaryDarkHex: "#7E8694",
+        secondaryLightHex: "#5A6170",
+        secondaryDarkHex: "#A6ACB8"
     )
 
     // MARK: - Pastels (kept in sync with AppTheme.swift)

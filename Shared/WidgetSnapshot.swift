@@ -68,6 +68,12 @@ struct WidgetSnapshot: Codable, Hashable, Sendable {
 
     /// Pre-computed no-spend streak metrics (used by No-Spend Streak widget).
     var streak: StreakBlock
+
+    /// Exported expense templates for the interactive Quick Log widget
+    /// (most-recently-used first, capped). Optional so snapshot files
+    /// written by pre-Wave-5 app builds still decode — a missing key
+    /// reads as `nil` and the widget renders its empty-templates hint.
+    var quickLogTemplates: [QuickLogTemplate]? = nil
 }
 
 // MARK: - Spending block
@@ -154,8 +160,15 @@ extension WidgetSnapshot {
         var isOverBudget: Bool { cap > 0 && spent > cap }
     }
 
+    /// Mirrors the in-app `Budget.Period` cases exactly (weekly /
+    /// monthly / custom) — no speculative extras, so a decode can
+    /// never surface a period the app can't produce.
     enum BudgetPeriod: String, Codable, Hashable, Sendable {
-        case weekly, monthly, yearly
+        case weekly, monthly
+        /// Fixed-window budget (trip/event) — start and end dates
+        /// live on the in-app Budget; the widget only needs
+        /// `daysRemaining`, which is computed at snapshot time.
+        case custom
     }
 }
 
@@ -173,6 +186,31 @@ extension WidgetSnapshot {
         /// Next due date.
         var nextDueDate: Date
         /// SF Symbol for the subscription's category.
+        var symbol: String
+        /// Hex color (no #, RRGGBB).
+        var hex: String
+    }
+}
+
+// MARK: - Quick Log templates
+
+extension WidgetSnapshot {
+
+    /// One tappable template button on the Quick Log widget. Carries
+    /// everything the widget-side intent needs to enqueue a
+    /// `PendingExpenseRecord` without touching the app's store.
+    struct QuickLogTemplate: Codable, Hashable, Sendable, Identifiable {
+        /// Source `ExpenseTemplate.id` — stable across snapshot rebuilds.
+        var id: UUID
+        /// Chip label ("Coffee", "Bus fare", …).
+        var name: String
+        /// Amount in the user's primary currency.
+        var amount: Double
+        /// `Expense.Category.rawValue` for the drained expense.
+        var categoryRaw: String
+        /// Set when the template targets a custom category.
+        var customCategoryId: UUID?
+        /// SF Symbol for the template's category.
         var symbol: String
         /// Hex color (no #, RRGGBB).
         var hex: String

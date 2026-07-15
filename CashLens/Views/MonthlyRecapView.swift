@@ -1,463 +1,389 @@
 import SwiftUI
 
-/// Full-screen, swipeable "story" recap of last month — the
-/// CashLens take on Spotify Wrapped. Pro feature; surfaced as a
-/// card on the Insights tab and as a row in You → Pro section.
+/// Month-in-review sheet — the calm CashLens take on a "wrapped"
+/// moment (think Apple Fitness monthly summary, not Spotify Wrapped).
 ///
-/// Page order (engine returns nil for missing pages, which we skip):
-///   1. Intro / month title
-///   2. Headline — total spent + delta vs previous month
-///   3. Top category
-///   4. Biggest single expense
-///   5. No-spend days
-///   6. Award badge
-///   7. Outro / share + close
+/// v2 rebuild of the deleted paged-story recap: instead of a
+/// full-screen `TabView` with per-page tinted backgrounds, this is a
+/// single scrolling sequence of design-system cards (elevated white,
+/// hairline borders, entrance cascade) so it reads as part of the
+/// app, not a marketing interstitial. Ends with a `ShareLink` that
+/// exports a rendered summary card (`ImageRenderer`) — the recap is
+/// free for everyone because a shared card is organic growth.
 ///
-/// Interaction model:
-///   • Horizontal swipe between pages (`TabView` with `.page` style).
-///   • Swipe-down to dismiss.
-///   • A persistent "Done" pill in the top-right is the
-///     primary exit so users on smaller devices don't fight the
-///     swipe-down gesture.
+/// Entry points:
+///   • Today tab — automatic "Your June recap is ready" card during
+///     the first few days of a new month (dismisses after viewing).
+///   • Insights tab — a permanent "Monthly Recap" row.
+///
+/// Both present `MonthlyRecapSheet`, which owns the compute: it waits
+/// for full hydration (the engine must see the whole month, not the
+/// windowed launch slice), computes off-main, then renders this view.
 struct MonthlyRecapView: View {
     let recap: MonthlyRecap
-    let currencySymbol: String
     let formattedAmount: (Double) -> String
 
     @Environment(\.dismiss) private var dismiss
-    @State private var currentPage = 0
-    @State private var animateContent = false
+    @State private var animateSections = false
+    @State private var shareImage: Image? = nil
 
     var body: some View {
-        ZStack {
-            // Page-aware tinted background. Each page's primary
-            // accent gently bleeds onto the screen so the story
-            // feels cohesive across pages but visually distinct
-            // per chapter.
-            backgroundForCurrentPage
-                .ignoresSafeArea()
+        ScrollView {
+            VStack(spacing: Theme.Spacing.lg) {
+                header
+                    .modifier(SectionEntrance(order: 0, animate: animateSections))
 
-            TabView(selection: $currentPage) {
-                IntroPage(recap: recap)
-                    .tag(0)
-
-                HeadlinePage(
-                    recap: recap,
-                    currencySymbol: currencySymbol,
-                    formattedAmount: formattedAmount
-                )
-                .tag(1)
+                heroCard
+                    .modifier(SectionEntrance(order: 1, animate: animateSections))
 
                 if recap.topCategoryName != nil {
-                    TopCategoryPage(
-                        recap: recap,
-                        formattedAmount: formattedAmount
-                    )
-                    .tag(2)
+                    topCategoryCard
+                        .modifier(SectionEntrance(order: 2, animate: animateSections))
                 }
 
-                if let title = recap.biggestExpenseTitle, !title.isEmpty {
-                    BiggestExpensePage(
-                        recap: recap,
-                        title: title,
-                        formattedAmount: formattedAmount
-                    )
-                    .tag(3)
+                HStack(spacing: Theme.Spacing.md) {
+                    busiestDayCard
+                    biggestExpenseCard
+                }
+                .modifier(SectionEntrance(order: 3, animate: animateSections))
+
+                quietDaysCard
+                    .modifier(SectionEntrance(order: 4, animate: animateSections))
+
+                if recap.subscriptionTotal > 0 {
+                    subscriptionsCard
+                        .modifier(SectionEntrance(order: 5, animate: animateSections))
                 }
 
-                if recap.noSpendDays > 0 {
-                    NoSpendPage(recap: recap)
-                        .tag(4)
-                }
+                awardCard
+                    .modifier(SectionEntrance(order: 6, animate: animateSections))
 
-                AwardPage(recap: recap)
-                    .tag(5)
-
-                OutroPage(onDone: { dismiss() })
-                    .tag(6)
+                shareRow
+                    .modifier(SectionEntrance(order: 7, animate: animateSections))
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .indexViewStyle(.page(backgroundDisplayMode: .interactive))
-            .animation(Theme.Motion.snappy, value: currentPage)
-
-            // Top "Done" pill — always visible regardless of page.
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        HapticManager.shared.lightTap()
-                        dismiss()
-                    } label: {
-                        Text("Done")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.xs + 2)
-                            .background(
-                                Capsule().fill(.ultraThinMaterial)
-                            )
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                            )
-                    }
-                }
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.top, Theme.Spacing.sm)
-                Spacer()
-            }
+            .padding(.horizontal, Theme.Spacing.lg)
+            // `xl` top — the sheet-header convention's clear-air gap
+            // below the grab handle (was `lg`, which read cramped).
+            .padding(.top, Theme.Spacing.xl)
+            .padding(.bottom, Theme.Spacing.xxxl)
         }
+        .background(Color.systemBackground)
         .onAppear {
             HapticManager.shared.success()
-            withAnimation(.easeOut(duration: 0.6)) {
-                animateContent = true
-            }
-        }
-        .onChange(of: currentPage) { _, _ in
-            HapticManager.shared.lightTap()
+            withAnimation { animateSections = true }
+            renderShareImage()
         }
     }
 
-    @ViewBuilder
-    private var backgroundForCurrentPage: some View {
-        let tint: Color = {
-            switch currentPage {
-            case 0:  return Color.appPrimary
-            case 1:  return (recap.monthOverMonthDelta ?? 0) >= 0 ? Color.orange : Color.green
-            case 2:  return Color.appPrimary
-            case 3:  return Color.pink
-            case 4:  return Color.mint
-            case 5:  return Color.appPrimary
-            default: return Color.appPrimary
-            }
-        }()
-        // Soft tint over the system background — never a true
-        // gradient, just a calm wash that lets the cards float.
-        ZStack {
-            Color(uiColor: .systemBackground)
-            tint.opacity(0.10)
-        }
-    }
-}
+    // MARK: - Header
 
-// MARK: - Pages
-
-private struct IntroPage: View {
-    let recap: MonthlyRecap
-
-    @State private var didAppear = false
-
-    var body: some View {
-        VStack(spacing: Theme.Spacing.xl) {
-            Spacer()
-
-            Image(systemName: "sparkles")
-                .font(.system(size: 56, weight: .regular))
-                .foregroundStyle(Color.appPrimary)
-                .scaleEffect(didAppear ? 1 : 0.6)
-                .opacity(didAppear ? 1 : 0)
-
-            VStack(spacing: Theme.Spacing.sm) {
-                Text("YOUR")
-                    .font(.caption.weight(.semibold))
-                    .tracking(2)
+    private var header: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("MONTH IN REVIEW")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(1.2)
                     .foregroundColor(.secondary)
-
-                Text(Self.monthYearFormatter.string(from: recap.month))
-                    .font(.system(size: 48, weight: .heavy, design: .rounded))
+                Text(Self.monthTitleFormatter.string(from: recap.month))
+                    .font(Theme.Typography.pageTitle)
                     .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-
-                Text("RECAP")
-                    .font(.system(size: 22, weight: .heavy, design: .rounded))
-                    .tracking(8)
-                    .foregroundColor(.appPrimary)
             }
-            .opacity(didAppear ? 1 : 0)
-            .offset(y: didAppear ? 0 : 12)
 
             Spacer()
 
-            Text("Swipe to explore →")
-                .font(.footnote.weight(.medium))
-                .foregroundColor(.secondary)
-                .padding(.bottom, Theme.Spacing.xxxl)
-                .opacity(didAppear ? 1 : 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            withAnimation(.spring(response: 0.65, dampingFraction: 0.7)) {
-                didAppear = true
-            }
+            // Shared close-button chrome (SheetCloseButton) so every
+            // sheet's X reads identically.
+            SheetCloseButton(action: { dismiss() })
         }
     }
 
-    private static let monthYearFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMMM"
-        return f
-    }()
-}
+    // MARK: - Cards
 
-private struct HeadlinePage: View {
-    let recap: MonthlyRecap
-    let currencySymbol: String
-    let formattedAmount: (Double) -> String
+    /// Headline: total spent + delta vs last month + expense count.
+    private var heroCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            eyebrow(icon: "chart.bar.fill", label: "YOU SPENT", tint: .appPrimary)
 
-    @State private var didAppear = false
-    @State private var animatedAmount: Double = 0
-
-    var body: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            Spacer()
-
-            Text("YOU SPENT")
-                .font(.caption.weight(.semibold))
-                .tracking(2)
-                .foregroundColor(.secondary)
-
-            Text(formattedAmount(animatedAmount))
-                .font(.system(size: 56, weight: .heavy, design: .rounded))
+            Text(formattedAmount(recap.totalSpent))
+                .font(Theme.Typography.heroNumeric)
                 .monospacedDigit()
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .contentTransition(.numericText())
 
             if let delta = recap.monthOverMonthDelta {
                 let up = delta >= 0
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
-                        .font(.system(size: 14, weight: .bold))
-                    Text(String(format: "%.1f%% vs previous month", abs(delta * 100)))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.system(size: 11, weight: .bold))
+                    Text(String(format: "%.0f%% vs %@", abs(delta * 100), previousMonthName))
+                        .font(.caption.weight(.semibold))
                 }
                 .foregroundColor(up ? .orange : .green)
                 .padding(.horizontal, Theme.Spacing.md)
-                .padding(.vertical, Theme.Spacing.xs + 2)
-                .background(Capsule().fill((up ? Color.orange : Color.green).opacity(0.14)))
-                .opacity(didAppear ? 1 : 0)
+                .padding(.vertical, 5)
+                .background(Capsule().fill((up ? Color.orange : Color.green).opacity(0.12)))
             } else {
                 Text("Your first full month — nothing to compare yet.")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.Spacing.xl)
             }
 
             Text("\(recap.expenseCount) \(recap.expenseCount == 1 ? "expense" : "expenses") logged")
-                .font(.footnote)
+                .font(.caption)
                 .foregroundColor(.secondary)
-                .padding(.top, Theme.Spacing.sm)
-                .opacity(didAppear ? 1 : 0)
-
-            Spacer()
-            Spacer()
+                .padding(.top, 2)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, Theme.Spacing.xl)
-        .onAppear {
-            withAnimation(.easeOut(duration: 1.1)) {
-                animatedAmount = recap.totalSpent
-            }
-            withAnimation(.easeOut(duration: 0.5).delay(0.4)) {
-                didAppear = true
-            }
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.xl)
+        .cardSurface(radius: Theme.Radius.hero)
     }
-}
 
-private struct TopCategoryPage: View {
-    let recap: MonthlyRecap
-    let formattedAmount: (Double) -> String
+    /// Top category with a share bar.
+    private var topCategoryCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            eyebrow(icon: "square.stack.3d.up.fill", label: "MOST OF IT WENT TO", tint: .appPrimary)
 
-    @State private var didAppear = false
+            HStack(alignment: .firstTextBaseline) {
+                Text(recap.topCategoryName ?? "Other")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Spacer(minLength: Theme.Spacing.sm)
+                Text(formattedAmount(recap.topCategoryAmount))
+                    .font(Theme.Typography.numeric)
+                    .monospacedDigit()
+                    .foregroundColor(.appPrimary)
+            }
 
-    var body: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            Spacer()
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.appPrimary.opacity(0.12))
+                    Capsule()
+                        .fill(Color.appPrimary)
+                        .frame(width: max(8, geo.size.width * CGFloat(min(recap.topCategoryShare, 1))))
+                }
+            }
+            .frame(height: 10)
 
-            Text("MOST OF IT WENT TO")
-                .font(.caption.weight(.semibold))
-                .tracking(2)
+            Text("That's \(Int((recap.topCategoryShare * 100).rounded()))% of everything you spent.")
+                .font(.caption)
                 .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.xl)
+        .cardSurface()
+    }
 
-            Text(recap.topCategoryName ?? "Other")
-                .font(.system(size: 52, weight: .heavy, design: .rounded))
+    /// Busiest single day of the month.
+    private var busiestDayCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            eyebrow(icon: "calendar", label: "BIGGEST DAY", tint: .orange)
+
+            Text(recap.busiestDayDate.map { Self.dayFormatter.string(from: $0) } ?? "—")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.5)
-                .scaleEffect(didAppear ? 1 : 0.8)
-                .opacity(didAppear ? 1 : 0)
+                .minimumScaleFactor(0.7)
 
-            Text(formattedAmount(recap.topCategoryAmount))
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
+            Text(formattedAmount(recap.busiestDayAmount))
+                .font(Theme.Typography.numericSmall)
                 .monospacedDigit()
-                .foregroundColor(.appPrimary)
-                .padding(.top, Theme.Spacing.sm)
-                .opacity(didAppear ? 1 : 0)
-
-            // Share bar — visualizes the % of total spend that
-            // went to the top category. Reads better than just
-            // saying "39% of your spend".
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                HStack {
-                    Text("That's \(Int((recap.topCategoryShare * 100).rounded()))% of everything you spent.")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-                shareBar
-            }
-            .padding(.horizontal, Theme.Spacing.xl)
-            .padding(.top, Theme.Spacing.lg)
-            .opacity(didAppear ? 1 : 0)
-
-            Spacer()
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
-                didAppear = true
-            }
-        }
-    }
-
-    private var shareBar: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.appPrimary.opacity(0.12))
-                    .frame(height: 12)
-                Capsule()
-                    .fill(Color.appPrimary)
-                    .frame(width: width * (didAppear ? CGFloat(recap.topCategoryShare) : 0), height: 12)
-                    .animation(.easeOut(duration: 0.9).delay(0.3), value: didAppear)
-            }
-        }
-        .frame(height: 12)
-    }
-}
-
-private struct BiggestExpensePage: View {
-    let recap: MonthlyRecap
-    let title: String
-    let formattedAmount: (Double) -> String
-
-    @State private var didAppear = false
-
-    var body: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            Spacer()
-
-            Text("YOUR BIGGEST EXPENSE")
-                .font(.caption.weight(.semibold))
-                .tracking(2)
                 .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+        .padding(Theme.Spacing.lg)
+        .cardSurface()
+    }
 
-            Image(systemName: "creditcard.fill")
-                .font(.system(size: 52, weight: .regular))
-                .foregroundColor(.pink)
-                .padding(.bottom, Theme.Spacing.md)
-                .scaleEffect(didAppear ? 1 : 0.6)
-                .opacity(didAppear ? 1 : 0)
+    /// Biggest single expense.
+    private var biggestExpenseCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            eyebrow(icon: "creditcard.fill", label: "BIGGEST EXPENSE", tint: .pink)
 
-            Text("\u{201C}\(title)\u{201D}")
-                .font(.system(size: 28, weight: .heavy, design: .rounded))
+            Text(recap.biggestExpenseTitle?.isEmpty == false ? recap.biggestExpenseTitle! : "—")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .padding(.horizontal, Theme.Spacing.xl)
-                .opacity(didAppear ? 1 : 0)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
             Text(formattedAmount(recap.biggestExpenseAmount))
-                .font(.system(size: 38, weight: .heavy, design: .rounded))
+                .font(Theme.Typography.numericSmall)
                 .monospacedDigit()
-                .foregroundColor(.pink)
-                .padding(.top, Theme.Spacing.sm)
-                .opacity(didAppear ? 1 : 0)
-
-            if recap.biggestExpenseDay > 0 {
-                Text("on the \(ordinal(recap.biggestExpenseDay))")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.secondary)
-                    .padding(.top, Theme.Spacing.xs)
-                    .opacity(didAppear ? 1 : 0)
-            }
-
-            Spacer()
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
-                didAppear = true
-            }
-        }
-    }
-
-    private func ordinal(_ n: Int) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .ordinal
-        return formatter.string(from: n as NSNumber) ?? "\(n)"
-    }
-}
-
-private struct NoSpendPage: View {
-    let recap: MonthlyRecap
-
-    @State private var didAppear = false
-
-    var body: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            Spacer()
-
-            Image(systemName: "leaf.fill")
-                .font(.system(size: 56, weight: .regular))
-                .foregroundColor(.mint)
-                .scaleEffect(didAppear ? 1 : 0.5)
-                .opacity(didAppear ? 1 : 0)
-
-            Text("YOU HAD")
-                .font(.caption.weight(.semibold))
-                .tracking(2)
                 .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 104, alignment: .topLeading)
+        .padding(Theme.Spacing.lg)
+        .cardSurface()
+    }
 
-            Text("\(recap.noSpendDays)")
-                .font(.system(size: 88, weight: .heavy, design: .rounded))
+    /// No-spend days + best in-month streak.
+    private var quietDaysCard: some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.lg) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                eyebrow(icon: "leaf.fill", label: "QUIET DAYS", tint: .mint)
+
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                    Text("\(recap.noSpendDays)")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(.primary)
+                    Text(recap.noSpendDays == 1 ? "no-spend day" : "no-spend days")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.mint)
+                }
+
+                Text(quietDaysCommentary)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if recap.bestNoSpendStreak >= 2 {
+                VStack(spacing: 4) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.orange)
+                    Text("\(recap.bestNoSpendStreak)")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(.primary)
+                    Text("day streak")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .padding(Theme.Spacing.md)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
+                        .fill(Color.orange.opacity(0.10))
+                )
+            }
+        }
+        .padding(Theme.Spacing.xl)
+        .cardSurface()
+    }
+
+    /// Fixed costs (subscription-generated expenses).
+    private var subscriptionsCard: some View {
+        let share = recap.totalSpent > 0 ? recap.subscriptionTotal / recap.totalSpent : 0
+        return HStack(spacing: Theme.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(Color.appPrimary.opacity(0.14))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.appPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Subscriptions")
+                    .font(Theme.Typography.rowTitle)
+                    .foregroundColor(.primary)
+                Text("\(Int((share * 100).rounded()))% of the month was fixed costs")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer(minLength: Theme.Spacing.sm)
+
+            Text(formattedAmount(recap.subscriptionTotal))
+                .font(Theme.Typography.numericSmall)
                 .monospacedDigit()
                 .foregroundColor(.primary)
-                .opacity(didAppear ? 1 : 0)
-
-            Text(recap.noSpendDays == 1 ? "no-spend day" : "no-spend days")
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundColor(.mint)
-                .padding(.top, -Theme.Spacing.sm)
-                .opacity(didAppear ? 1 : 0)
-
-            Text(commentary)
-                .font(.subheadline.weight(.medium))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.Spacing.xl)
-                .padding(.top, Theme.Spacing.md)
-                .opacity(didAppear ? 1 : 0)
-
-            Spacer()
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            withAnimation(.spring(response: 0.65, dampingFraction: 0.7)) {
-                didAppear = true
+        .padding(Theme.Spacing.lg)
+        .cardSurface()
+    }
+
+    /// The award medallion — the closing beat.
+    private var awardCard: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            // Award ring: a single hairline circle around the
+            // hierarchical glyph — medal without the sticker fill.
+            ZStack {
+                Circle()
+                    .stroke(Color.appPrimary.opacity(0.25), lineWidth: Theme.Stroke.medium)
+                    .frame(width: 88, height: 88)
+                Image(systemName: recap.award.symbol)
+                    .font(.system(size: 38, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Color.appPrimary)
             }
+
+            VStack(spacing: Theme.Spacing.xs) {
+                Text(recap.award.title)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text(recap.award.subtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Spacing.xxl)
+        .padding(.horizontal, Theme.Spacing.xl)
+        .cardSurface(radius: Theme.Radius.hero)
+    }
+
+    // MARK: - Share
+
+    /// Full-width ShareLink exporting the rendered summary card. The
+    /// image is pre-rendered in `onAppear` (small view, milliseconds)
+    /// so the share sheet opens instantly.
+    @ViewBuilder
+    private var shareRow: some View {
+        if let shareImage {
+            ShareLink(
+                item: shareImage,
+                preview: SharePreview(
+                    "\(Self.monthTitleFormatter.string(from: recap.month)) Recap",
+                    image: shareImage
+                )
+            ) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Share your month")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.md + 2)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                        .fill(Color.appPrimary)
+                )
+                .primaryGlow(strength: 0.25)
+            }
+            .simultaneousGesture(TapGesture().onEnded { HapticManager.shared.mediumTap() })
         }
     }
 
-    private var commentary: String {
+    /// Renders `MonthlyRecapShareCard` to a `UIImage` at 3× so the
+    /// exported card is crisp on any share target. Forced light mode
+    /// so the shared artefact is deterministic regardless of the
+    /// sender's appearance setting.
+    @MainActor
+    private func renderShareImage() {
+        let card = MonthlyRecapShareCard(recap: recap, formattedAmount: formattedAmount)
+            .environment(\.colorScheme, .light)
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3
+        renderer.proposedSize = ProposedViewSize(width: 360, height: nil)
+        if let uiImage = renderer.uiImage {
+            shareImage = Image(uiImage: uiImage)
+        }
+    }
+
+    // MARK: - Copy helpers
+
+    private var quietDaysCommentary: String {
         switch recap.noSpendDays {
         case 0:      return "Every day had at least one expense."
         case 1...3:  return "A few quiet days sprinkled through the month."
@@ -466,100 +392,217 @@ private struct NoSpendPage: View {
         default:     return "Outstanding — your wallet had room to breathe."
         }
     }
-}
 
-private struct AwardPage: View {
-    let recap: MonthlyRecap
+    private var previousMonthName: String {
+        guard let prev = Calendar.current.date(byAdding: .month, value: -1, to: recap.month) else { return "last month" }
+        return Self.monthOnlyFormatter.string(from: prev)
+    }
 
-    @State private var didAppear = false
-
-    var body: some View {
-        VStack(spacing: Theme.Spacing.lg) {
-            Spacer()
-
-            Text("YOUR AWARD")
-                .font(.caption.weight(.semibold))
-                .tracking(2)
-                .foregroundColor(.secondary)
-
-            // The badge medallion — circular, accent-tinted, with
-            // the award icon centered. Scaled in on appear.
+    private func eyebrow(icon: String, label: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
             ZStack {
                 Circle()
-                    .fill(Color.appPrimary.opacity(0.12))
-                    .frame(width: 160, height: 160)
-                Circle()
-                    .stroke(Color.appPrimary.opacity(0.3), lineWidth: 1.5)
-                    .frame(width: 160, height: 160)
-                Image(systemName: recap.award.symbol)
-                    .font(.system(size: 64, weight: .regular))
-                    .foregroundColor(.appPrimary)
+                    .fill(tint.opacity(0.16))
+                    .frame(width: 22, height: 22)
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(tint)
             }
-            .scaleEffect(didAppear ? 1 : 0.4)
-            .opacity(didAppear ? 1 : 0)
-            .padding(.bottom, Theme.Spacing.md)
-
-            Text(recap.award.title)
-                .font(.system(size: 36, weight: .heavy, design: .rounded))
-                .foregroundColor(.primary)
-                .opacity(didAppear ? 1 : 0)
-
-            Text(recap.award.subtitle)
-                .font(.subheadline.weight(.medium))
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .tracking(0.6)
                 .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.Spacing.xl)
-                .padding(.top, Theme.Spacing.xs)
-                .opacity(didAppear ? 1 : 0)
+        }
+    }
 
-            Spacer()
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.65)) {
-                didAppear = true
+    private static let monthTitleFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM"
+        return f
+    }()
+
+    private static let monthOnlyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM"
+        return f
+    }()
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE d"
+        return f
+    }()
+}
+
+// MARK: - Self-computing sheet wrapper
+
+/// Owns the recap compute so entry points (Today card, Insights row)
+/// just present a sheet with a month. Waits for full hydration first —
+/// with windowed hydration the in-memory array may only hold the
+/// recent launch slice for a beat after cold start, and a recap built
+/// on partial data would silently under-report the month.
+struct MonthlyRecapSheet: View {
+    /// Any date inside the month to recap (typically last month).
+    let month: Date
+
+    @EnvironmentObject var viewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
+
+    @State private var recap: MonthlyRecap? = nil
+
+    var body: some View {
+        Group {
+            if let recap {
+                MonthlyRecapView(
+                    recap: recap,
+                    formattedAmount: viewModel.formattedAmount
+                )
+            } else {
+                loadingSkeleton
             }
-            HapticManager.shared.success()
         }
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            // Mark the recap month as seen so Today's automatic card
+            // dismisses after viewing (both entry points count).
+            UserDefaults.standard.set(
+                MonthlyRecapEngine.monthKey(for: month),
+                forKey: UserDefaultsKeys.monthlyRecapLastSeenMonth
+            )
+        }
+        .task {
+            guard recap == nil else { return }
+            await viewModel.waitUntilFullyHydrated()
+            let expensesSnapshot = viewModel.expenses
+            let names: [UUID: String] = Dictionary(
+                uniqueKeysWithValues: categoryViewModel.customCategories.map { ($0.id, $0.name) }
+            )
+            let targetMonth = month
+            let computed = await Task.detached(priority: .userInitiated) {
+                MonthlyRecapEngine.compute(
+                    month: targetMonth,
+                    allExpenses: expensesSnapshot,
+                    customCategoryNames: names
+                )
+            }.value
+            recap = computed
+        }
+    }
+
+    private var loadingSkeleton: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            RoundedRectangle(cornerRadius: 8).fill(Color.tertiarySystemBackground).frame(width: 140, height: 14)
+            RoundedRectangle(cornerRadius: 12).fill(Color.tertiarySystemBackground).frame(width: 200, height: 34)
+            RoundedRectangle(cornerRadius: Theme.Radius.hero).fill(Color.tertiarySystemBackground).frame(height: 160)
+            RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Color.tertiarySystemBackground).frame(height: 120)
+            RoundedRectangle(cornerRadius: Theme.Radius.card).fill(Color.tertiarySystemBackground).frame(height: 120)
+            Spacer()
+        }
+        .padding(Theme.Spacing.lg)
+        .padding(.top, Theme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .skeletonShimmer()
     }
 }
 
-private struct OutroPage: View {
-    let onDone: () -> Void
+// MARK: - Shareable summary card
+
+/// The image users actually share — a compact, brand-forward summary
+/// rendered by `ImageRenderer` (never shown live in the UI). Fixed
+/// 360pt width, rendered at 3× for a crisp 1080px export. Light
+/// palette, solid fills, no gradients — the shared card should look
+/// like the app.
+private struct MonthlyRecapShareCard: View {
+    let recap: MonthlyRecap
+    let formattedAmount: (Double) -> String
 
     var body: some View {
-        VStack(spacing: Theme.Spacing.xl) {
-            Spacer()
-
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 56))
-                .foregroundColor(.appPrimary)
-
-            VStack(spacing: Theme.Spacing.sm) {
-                Text("That's a wrap.")
-                    .font(.system(size: 30, weight: .heavy, design: .rounded))
-                    .foregroundColor(.primary)
-
-                Text("Here's to another mindful month.")
-                    .font(.subheadline.weight(.medium))
+        VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+            // Brand row
+            HStack {
+                Text("CashLens")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.appPrimary)
+                Spacer()
+                Text("MONTH IN REVIEW")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1.2)
                     .foregroundColor(.secondary)
             }
 
-            Spacer()
-
-            Button(action: onDone) {
-                Text("Done")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Theme.Spacing.md + 2)
-                    .background(Color.appPrimary)
-                    .clipShape(Capsule())
+            // Month + total
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Self.monthYearFormatter.string(from: recap.month))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text(formattedAmount(recap.totalSpent))
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                if let delta = recap.monthOverMonthDelta {
+                    let up = delta >= 0
+                    Text(String(format: "%@%.0f%% vs last month", up ? "↑ " : "↓ ", abs(delta * 100)))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(up ? .orange : .green)
+                }
             }
-            .padding(.horizontal, Theme.Spacing.xxl)
-            .padding(.bottom, Theme.Spacing.xxl)
+
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 1)
+
+            // Stat rows
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                if let top = recap.topCategoryName {
+                    shareStat(icon: "square.stack.3d.up.fill", tint: .appPrimary,
+                              label: "Top category",
+                              value: "\(top) · \(Int((recap.topCategoryShare * 100).rounded()))%")
+                }
+                if recap.busiestDayDate != nil {
+                    shareStat(icon: "calendar", tint: .orange,
+                              label: "Biggest day",
+                              value: formattedAmount(recap.busiestDayAmount))
+                }
+                shareStat(icon: "leaf.fill", tint: .mint,
+                          label: "No-spend days",
+                          value: "\(recap.noSpendDays)")
+                shareStat(icon: recap.award.symbol, tint: .appPrimary,
+                          label: "Award",
+                          value: recap.award.title)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(Theme.Spacing.xxl)
+        .frame(width: 360, alignment: .leading)
+        .background(Color.white)
     }
+
+    private func shareStat(icon: String, tint: Color, label: String, value: String) -> some View {
+        HStack(spacing: Theme.Spacing.md) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.14))
+                    .frame(width: 28, height: 28)
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(tint)
+            }
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.secondary)
+            Spacer(minLength: Theme.Spacing.sm)
+            Text(value)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+    }
+
+    private static let monthYearFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM yyyy"
+        return f
+    }()
 }

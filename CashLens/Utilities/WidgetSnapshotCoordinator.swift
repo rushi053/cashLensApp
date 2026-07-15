@@ -59,6 +59,15 @@ final class WidgetSnapshotCoordinator: ObservableObject {
     /// Set the first time `bootstrap` runs to make a re-entry cheap.
     private var bootstrapped = false
 
+    /// Content of the last snapshot we actually wrote, with
+    /// `generatedAt` normalized so it doesn't defeat the comparison.
+    /// PERF: lets `performRefresh` skip the disk write **and** the
+    /// `reloadAllTimelines()` call when a refresh produced byte-identical
+    /// content — `reloadAllTimelines` wakes the widget extension
+    /// process, which is by far the most expensive step of this pipe
+    /// and used to run for every no-op publish upstream.
+    private var lastWrittenSnapshot: WidgetSnapshot?
+
     private init() {}
 
     // MARK: - Bootstrap
@@ -138,6 +147,12 @@ final class WidgetSnapshotCoordinator: ObservableObject {
             .sink { [weak self] _ in self?.scheduleRefresh() }
             .store(in: &cancellables)
 
+        // Expense templates feed the Quick Log widget's buttons —
+        // adds / removes / renames must re-export.
+        ExpenseTemplateStore.shared.$templates
+            .sink { [weak self] _ in self?.scheduleRefresh() }
+            .store(in: &cancellables)
+
         // Theme changes need to re-render the widget with the new
         // accent color.
         themeStore?.$currentTheme
@@ -203,48 +218,78 @@ final class WidgetSnapshotCoordinator: ObservableObject {
             let budgetVM = self.budgetVM,
             let categoryVM = self.categoryVM,
             let proManager = self.proManager,
-            let themeStore = self.themeStore,
-            let viewContext = self.viewContext
+            let themeStore = self.themeStore
         else { return }
 
-        let subs = fetchSubscriptions(in: viewContext)
+        let expenses = expenseVM.expenses
+        let budgets = budgetVM.budgets
+        let customCategories = categoryVM.customCategories
+        let templates = ExpenseTemplateStore.shared.displayOrder
+        let currencyCode = expenseVM.selectedCurrency.rawValue
+        let userName = expenseVM.userName
+        let activeThemeId = themeStore.currentTheme.id
+        let isPro = proManager.isPro
 
-        let inputs = WidgetSnapshotBuilder.Inputs(
-            expenses: expenseVM.expenses,
-            budgets: budgetVM.budgets,
-            subscriptions: subs,
-            customCategories: categoryVM.customCategories,
-            currencyCode: expenseVM.selectedCurrency.rawValue,
-            userName: expenseVM.userName,
-            activeThemeId: themeStore.currentTheme.id,
-            isPro: proManager.isPro,
-            now: Date()
-        )
+        // Build off-main so even a multi-thousand-row history never
+        // touches the UI thread. PERF: the subscription fetch used
+        // to run synchronously on the view context (main thread) before
+        // hopping off; it now happens on a background context inside the
+        // same detached pass.
+        let snapshot = await Task.detached(priority: .utility) {
+            let subs = Self.fetchSubscriptionsOffMain()
+            let inputs = WidgetSnapshotBuilder.Inputs(
+                expenses: expenses,
+                budgets: budgets,
+                subscriptions: subs,
+                customCategories: customCategories,
+                templates: templates,
+                currencyCode: currencyCode,
+                userName: userName,
+                activeThemeId: activeThemeId,
+                isPro: isPro,
+                now: Date()
+            )
+            return WidgetSnapshotBuilder.build(inputs)
+        }.value
 
-        // Build + write off-main so even a multi-thousand-row history
-        // never touches the UI thread.
-        await Task.detached(priority: .utility) {
-            let snapshot = WidgetSnapshotBuilder.build(inputs)
+        // PERF: skip the write + `reloadAllTimelines()` when the freshly
+        // built content is identical to what's already on disk (only
+        // `generatedAt` moved). Waking the widget extension process is
+        // the expensive part of this pipe, and upstream publishers fire
+        // for plenty of mutations that don't change any widget-visible
+        // aggregate.
+        if var previous = lastWrittenSnapshot {
+            previous.generatedAt = snapshot.generatedAt
+            if previous == snapshot { return }
+        }
+
+        let wrote = await Task.detached(priority: .utility) {
             WidgetSnapshotIO.write(snapshot)
         }.value
+        // A failed write leaves the old file on disk — don't cache the
+        // new content (the next refresh should retry) and don't wake
+        // the extension for data it can't read yet.
+        guard wrote else { return }
+        lastWrittenSnapshot = snapshot
 
         // Reload all timelines on the main actor (WidgetCenter is
         // safe from any thread but we keep the call site predictable).
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    /// Synchronous main-actor fetch of all subscriptions. Cheap — even
-    /// users with hundreds of subscriptions stay well under 1ms — and
-    /// happens at most once per debounce window.
-    private func fetchSubscriptions(in context: NSManagedObjectContext) -> [Subscription] {
-        let request: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
-        request.sortDescriptors = [
-            NSSortDescriptor(keyPath: \SubscriptionEntity.nextDueDate, ascending: true)
-        ]
-        do {
-            return try context.fetch(request).toSubscriptions()
-        } catch {
-            return []
+    /// Fetch all subscriptions on a fresh background context, blocking
+    /// only the calling (non-main) thread. Runs inside the detached
+    /// snapshot-build task so the main thread never pays for it.
+    private nonisolated static func fetchSubscriptionsOffMain() -> [Subscription] {
+        let context = PersistenceController.shared.container.newBackgroundContext()
+        var result: [Subscription] = []
+        context.performAndWait {
+            let request: NSFetchRequest<SubscriptionEntity> = SubscriptionEntity.fetchRequest()
+            request.sortDescriptors = [
+                NSSortDescriptor(keyPath: \SubscriptionEntity.nextDueDate, ascending: true)
+            ]
+            result = (try? context.fetch(request).toSubscriptions()) ?? []
         }
+        return result
     }
 }

@@ -11,19 +11,20 @@ import SwiftUI
 /// - Empty-query state gives users *useful* affordances:
 ///     * persisted Recent Searches (last 5)
 ///     * one-tap quick tips ("this month", "$50", popular tag)
-///     * Browse by Category strip
-///     * Browse by Tag strip (when tags exist)
-///     * Recent Activity preview rows
-/// - Active-query state shows a result-count summary chip, date-grouped result
-///   sections (Today / Yesterday / This week / Earlier), and rows that
-///   **highlight the matched substring** in the title.
+///   (Browse-by-Category/Tag strips and the Recent Activity preview were
+///   removed — they duplicated Activity's filter strip and the tab itself.)
+/// - Active-query state shows a result-count + net-total summary chip,
+///   date-grouped result sections (Today / Yesterday / This week / Earlier),
+///   and rows that **highlight the matched substring** in the title.
 /// - Smarter ranking: title-prefix beats title-contains beats tag/category
 ///   beats notes beats amount. Amounts are parsed numerically (`$50` ≈ `50.00`)
 ///   instead of being matched as a brittle `String(format: "%.2f")`.
 /// - Tag-only mode: queries beginning with `#` search tags exclusively.
 ///
-/// All the existing functionality (auto-focus, edit-on-tap sheet, debounce,
-/// off-main filtering) is preserved.
+/// PERF architecture: a pre-lowered `SearchIndexEntry` array is built
+/// off-main once per `expenses` snapshot; each (debounced) keystroke ranks
+/// against that index in a detached task which also prebakes the date
+/// groups and refund-aware net total, so `body` never walks the dataset.
 struct QuickSearchView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var viewModel: ExpenseViewModel
@@ -34,18 +35,42 @@ struct QuickSearchView: View {
     @FocusState private var isSearchFocused: Bool
 
     @State private var searchResults: [Expense] = []
+    /// Date-bucketed groups + refund-aware net total, computed in the
+    /// same detached pass as the ranking. These used to be derived on
+    /// the main thread inside `body` (a full O(N) walk of the results
+    /// per redraw, twice); now the view just renders prebaked state.
+    @State private var resultGroups: [(title: String, expenses: [Expense])] = []
+    @State private var resultNetTotal: Double = 0
     @State private var searchTask: Task<Void, Never>?
 
+    /// Pre-lowered searchable fields for the whole dataset. Built
+    /// off-main once per `expenses` snapshot, so the per-keystroke
+    /// ranker never calls `.lowercased()` on every title / tag / note
+    /// in the store again (that repeated re-lowercasing was the
+    /// single biggest cost of a keystroke with a few thousand rows).
+    @State private var searchIndex: [SearchIndexEntry] = []
+    @State private var indexTask: Task<Void, Never>?
+
     @State private var recentSearches: [String] = []
+
+    /// Quick-tip "$50" example. Computed once per presentation (see
+    /// `computeRoundAmountSample`), never per body evaluation.
+    @State private var roundAmountSample: (label: String, query: String)?
 
     @State private var animateSections = false
 
     /// Active *direct* filters driven by tapping a chip in the browse view.
     /// These are intentionally separate from `searchText` so chip taps can be
     /// instant (no 150ms debounce, no `Task.detached`, no view-tree thrash).
-    @State private var activeCategoryFilter: Expense.Category? = nil
-    @State private var activeCustomCategoryFilter: UUID? = nil
-    @State private var activeTagFilter: String? = nil
+    // Phase 1 cleanup: chip-filter state removed. The Browse-by-
+    // Category and Browse-by-Tag chips in the empty state were the
+    // only setters for `activeCategoryFilter` / `activeTagFilter`,
+    // and that filter functionality already exists in Activity's
+    // category-pill + Tags-chip strip. Search now focuses on its
+    // unique value (free-text + smart query parsing); category /
+    // tag-via-text still works through the ranker (a typed category
+    // name still ranks high, and `#tag` still triggers tag-only
+    // mode).
 
     /// When `true` the next `searchText` change skips the typing debounce.
     /// Set right before mutating `searchText` from a chip tap (Quick Tip,
@@ -55,22 +80,16 @@ struct QuickSearchView: View {
 
     private static let recentsCap = 5
 
-    /// Anything narrowing the result set right now — typed text or a chip
-    /// filter. Drives the empty-vs-results view swap so chip-only filtering
-    /// surfaces the results view even with no typed query.
+    /// Drives the empty-vs-results view swap. Post-Phase-1 the only
+    /// thing that narrows the result set is the typed text query —
+    /// see the `activeCategoryFilter` removal comment above.
     private var isQueryActive: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || activeCategoryFilter != nil
-            || activeTagFilter != nil
-    }
-
-    private var hasActiveChipFilter: Bool {
-        activeCategoryFilter != nil || activeTagFilter != nil
     }
 
     var body: some View {
         ZStack {
-            Color(.systemGroupedBackground)
+            Color(uiColor: .systemBackground)
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -100,8 +119,12 @@ struct QuickSearchView: View {
                 .animation(Theme.Motion.snappy, value: searchResults.isEmpty)
             }
         }
+        // App-wide sheet convention: visible grab handle on every
+        // custom-chrome sheet, with the header giving it clear air.
+        .presentationDragIndicator(.visible)
         .onAppear {
             loadRecentSearches()
+            computeRoundAmountSample()
             // PERF: Defer keyboard focus + cascade entrance until the
             // sheet has lifted. Previously the `withAnimation { ... }`
             // fired in the same runloop tick as the sheet present,
@@ -115,19 +138,16 @@ struct QuickSearchView: View {
                 withAnimation { animateSections = true }
             }
         }
-        .onChange(of: searchText) { _, newValue in
+        .onChange(of: searchText) {
             performQuery(textChanged: true, instant: skipNextDebounce)
             skipNextDebounce = false
-            _ = newValue // hush unused-var warning
         }
-        .onChange(of: activeCategoryFilter) { _, _ in
-            performQuery(textChanged: false, instant: true)
-        }
-        .onChange(of: activeCustomCategoryFilter) { _, _ in
-            performQuery(textChanged: false, instant: true)
-        }
-        .onChange(of: activeTagFilter) { _, _ in
-            performQuery(textChanged: false, instant: true)
+        // @Published re-emits the current value on subscribe, so this
+        // both builds the initial index on presentation and rebuilds
+        // it after any save (e.g. editing a result) — which then
+        // re-runs the active query against fresh data.
+        .onReceive(viewModel.$expenses) { latest in
+            rebuildIndex(expenses: latest)
         }
         .sheet(item: $selectedExpense) { expense in
             AddExpenseView(
@@ -157,7 +177,11 @@ struct QuickSearchView: View {
                     updatedExpense.paymentMethod = paymentMethod
                     updatedExpense.receiptImagePath = receiptImagePath
                     viewModel.updateExpense(updatedExpense)
-                    performQuery(textChanged: false, instant: true)
+                    // No manual requery — the save publishes a fresh
+                    // `expenses` value, which rebuilds the index and
+                    // re-runs the active query (see `.onReceive`).
+                    // The old explicit call here double-ranked every
+                    // edit against the stale snapshot first.
                 }
             )
             .environmentObject(categoryViewModel)
@@ -167,40 +191,14 @@ struct QuickSearchView: View {
     // MARK: - Custom Header
 
     private var customHeader: some View {
-        HStack(alignment: .center) {
-            Button {
-                HapticManager.shared.lightTap()
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .frame(width: 32, height: 32)
-                    .background(Color(.systemGray6))
-                    .clipShape(Circle())
-            }
-            .accessibilityLabel("Close search")
-
-            Spacer()
-
-            VStack(spacing: 2) {
-                Text("Search")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.primary)
-                Text("Find any expense, fast")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            // Invisible spacer that's the same size as the X button so the
-            // title stays perfectly centered.
-            Color.clear.frame(width: 32, height: 32)
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.top, Theme.Spacing.lg)
-        .padding(.bottom, Theme.Spacing.sm)
+        // Shared SheetHeader — divider off because the hero search
+        // field directly below provides the visual break.
+        SheetHeader(
+            title: "Search",
+            subtitle: "Find any expense, fast",
+            showsDivider: false,
+            onClose: { dismiss() }
+        )
     }
 
     // MARK: - Search field
@@ -253,6 +251,21 @@ struct QuickSearchView: View {
             // Brand-new install. Nothing to search.
             nothingToSearchView
         } else {
+            // Phase 1 cleanup: dropped `categoriesSection`,
+            // `tagsBrowseSection`, and `recentExpensesSection`.
+            // - Browse by Category duplicated Activity's category pill
+            //   strip — the same filter, on a different surface.
+            // - Browse by Tag duplicated Activity's `Tags ▾` chip
+            //   (and the popular tags were the same ones surfaced
+            //   inside the `quickTipsSection` chip set anyway).
+            // - Recent Activity preview duplicated the Activity tab
+            //   itself, one tap away on the tab bar.
+            //
+            // Search now reads as one focused surface — type, see
+            // ranked results — with just the two affordances that
+            // *only* live here: persisted recent searches, and the
+            // "Try" chips that teach users about smart query syntax
+            // (`#tag`, `$50`, `this month`).
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
                     if !recentSearches.isEmpty {
@@ -262,17 +275,6 @@ struct QuickSearchView: View {
 
                     quickTipsSection
                         .modifier(SearchEntrance(order: 2, animate: animateSections))
-
-                    categoriesSection
-                        .modifier(SearchEntrance(order: 3, animate: animateSections))
-
-                    if !topTagsForBrowse.isEmpty {
-                        tagsBrowseSection
-                            .modifier(SearchEntrance(order: 4, animate: animateSections))
-                    }
-
-                    recentExpensesSection
-                        .modifier(SearchEntrance(order: 5, animate: animateSections))
 
                     Spacer(minLength: Theme.Spacing.xxxl)
                 }
@@ -383,25 +385,39 @@ struct QuickSearchView: View {
         return chips.map { (label: $0.0, query: $0.1, icon: $0.2) }
     }
 
-    /// Returns a "$50" / "$100" / "$500" style example anchored to the user's
-    /// own data, so the tip feels grounded.
-    private var roundAmountSample: (label: String, query: String)? {
-        let amounts = viewModel.expenses.map { $0.amount }.filter { $0 > 0 }.sorted()
-        guard !amounts.isEmpty else { return nil }
-        let median = amounts[amounts.count / 2]
-        // Snap to a friendly round number so the tip looks intentional.
-        let rounded: Double
-        switch median {
-        case ..<25:    rounded = 10
-        case ..<75:    rounded = 50
-        case ..<175:   rounded = 100
-        case ..<375:   rounded = 250
-        case ..<750:   rounded = 500
-        default:       rounded = 1000
-        }
+    /// "$50" / "$100" / "$500" style example anchored to the user's own
+    /// data, so the tip feels grounded.
+    ///
+    /// PERF: this used to be a computed property that mapped, filtered,
+    /// and sorted **every** amount (O(N log N) on main) on each body
+    /// evaluation of the empty-query state — including right at sheet
+    /// presentation, mid lift animation. It's now computed once per
+    /// presentation, off-main, into state (see `computeRoundAmountSample`
+    /// called from `onAppear`). An exact live median is irrelevant for a
+    /// "Try $50" chip.
+    private func computeRoundAmountSample() {
+        let amountsSnapshot = viewModel.expenses.map { $0.amount }
         let symbol = viewModel.selectedCurrency.symbol
-        let intValue = Int(rounded)
-        return (label: "\(symbol)\(intValue)", query: "\(symbol)\(intValue)")
+        Task { @MainActor in
+            let value: Int? = await Task.detached(priority: .utility) {
+                let amounts = amountsSnapshot.filter { $0 > 0 }.sorted()
+                guard !amounts.isEmpty else { return nil }
+                let median = amounts[amounts.count / 2]
+                // Snap to a friendly round number so the tip looks intentional.
+                let rounded: Double
+                switch median {
+                case ..<25:    rounded = 10
+                case ..<75:    rounded = 50
+                case ..<175:   rounded = 100
+                case ..<375:   rounded = 250
+                case ..<750:   rounded = 500
+                default:       rounded = 1000
+                }
+                return Int(rounded)
+            }.value
+            guard let value else { return }
+            roundAmountSample = (label: "\(symbol)\(value)", query: "\(symbol)\(value)")
+        }
     }
 
     private var quickTipsSection: some View {
@@ -422,7 +438,7 @@ struct QuickSearchView: View {
                                     .font(.system(size: 13, weight: .semibold))
                                     .lineLimit(1)
                             }
-                            .foregroundStyle(LinearGradient.appPrimaryDiagonal)
+                            .foregroundColor(.appPrimary)
                             .padding(.horizontal, Theme.Spacing.md)
                             .padding(.vertical, Theme.Spacing.sm)
                             .background(
@@ -440,182 +456,16 @@ struct QuickSearchView: View {
         }
     }
 
-    // MARK: - Categories browse
-
-    private var categoriesSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm + 2) {
-            sectionLabel("Browse by Category")
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.sm + 2) {
-                    ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
-                        categoryBrowseChip(
-                            label: category.rawValue,
-                            icon: category.icon,
-                            colorName: category.color,
-                            isSelected: activeCategoryFilter == category && activeCustomCategoryFilter == nil
-                        ) {
-                            toggleCategoryFilter(category, customId: nil)
-                        }
-                    }
-                    ForEach(categoryViewModel.customCategories) { custom in
-                        categoryBrowseChip(
-                            label: custom.name,
-                            icon: custom.icon,
-                            colorName: custom.colorName,
-                            isSelected: activeCategoryFilter == .custom && activeCustomCategoryFilter == custom.id
-                        ) {
-                            toggleCategoryFilter(.custom, customId: custom.id)
-                        }
-                    }
-                }
-                .padding(.vertical, Theme.Spacing.xxs)
-            }
-        }
-    }
-
-    /// Browse chip used for both default and custom categories. Renders a
-    /// muted neutral capsule when idle and switches to a tinted, gradient-bg
-    /// capsule when the user has selected this chip as the active filter —
-    /// gives clear "I tapped this and it's now filtering" feedback without
-    /// any keyboard or view-tree thrash.
-    private func categoryBrowseChip(
-        label: String,
-        icon: String,
-        colorName: String,
-        isSelected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        let tint = Color.forCategory(colorName)
-        return Button(action: action) {
-            HStack(spacing: Theme.Spacing.sm) {
-                ZStack {
-                    Circle()
-                        .fill(isSelected ? Color.white.opacity(0.22) : tint.opacity(0.18))
-                        .frame(width: 28, height: 28)
-                    Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(isSelected ? .white : tint)
-                }
-
-                Text(label)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(isSelected ? .white : .primary)
-                    .lineLimit(1)
-
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .heavy))
-                        .foregroundColor(.white.opacity(0.95))
-                        .transition(.scale.combined(with: .opacity))
-                }
-            }
-            .padding(.leading, Theme.Spacing.xs + 2)
-            .padding(.trailing, Theme.Spacing.md)
-            .padding(.vertical, Theme.Spacing.xs + 2)
-            .background(
-                Group {
-                    if isSelected {
-                        Capsule().fill(Color.appPrimary)
-                    } else {
-                        Capsule().fill(Color.secondarySystemBackground)
-                    }
-                }
-            )
-            .overlay(
-                Capsule().stroke(
-                    isSelected ? Color.clear : Color.primary.opacity(0.06),
-                    lineWidth: 1
-                )
-            )
-            .if(isSelected) { $0.primaryGlow(strength: 0.18) }
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Toggle the active category filter. Same chip again clears it.
-    /// All state mutations happen in one `withAnimation` block so the chip's
-    /// fill, the keyboard, and the empty-vs-results swap stay in lockstep
-    /// instead of stacking three separate animations.
-    private func toggleCategoryFilter(_ category: Expense.Category, customId: UUID?) {
-        HapticManager.shared.selectionChanged()
-        let isAlreadyActive = (activeCategoryFilter == category && activeCustomCategoryFilter == customId)
-        withAnimation(Theme.Motion.snappy) {
-            if isAlreadyActive {
-                activeCategoryFilter = nil
-                activeCustomCategoryFilter = nil
-            } else {
-                activeCategoryFilter = category
-                activeCustomCategoryFilter = customId
-            }
-        }
-    }
-
-    // MARK: - Tags browse
-
-    private var topTagsForBrowse: [String] {
-        Array(viewModel.tagStats.popularTags.prefix(8))
-    }
-
-    private var tagsBrowseSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.sm + 2) {
-            sectionLabel("Browse by Tag")
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    ForEach(topTagsForBrowse, id: \.self) { tag in
-                        TagChip(
-                            tag,
-                            style: activeTagFilter == tag ? .selected : .standard,
-                            count: viewModel.tagStats.usageCounts[tag],
-                            onTap: {
-                                toggleTagFilter(tag)
-                            }
-                        )
-                    }
-                }
-                .padding(.vertical, Theme.Spacing.xxs)
-            }
-        }
-    }
-
-    /// Toggle the active tag filter. Tapping the same tag again clears it.
-    private func toggleTagFilter(_ tag: String) {
-        let isAlreadyActive = (activeTagFilter == tag)
-        withAnimation(Theme.Motion.snappy) {
-            activeTagFilter = isAlreadyActive ? nil : tag
-        }
-    }
-
-    /// Set the search field text from an *explicit* tap (Quick Tip, Recent
-    /// Search). Bypasses the typing debounce so the result swap feels
-    /// instantaneous, and intentionally doesn't change keyboard focus
-    /// (preventing the keyboard-dismiss animation that previously stacked
-    /// onto the result-view transition and produced a perceptible stutter).
+    /// Set the search field text from an *explicit* tap (Quick Tip,
+    /// Recent Search). Bypasses the typing debounce so the result
+    /// swap feels instantaneous, and intentionally doesn't change
+    /// keyboard focus (preventing the keyboard-dismiss animation
+    /// that previously stacked onto the result-view transition and
+    /// produced a perceptible stutter).
     private func applyTextQueryInstantly(_ text: String) {
         skipNextDebounce = true
         withAnimation(Theme.Motion.snappy) {
             searchText = text
-        }
-    }
-
-    // MARK: - Recent activity
-
-    private var recentExpensesSection: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            sectionLabel("Recent Activity")
-
-            VStack(spacing: Theme.Spacing.sm + 2) {
-                ForEach(viewModel.expenses.prefix(5)) { expense in
-                    Button {
-                        HapticManager.shared.lightTap()
-                        selectedExpense = expense
-                    } label: {
-                        compactExpenseRow(expense: expense, query: nil)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
         }
     }
 
@@ -630,23 +480,25 @@ struct QuickSearchView: View {
             // hundreds of matches scrolling off-screen — the audit caught
             // this as a P0 reason search felt sluggish.
             LazyVStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                if hasActiveChipFilter {
-                    activeFiltersStrip
-                        .padding(.horizontal, Theme.Spacing.lg)
-                }
-
                 resultSummaryRow
                     .padding(.horizontal, Theme.Spacing.lg)
 
-                let groups = groupedResults()
-                ForEach(groups, id: \.title) { group in
+                // Groups are prebaked off-main by the search task —
+                // no per-redraw bucketing here.
+                ForEach(resultGroups, id: \.title) { group in
                     VStack(alignment: .leading, spacing: Theme.Spacing.sm + 2) {
                         Text(group.title)
                             .font(Theme.Typography.subsectionTitle)
                             .foregroundColor(.primary)
+                            .padding(.horizontal, Theme.Spacing.xs)
 
-                        VStack(spacing: Theme.Spacing.sm + 2) {
-                            ForEach(group.expenses) { expense in
+                        // v2: bare rows clustered into a single white
+                        // card with hairline dividers — matches the
+                        // Activity day-group and calendar day-detail
+                        // treatments, so all three "list of expenses"
+                        // surfaces feel like one component.
+                        VStack(spacing: 0) {
+                            ForEach(Array(group.expenses.enumerated()), id: \.element.id) { idx, expense in
                                 Button {
                                     HapticManager.shared.lightTap()
                                     saveRecentSearchIfNeeded(searchText)
@@ -655,8 +507,15 @@ struct QuickSearchView: View {
                                     compactExpenseRow(expense: expense, query: searchText)
                                 }
                                 .buttonStyle(.plain)
+
+                                if idx < group.expenses.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 56)
+                                        .opacity(0.4)
+                                }
                             }
                         }
+                        .cardSurface()
                     }
                     .padding(.horizontal, Theme.Spacing.lg)
                 }
@@ -667,108 +526,10 @@ struct QuickSearchView: View {
         }
     }
 
-    /// Compact strip of removable pills shown above the result list whenever
-    /// a chip filter is active. Mirrors how Photos / Mail surface "you're
-    /// currently filtering by X" so users always know — and can clear —
-    /// what's narrowing their view.
-    private var activeFiltersStrip: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.sm) {
-                    if let cat = activeCategoryFilter {
-                        activeFilterPill(
-                            label: activeCategoryDisplayLabel(cat),
-                            icon: activeCategoryDisplayIcon(cat)
-                        ) {
-                            HapticManager.shared.lightTap()
-                            withAnimation(Theme.Motion.snappy) {
-                                activeCategoryFilter = nil
-                                activeCustomCategoryFilter = nil
-                            }
-                        }
-                    }
-
-                    if let tag = activeTagFilter {
-                        activeFilterPill(
-                            label: Tag.displayForm(tag),
-                            icon: "tag.fill"
-                        ) {
-                            HapticManager.shared.lightTap()
-                            withAnimation(Theme.Motion.snappy) {
-                                activeTagFilter = nil
-                            }
-                        }
-                    }
-                }
-            }
-
-            if hasActiveChipFilter {
-                Button {
-                    HapticManager.shared.lightTap()
-                    withAnimation(Theme.Motion.snappy) {
-                        activeCategoryFilter = nil
-                        activeCustomCategoryFilter = nil
-                        activeTagFilter = nil
-                    }
-                } label: {
-                    Text("Clear")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.appPrimary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear all filters")
-            }
-        }
-    }
-
-    private func activeFilterPill(
-        label: String,
-        icon: String,
-        onRemove: @escaping () -> Void
-    ) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-            Text(label)
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .heavy))
-                    .padding(3)
-            }
-            .buttonStyle(.plain)
-        }
-        .foregroundColor(.white)
-        .padding(.leading, Theme.Spacing.md)
-        .padding(.trailing, Theme.Spacing.xs + 2)
-        .padding(.vertical, Theme.Spacing.xs + 2)
-        .background(Capsule().fill(Color.appPrimary))
-    }
-
-    /// Resolve display label for the active category pill. Custom categories
-    /// look up their user-given name; defaults use the rawValue.
-    private func activeCategoryDisplayLabel(_ category: Expense.Category) -> String {
-        if category == .custom, let id = activeCustomCategoryFilter,
-           let custom = categoryViewModel.customCategories.first(where: { $0.id == id }) {
-            return custom.name
-        }
-        return category.rawValue
-    }
-
-    private func activeCategoryDisplayIcon(_ category: Expense.Category) -> String {
-        if category == .custom, let id = activeCustomCategoryFilter,
-           let custom = categoryViewModel.customCategories.first(where: { $0.id == id }) {
-            return custom.icon
-        }
-        return category.icon
-    }
-
     private var resultSummaryRow: some View {
         let count = searchResults.count
-        // Refund-aware so the search summary matches the net amount the
-        // user would expect after a returned purchase.
-        let total = searchResults.reduce(0.0) { $0 + (($1.amount.isFinite ? $1.signedAmount : 0)) }
+        // Refund-aware net total, prebaked by the search task.
+        let total = resultNetTotal
         return HStack(spacing: Theme.Spacing.sm) {
             HStack(spacing: 4) {
                 Text("\(count)")
@@ -776,7 +537,7 @@ struct QuickSearchView: View {
                 Text(count == 1 ? "expense" : "expenses")
                     .font(.system(size: 13, weight: .semibold))
             }
-            .foregroundStyle(LinearGradient.appPrimaryDiagonal)
+            .foregroundColor(.appPrimary)
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.vertical, Theme.Spacing.xs + 2)
             .background(
@@ -794,8 +555,9 @@ struct QuickSearchView: View {
         }
     }
 
-    /// Group search results by relative date bucket.
-    private func groupedResults() -> [(title: String, expenses: [Expense])] {
+    /// Group ranked results by relative date bucket. Runs inside the
+    /// detached search task (never on the main thread per redraw).
+    nonisolated private static func groupResults(_ results: [Expense]) -> [(title: String, expenses: [Expense])] {
         let calendar = Calendar.current
         let now = Date()
         let startOfToday = calendar.startOfDay(for: now)
@@ -810,7 +572,7 @@ struct QuickSearchView: View {
         var thisWeek: [Expense] = []
         var earlier: [Expense] = []
 
-        for expense in searchResults {
+        for expense in results {
             if expense.date >= startOfToday {
                 today.append(expense)
             } else if expense.date >= startOfYesterday {
@@ -837,54 +599,27 @@ struct QuickSearchView: View {
         return VStack(spacing: Theme.Spacing.lg) {
             Spacer().frame(height: Theme.Spacing.xxl)
 
-            ZStack {
-                Circle()
-                    .fill(LinearGradient.appPrimarySoft)
-                    .frame(width: 80, height: 80)
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(LinearGradient.appPrimaryDiagonal)
-            }
+            Image(systemName: "text.magnifyingglass")
+                .font(.system(size: 36, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
 
             VStack(spacing: Theme.Spacing.xs + 2) {
-                if !trimmed.isEmpty {
-                    Text("No matches for \"\(trimmed)\"")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                } else {
-                    Text("Nothing matches your filters")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                }
+                // Post-Phase-1 the only narrowing input is typed
+                // text, so `trimmed` is always non-empty in this
+                // branch — but we keep the guard so a future caller
+                // doesn't crash on edge cases.
+                Text(trimmed.isEmpty ? "No matches" : "No matches for \"\(trimmed)\"")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
 
                 Text("Try a different word, a category name, an amount like \"\(viewModel.selectedCurrency.symbol)50\", or a tag like \"#travel\".")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, Theme.Spacing.xl)
-            }
-
-            if hasActiveChipFilter {
-                Button {
-                    HapticManager.shared.lightTap()
-                    withAnimation(Theme.Motion.snappy) {
-                        activeCategoryFilter = nil
-                        activeCustomCategoryFilter = nil
-                        activeTagFilter = nil
-                    }
-                } label: {
-                    Text("Clear filters")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, Theme.Spacing.lg)
-                        .padding(.vertical, Theme.Spacing.sm + 2)
-                        .background(Capsule().fill(Color.appPrimary))
-                }
-                .buttonStyle(.plain)
             }
 
             Spacer()
@@ -897,14 +632,10 @@ struct QuickSearchView: View {
         VStack(spacing: Theme.Spacing.lg) {
             Spacer().frame(height: Theme.Spacing.xxl)
 
-            ZStack {
-                Circle()
-                    .fill(LinearGradient.appPrimarySoft)
-                    .frame(width: 80, height: 80)
-                Image(systemName: "tray")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(LinearGradient.appPrimaryDiagonal)
-            }
+            Image(systemName: "tray")
+                .font(.system(size: 36, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
 
             VStack(spacing: Theme.Spacing.xs + 2) {
                 Text("Nothing to search yet")
@@ -972,11 +703,10 @@ struct QuickSearchView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
-        .padding(.vertical, Theme.Spacing.sm + 2)
-        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.md)
+        .padding(.horizontal, Theme.Spacing.md + 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondarySystemBackground)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
+        .contentShape(Rectangle())
     }
 
     /// Renders the expense title with the matched substring tinted in
@@ -1029,45 +759,95 @@ struct QuickSearchView: View {
 
     // MARK: - Search Logic
 
-    /// Single entry point for recomputing `searchResults`. Composes:
+    /// Pre-lowered searchable fields for one expense. The ranker only
+    /// ever compares against these, so `.lowercased()` runs once per
+    /// data snapshot instead of once per field per expense *per
+    /// keystroke*.
+    private struct SearchIndexEntry: Sendable {
+        let expense: Expense
+        let titleLower: String
+        let tagsLower: [String]
+        let notesLower: String?
+        /// Default-category raw value, lowered (this is "custom" for
+        /// custom-category expenses — kept so behavior matches the old
+        /// `rawValue.contains` check exactly).
+        let categoryLower: String
+        /// Resolved custom-category name, lowered. Nil for defaults.
+        let customNameLower: String?
+        let amountCents: Int
+    }
+
+    /// Everything the results UI needs, computed in one detached pass.
+    private struct SearchOutput: Sendable {
+        let results: [Expense]
+        let groups: [(title: String, expenses: [Expense])]
+        let netTotal: Double
+    }
+
+    /// (Re)build the search index off-main. Called from `.onReceive`
+    /// on the expenses publisher — once at presentation and again after
+    /// any save. If a query is active when a fresh index lands, it is
+    /// re-run so visible results always reflect current data.
+    private func rebuildIndex(expenses: [Expense]) {
+        indexTask?.cancel()
+        let customCategoriesSnapshot = categoryViewModel.customCategories
+        indexTask = Task { @MainActor in
+            let built = await Task.detached(priority: .userInitiated) {
+                Self.buildIndex(expenses: expenses, customCategories: customCategoriesSnapshot)
+            }.value
+            guard !Task.isCancelled else { return }
+            searchIndex = built
+            if isQueryActive {
+                performQuery(textChanged: false, instant: true)
+            }
+        }
+    }
+
+    nonisolated private static func buildIndex(
+        expenses: [Expense],
+        customCategories: [CustomCategory]
+    ) -> [SearchIndexEntry] {
+        let customNameById: [UUID: String] = Dictionary(
+            uniqueKeysWithValues: customCategories.map { ($0.id, $0.name.lowercased()) }
+        )
+        return expenses.map { e in
+            SearchIndexEntry(
+                expense: e,
+                titleLower: e.title.lowercased(),
+                tagsLower: (e.tags ?? []).map { $0.lowercased() },
+                notesLower: e.notes?.lowercased(),
+                categoryLower: e.category.rawValue.lowercased(),
+                customNameLower: e.customCategoryId.flatMap { customNameById[$0] },
+                amountCents: Int((e.amount * 100).rounded())
+            )
+        }
+    }
+
+    /// Single entry point for recomputing search state.
     ///
-    /// 1. **Direct chip filters** (`activeCategoryFilter`, `activeTagFilter`)
-    ///    — applied first, synchronously, so they feel instant.
-    /// 2. **Typed text query** — applied second, scored & ranked across the
-    ///    chip-filtered subset (or the whole expense list when no chip is
-    ///    active).
+    /// The only input is the typed text query. The ranker understands
+    /// `#tag`, `$50`, and date keywords through `rankedSearch`, so
+    /// power users keep every filtering primitive — expressed inline
+    /// in the query.
     ///
-    /// `instant: true` skips the 150ms typing debounce. Use it for explicit
-    /// user gestures (chip tap, recent-search tap, post-edit refresh) so they
-    /// never feel laggy. Plain typing still debounces.
+    /// `instant: true` skips the 150ms typing debounce. Use it for
+    /// explicit user gestures (Quick Tip tap, recent-search tap,
+    /// post-save refresh) so they never feel laggy. Plain typing
+    /// still debounces to keep the ranker off the keystroke path.
     private func performQuery(textChanged: Bool, instant: Bool) {
         searchTask?.cancel()
 
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasText = !trimmed.isEmpty
 
-        // Nothing's narrowing the list → clear results, swap back to browse.
-        guard hasText || hasActiveChipFilter else {
+        // No text → clear results, swap back to the browse view.
+        guard !trimmed.isEmpty else {
             searchResults = []
+            resultGroups = []
+            resultNetTotal = 0
             return
         }
 
-        // Pure chip filter, no text. Direct, synchronous, O(n). No debounce,
-        // no Task.detached — eliminates the 150ms "stutter" the user noticed.
-        if !hasText && hasActiveChipFilter {
-            let filtered = applyChipFilters(to: viewModel.expenses)
-                .sorted { $0.date > $1.date }
-            searchResults = filtered
-            return
-        }
-
-        // Text query (with or without chip filters). Debounced when typing,
-        // immediate for chip-driven taps. Always ranks off-main.
-        let expensesSnapshot = viewModel.expenses
-        let customCategoriesSnapshot = categoryViewModel.customCategories
-        let categoryFilter = activeCategoryFilter
-        let customCategoryFilter = activeCustomCategoryFilter
-        let tagFilter = activeTagFilter
+        let indexSnapshot = searchIndex
         let needsDebounce = textChanged && !instant
 
         searchTask = Task { @MainActor in
@@ -1076,70 +856,30 @@ struct QuickSearchView: View {
                 guard !Task.isCancelled else { return }
             }
 
-            let results = await Task.detached(priority: .userInitiated) {
-                let pre = Self.applyChipFilters(
-                    to: expensesSnapshot,
-                    category: categoryFilter,
-                    customCategoryId: customCategoryFilter,
-                    tag: tagFilter
-                )
-                return Self.rankedSearch(
-                    query: trimmed,
-                    expenses: pre,
-                    customCategories: customCategoriesSnapshot
+            let output = await Task.detached(priority: .userInitiated) {
+                let results = Self.rankedSearch(query: trimmed, index: indexSnapshot)
+                return SearchOutput(
+                    results: results,
+                    groups: Self.groupResults(results),
+                    netTotal: results.netTotal()
                 )
             }.value
 
             guard !Task.isCancelled else { return }
-            searchResults = results
+            searchResults = output.results
+            resultGroups = output.groups
+            resultNetTotal = output.netTotal
         }
     }
 
-    /// Synchronous, main-actor convenience: applies the *current* chip
-    /// filters to a list of expenses. Used for the no-text path so users
-    /// see chip-driven results without the async hop.
-    private func applyChipFilters(to expenses: [Expense]) -> [Expense] {
-        Self.applyChipFilters(
-            to: expenses,
-            category: activeCategoryFilter,
-            customCategoryId: activeCustomCategoryFilter,
-            tag: activeTagFilter
-        )
-    }
-
-    /// Pure version of `applyChipFilters` so it can run inside a
-    /// `Task.detached` without crossing actor boundaries.
-    nonisolated private static func applyChipFilters(
-        to expenses: [Expense],
-        category: Expense.Category?,
-        customCategoryId: UUID?,
-        tag: String?
-    ) -> [Expense] {
-        var base = expenses
-        if let cat = category {
-            if cat == .custom, let id = customCategoryId {
-                base = base.filter { $0.category == .custom && $0.customCategoryId == id }
-            } else {
-                base = base.filter { $0.category == cat }
-            }
-        }
-        if let tag {
-            base = base.filter { ($0.tags ?? []).contains(tag) }
-        }
-        return base
-    }
-
-    /// Score-based search. Higher scores mean better matches; ties break by
-    /// most-recent date so the most relevant *and* recent expenses win.
+    /// Score-based search over the prebuilt index. Higher scores mean
+    /// better matches; ties break by most-recent date so the most
+    /// relevant *and* recent expenses win.
     nonisolated private static func rankedSearch(
         query rawQuery: String,
-        expenses: [Expense],
-        customCategories: [CustomCategory]
+        index: [SearchIndexEntry]
     ) -> [Expense] {
         let lowered = rawQuery.lowercased()
-        let customNameById: [UUID: String] = Dictionary(
-            uniqueKeysWithValues: customCategories.map { ($0.id, $0.name.lowercased()) }
-        )
 
         // Tag-only mode: queries that begin with `#` only search tags.
         let isTagOnly = lowered.hasPrefix("#")
@@ -1153,6 +893,7 @@ struct QuickSearchView: View {
 
         // Amount mode: strip currency-y characters and try to parse a Double.
         let amountQuery: Double? = parseAmount(from: lowered)
+        let queryCents: Int? = amountQuery.map { Int(($0 * 100).rounded()) }
 
         struct Scored {
             let expense: Expense
@@ -1160,53 +901,43 @@ struct QuickSearchView: View {
         }
 
         var scored: [Scored] = []
-        scored.reserveCapacity(expenses.count)
+        scored.reserveCapacity(index.count)
 
-        for expense in expenses {
+        for entry in index {
             // Apply hard filters first.
-            if let dateRange, !(expense.date >= dateRange.start && expense.date < dateRange.end) {
+            if let dateRange, !(entry.expense.date >= dateRange.start && entry.expense.date < dateRange.end) {
                 continue
             }
             if let tagQuery {
-                guard let tags = expense.tags else { continue }
-                if !tags.contains(where: { $0.lowercased().contains(tagQuery) }) { continue }
+                if !entry.tagsLower.contains(where: { $0.contains(tagQuery) }) { continue }
             }
 
             var score = 0
-            let titleLower = expense.title.lowercased()
 
             // 1. Title prefix is the strongest signal.
-            if titleLower.hasPrefix(lowered) { score += 100 }
-            else if titleLower.contains(lowered) { score += 60 }
+            if entry.titleLower.hasPrefix(lowered) { score += 100 }
+            else if entry.titleLower.contains(lowered) { score += 60 }
 
             // 2. Tag match (any tag).
-            if let tags = expense.tags {
-                for tag in tags where tag.lowercased().contains(lowered) {
-                    score += 50
-                    break
-                }
+            if entry.tagsLower.contains(where: { $0.contains(lowered) }) {
+                score += 50
             }
 
             // 3. Category name (default + custom).
-            if expense.category.rawValue.lowercased().contains(lowered) {
+            if entry.categoryLower.contains(lowered) {
                 score += 40
-            } else if expense.category == .custom,
-                      let id = expense.customCategoryId,
-                      let customName = customNameById[id],
-                      customName.contains(lowered) {
+            } else if let customName = entry.customNameLower, customName.contains(lowered) {
                 score += 40
             }
 
             // 4. Notes.
-            if let notes = expense.notes?.lowercased(), notes.contains(lowered) {
+            if let notes = entry.notesLower, notes.contains(lowered) {
                 score += 25
             }
 
             // 5. Amount (numeric, exact-to-cents match).
-            if let amountQuery {
-                let cents = Int((expense.amount * 100).rounded())
-                let queryCents = Int((amountQuery * 100).rounded())
-                if cents == queryCents { score += 70 }
+            if let queryCents, entry.amountCents == queryCents {
+                score += 70
             }
 
             // 6. Date-only filter mode (no scored matches required) — include.
@@ -1220,7 +951,7 @@ struct QuickSearchView: View {
             }
 
             if score > 0 {
-                scored.append(Scored(expense: expense, score: score))
+                scored.append(Scored(expense: entry.expense, score: score))
             }
         }
 

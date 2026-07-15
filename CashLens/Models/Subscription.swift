@@ -1,6 +1,6 @@
 import Foundation
 
-struct Subscription: Identifiable, Codable {
+struct Subscription: Identifiable, Codable, Equatable {
     var id = UUID()
     var name: String
     var amount: Double
@@ -82,10 +82,57 @@ struct Subscription: Identifiable, Codable {
             return calendar.date(byAdding: .year, value: 1, to: date) ?? date
         }
     }
+
+    /// The first occurrence of this subscription's cycle strictly after
+    /// `referenceDate`, computed **from the `startDate` anchor** as
+    /// startDate + n·frequency (smallest n ≥ 1).
+    ///
+    /// Anchor-based advancement fixes the drift bug in the old
+    /// "add one frequency to the current due date" approach: a monthly
+    /// subscription anchored on Jan 31 used to become Feb 28 → Mar 28 →
+    /// Apr 28, permanently losing the billing day. Adding n months to
+    /// the anchor instead clamps only when the target month is short
+    /// (Feb 28/29) and returns to the 31st in longer months.
+    static func nextOccurrence(after referenceDate: Date, anchor: Date, frequency: Frequency, calendar: Calendar = .current) -> Date {
+        let (component, step): (Calendar.Component, Int) = {
+            switch frequency {
+            case .daily:     return (.day, 1)
+            case .weekly:    return (.weekOfYear, 1)
+            case .monthly:   return (.month, 1)
+            case .quarterly: return (.month, 3)
+            case .yearly:    return (.year, 1)
+            }
+        }()
+
+        // PERF: Estimate n from elapsed time instead of walking one cycle
+        // at a time — a years-old daily subscription would otherwise loop
+        // thousands of iterations. Start a couple of cycles early (the
+        // day-count intervals are approximations for month/quarter/year)
+        // and walk forward to the exact answer.
+        let elapsedDays = referenceDate.timeIntervalSince(anchor) / 86_400
+        var n = max(1, Int(elapsedDays / Double(frequency.daysInterval)) - 2)
+
+        var candidate = calendar.date(byAdding: component, value: n * step, to: anchor) ?? anchor
+        // Safety cap so a pathological calendar result can never spin
+        // forever; 1000 extra cycles is far beyond any real drift between
+        // the day-count estimate and calendar arithmetic.
+        var iterations = 0
+        while candidate <= referenceDate && iterations < 1000 {
+            n += 1
+            iterations += 1
+            candidate = calendar.date(byAdding: component, value: n * step, to: anchor) ?? candidate.addingTimeInterval(86_400)
+        }
+        return candidate
+    }
     
-    // Update next due date after creating an expense
+    /// Advance to the next due date after a payment. Anchor-based (see
+    /// `nextOccurrence`): the result is the first startDate-anchored
+    /// occurrence strictly after both the current due date and now, so
+    /// paying early advances exactly one cycle and paying an overdue
+    /// bill skips straight past all missed cycles to the next future one.
     mutating func updateNextDueDate() {
-        self.nextDueDate = Self.calculateNextDueDate(from: self.nextDueDate, frequency: self.frequency)
+        let reference = max(Date(), nextDueDate)
+        self.nextDueDate = Self.nextOccurrence(after: reference, anchor: startDate, frequency: frequency)
     }
     
     // Check if the subscription is due
@@ -243,23 +290,45 @@ extension Subscription {
             throw ImportError.parseError("Invalid CSV subscription format: expected 13 fields, got \(fields.count)")
         }
         
-        // Helper function to parse dates with multiple formats
+        // Helper function to parse dates with multiple formats.
+        //
+        // Order matters: the app's own exports (ISO 8601) must re-import
+        // on ANY device locale, so machine formats are tried first with a
+        // fixed `en_US_POSIX` locale — a style-based formatter in, say,
+        // an fr_FR locale would silently fail on "Jan 5, 2025" and a
+        // fixed-format parse without POSIX can be corrupted by 12/24-hour
+        // user overrides. The locale-aware style attempts stay last for
+        // human-edited files.
         func parseDate(_ dateString: String) -> Date? {
-            let dateFormatter = DateFormatter()
-            
-            // Try medium style first (matches export format)
-            dateFormatter.dateStyle = .medium
-            if let date = dateFormatter.date(from: dateString) {
+            // 1. ISO 8601 — what the app's JSON/CSV exports write.
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime]
+            if let date = iso.date(from: dateString) {
                 return date
             }
             
-            // Try other common formats
-            let formats = ["MMM d, yyyy", "yyyy-MM-dd", "MM/dd/yyyy"]
+            // 2. Fixed formats, locale-pinned so they parse identically
+            //    on every device.
+            let posixFormatter = DateFormatter()
+            posixFormatter.locale = Locale(identifier: "en_US_POSIX")
+            let formats = ["yyyy-MM-dd'T'HH:mm:ssXXXXX", "MMM d, yyyy", "yyyy-MM-dd", "MM/dd/yyyy"]
             for format in formats {
-                dateFormatter.dateFormat = format
-                if let date = dateFormatter.date(from: dateString) {
+                posixFormatter.dateFormat = format
+                if let date = posixFormatter.date(from: dateString) {
                     return date
                 }
+            }
+            
+            // 3. Locale-aware styles for files written/edited by hand in
+            //    the user's own locale (matches legacy in-locale exports).
+            let styleFormatter = DateFormatter()
+            styleFormatter.dateStyle = .medium
+            if let date = styleFormatter.date(from: dateString) {
+                return date
+            }
+            styleFormatter.dateStyle = .short
+            if let date = styleFormatter.date(from: dateString) {
+                return date
             }
             
             return nil
