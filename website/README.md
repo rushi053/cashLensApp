@@ -30,4 +30,7 @@ Output: `dist/`
 
 ## Privacy
 
-`public/privacy.html` is served at `/privacy.html` — keep this URL in App Store Connect.
+Canonical URL: **`https://cashlens.app/privacy`**  
+(`public/privacy.html` — also redirects from `/privacy.html`)
+
+Use that same URL in App Store Connect and in the iOS app. No separate GitHub Pages repo needed once the domain is live; optionally redirect `rushi053.github.io/CashLens/*` → `cashlens.app/*`.

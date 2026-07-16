@@ -15,7 +15,7 @@ struct AboutView: View {
 
     /// Same legal destinations as the paywall — Apple standard EULA for
     /// subscriptions, custom privacy page for the on-device story.
-    private static let privacyPolicyURL = URL(string: "https://rushi053.github.io/CashLens/privacy.html")!
+    private static let privacyPolicyURL = URL(string: "https://cashlens.app/privacy")!
     private static let termsOfUseURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
 
     private var versionString: String {
@@ -83,8 +83,8 @@ struct AboutView: View {
                             contactRow(
                                 icon: "globe",
                                 title: "Website",
-                                value: "rushi053.github.io/CashLens",
-                                url: "https://rushi053.github.io/CashLens/"
+                                value: "cashlens.app",
+                                url: "https://cashlens.app/"
                             )
                         }
                     }

@@ -201,7 +201,7 @@ struct PrivacyDashboardView: View {
 
     // MARK: - Plain-language note
 
-    private static let privacyPolicyURL = URL(string: "https://rushi053.github.io/CashLens/privacy.html")!
+    private static let privacyPolicyURL = URL(string: "https://cashlens.app/privacy")!
     private static let termsOfUseURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
 
     private var explanationNote: some View {

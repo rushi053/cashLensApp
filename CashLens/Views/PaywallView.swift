@@ -822,7 +822,7 @@ struct PaywallView: View {
     /// language (Guideline 3.1.2) is covered without depending on our
     /// custom terms page staying in sync.
     private static let termsOfUseURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
-    private static let privacyPolicyURL = URL(string: "https://rushi053.github.io/CashLens/privacy.html")!
+    private static let privacyPolicyURL = URL(string: "https://cashlens.app/privacy")!
 
     private var restoreAndTerms: some View {
         VStack(spacing: Theme.Spacing.md) {

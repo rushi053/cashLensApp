@@ -342,7 +342,7 @@ export default function App() {
             <h4>Legal</h4>
             <ul>
               <li>
-                <a href="/privacy.html">Privacy Policy</a>
+                <a href="/privacy">Privacy Policy</a>
               </li>
               <li>
                 <a

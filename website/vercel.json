@@ -1,5 +1,21 @@
 {
-  "rewrites": [{ "source": "/((?!privacy|images|assets).*)", "destination": "/index.html" }],
+  "redirects": [
+    {
+      "source": "/privacy.html",
+      "destination": "/privacy",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/((?!privacy(?:\\.html)?$|screenshots/|images/|assets/|favicon\\.svg|icons\\.svg).*)",
+      "destination": "/index.html"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
