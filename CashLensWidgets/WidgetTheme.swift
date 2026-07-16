@@ -42,8 +42,8 @@ struct WidgetTheme: Sendable {
 
     static let mauve = WidgetTheme(
         id: "mauve",
-        primaryLightHex: "#B48CF0",
-        primaryDarkHex: "#AA7DDC",
+        primaryLightHex: "#B1A1ED",
+        primaryDarkHex: "#A894E6",
         secondaryLightHex: "#6E96FF",
         secondaryDarkHex: "#7896EB"
     )

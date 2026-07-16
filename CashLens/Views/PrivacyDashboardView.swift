@@ -1,12 +1,16 @@
 import SwiftUI
 
-/// Privacy dashboard — pushed from "You → Privacy".
+/// Privacy dashboard — sheet from "You → Privacy".
 ///
 /// The app's #1 differentiator (everything is local, nothing phones
 /// home) rendered as verifiable facts instead of marketing copy:
 /// what's stored, how much space it takes, and the three zeros
 /// (servers, trackers, accounts). Calm tone, no scaremongering —
 /// this page should read like a receipt, not a pitch.
+///
+/// Presented as a sheet (not a nav push) so the You tab never hosts
+/// a root `UINavigationController` — that controller was the source
+/// of permanent tab-switch stutter after first visiting You.
 struct PrivacyDashboardView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @Environment(\.dismiss) private var dismiss
@@ -24,23 +28,26 @@ struct PrivacyDashboardView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: Theme.Spacing.xxl) {
-                heroCard
-                zerosStrip
-                storedOnDeviceGroup
-                controlsGroup
-                explanationNote
+        VStack(spacing: 0) {
+            SheetHeader(
+                title: "Privacy",
+                subtitle: "What's on this \(deviceName)",
+                onClose: { dismiss() }
+            )
+
+            ScrollView {
+                VStack(spacing: Theme.Spacing.xxl) {
+                    heroCard
+                    zerosStrip
+                    storedOnDeviceGroup
+                    controlsGroup
+                    explanationNote
+                }
+                .padding()
+                .padding(.bottom, Theme.Spacing.xl)
             }
-            .padding()
-            .padding(.bottom, Theme.Spacing.xl)
         }
         .background(Color.systemBackground)
-        .navigationTitle("Privacy")
-        .navigationBarTitleDisplayMode(.large)
-        // Parent tab root (You) hides its nav bar; pushed views must
-        // explicitly opt back in or the back button disappears.
-        .navigationBarHidden(false)
         .sheet(isPresented: $showingExportSheet) {
             ExportDataView()
                 .environmentObject(viewModel)
@@ -147,8 +154,8 @@ struct PrivacyDashboardView: View {
         }
     }
 
-    /// Status + a hop back to the toggle, which lives one level up on
-    /// the You tab (this page is pushed from right next to it).
+/// Status + dismiss back to You, where the App Lock toggle lives
+    /// next to this sheet's entry row.
     private var appLockStatusRow: some View {
         SettingsRow(
             icon: AppLockManager.unlockMethodSymbol,
@@ -194,16 +201,30 @@ struct PrivacyDashboardView: View {
 
     // MARK: - Plain-language note
 
-    private var explanationNote: some View {
-        HStack(alignment: .top, spacing: Theme.Spacing.sm + 2) {
-            Image(systemName: "info.circle.fill")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
+    private static let privacyPolicyURL = URL(string: "https://rushi053.github.io/CashLens/privacy.html")!
+    private static let termsOfUseURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
 
-            Text("CashLens has no servers and no analytics — the only connections are Apple's App Store for purchases and web links you tap yourself (like our privacy policy). Home Screen widgets you add can show totals outside the app. Because everything lives here, regular exports are your backup — there's no copy of your data anywhere else.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .lineSpacing(2)
+    private var explanationNote: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack(alignment: .top, spacing: Theme.Spacing.sm + 2) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+
+                Text("CashLens has no servers and no analytics — the only connections are Apple's App Store for purchases and web links you tap yourself. Home Screen widgets you add can show totals outside the app. Because everything lives here, regular exports are your backup — there's no copy of your data anywhere else.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineSpacing(2)
+            }
+
+            HStack(spacing: Theme.Spacing.sm) {
+                Link("Privacy Policy", destination: Self.privacyPolicyURL)
+                Text("·")
+                    .foregroundColor(.secondary.opacity(0.5))
+                Link("Terms of Use", destination: Self.termsOfUseURL)
+            }
+            .font(.caption.weight(.semibold))
+            .tint(.appPrimary)
         }
         .padding(.horizontal, Theme.Spacing.md)
     }
@@ -213,9 +234,7 @@ struct PrivacyDashboardView: View {
 
 struct PrivacyDashboardView_Previews: PreviewProvider {
     static var previews: some View {
-        NavigationView {
-            PrivacyDashboardView()
-                .environmentObject(ExpenseViewModel())
-        }
+        PrivacyDashboardView()
+            .environmentObject(ExpenseViewModel())
     }
 }

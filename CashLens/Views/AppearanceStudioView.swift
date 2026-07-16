@@ -410,17 +410,15 @@ struct AppearanceStudioView: View {
     private var matchingIconCard: some View {
         if let icon = matchingIcon {
             HStack(spacing: Theme.Spacing.md) {
-                if let ui = UIImage(named: icon.previewAssetName) {
-                    Image(uiImage: ui)
-                        .resizable()
-                        .interpolation(.high)
-                        .frame(width: 46, height: 46)
-                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-                        )
-                }
+                Image(icon.previewAssetName)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 46, height: 46)
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Complete the look")

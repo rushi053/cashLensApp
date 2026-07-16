@@ -263,9 +263,15 @@ struct MainTabView: View {
             }
 
             SwiftUI.Tab("You", systemImage: "person.crop.circle.fill", value: Tab.you) {
-                ProfileView()
-                    .environmentObject(viewModel)
-                    .id("you-\(themeId)")
+                // PERF: mount Profile only while You is selected.
+                // TabView keeps visited tab roots alive; Profile observes
+                // ~7 EnvironmentObjects + a large settings tree, so once
+                // mounted it re-diffed on every expenses/budgets/pro
+                // publish — permanently stuttering later tab transitions
+                // ("smooth until I open You"). Unmounting when hidden
+                // removes that fan-out; settings don't need to keep
+                // scroll position across tabs.
+                youTabRoot(themeId: themeId)
             }
         }
         .tint(.appPrimary)
@@ -358,10 +364,8 @@ struct MainTabView: View {
                         .tag(Tab.insights)
                         .id("insights-\(themeId)")
 
-                    ProfileView()
-                        .environmentObject(viewModel)
+                    youTabRoot(themeId: themeId)
                         .tag(Tab.you)
-                        .id("you-\(themeId)")
                 }
                 .environment(\.bulkSelectionBinding, $isBulkSelecting)
                 .animation(Theme.Motion.snappy, value: isBulkSelecting)
@@ -509,6 +513,23 @@ struct MainTabView: View {
 
     private func isIPad(_ geometry: GeometryProxy) -> Bool {
         return geometry.size.width > 768 || UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    /// You tab content — Profile is mounted only while selected so its
+    /// EnvironmentObject fan-out can't tax Today/Activity/Insights
+    /// transitions after the first visit.
+    @ViewBuilder
+    private func youTabRoot(themeId: String) -> some View {
+        Group {
+            if selectedTab == .you {
+                ProfileView()
+                    .environmentObject(viewModel)
+            } else {
+                Color.systemBackground
+                    .ignoresSafeArea()
+            }
+        }
+        .id("you-\(themeId)")
     }
 }
 

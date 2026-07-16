@@ -13,6 +13,11 @@ import SwiftUI
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
 
+    /// Same legal destinations as the paywall — Apple standard EULA for
+    /// subscriptions, custom privacy page for the on-device story.
+    private static let privacyPolicyURL = URL(string: "https://rushi053.github.io/CashLens/privacy.html")!
+    private static let termsOfUseURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
+
     private var versionString: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
@@ -78,17 +83,28 @@ struct AboutView: View {
                             contactRow(
                                 icon: "globe",
                                 title: "Website",
-                                value: "cashlens.app",
-                                url: "https://cashlens.app"
+                                value: "rushi053.github.io/CashLens",
+                                url: "https://rushi053.github.io/CashLens/"
                             )
                         }
                     }
 
                     sectionCard(title: "Privacy") {
-                        Text("CashLens stores your data only on your device. Nothing leaves your phone unless you ask it to (via export or backup). No accounts, no servers, no analytics that follow you around.")
-                            .font(.body)
-                            .foregroundColor(.primary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                            Text("CashLens stores your data only on your device. Nothing leaves your phone unless you ask it to (via export or backup). No accounts, no servers, no analytics.")
+                                .font(.body)
+                                .foregroundColor(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Link("Privacy Policy", destination: Self.privacyPolicyURL)
+                                Text("·")
+                                    .foregroundColor(.secondary.opacity(0.5))
+                                Link("Terms of Use", destination: Self.termsOfUseURL)
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .tint(.appPrimary)
+                        }
                     }
 
                     sectionCard(title: "Developer") {

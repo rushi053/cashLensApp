@@ -84,12 +84,15 @@ struct AppTheme: Identifiable, Hashable, Sendable {
     // MARK: - Catalog
 
     /// CashLens classic — original mauve & jordy blue. Default for all users.
+    /// `primaryLightHex` matches the handcrafted primary AppIcon swatch
+    /// (`#B1A1ED`) so the Appearance studio chip and Home Screen icon read
+    /// as the same colour.
     static let mauve = AppTheme(
         id: "mauve",
         displayName: "Mauve",
         tagline: "The CashLens classic",
-        primaryLightHex: "#B48CF0",
-        primaryDarkHex: "#AA7DDC",
+        primaryLightHex: "#B1A1ED",
+        primaryDarkHex: "#A894E6",
         secondaryLightHex: "#6E96FF",
         secondaryDarkHex: "#7896EB",
         matchingIconId: "primary"
@@ -173,7 +176,7 @@ struct AppTheme: Identifiable, Hashable, Sendable {
         primaryDarkHex: "#7E8694",
         secondaryLightHex: "#5A6170",
         secondaryDarkHex: "#A6ACB8",
-        matchingIconId: "monoDark"
+        matchingIconId: "graphite"
     )
 
     // MARK: - Pastel collection

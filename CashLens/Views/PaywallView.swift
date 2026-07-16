@@ -817,9 +817,11 @@ struct PaywallView: View {
 
     // MARK: - Restore & Terms
 
-    /// Live legal pages — the same site the App Store listing's
-    /// privacy-policy field points to.
-    private static let termsOfUseURL = URL(string: "https://rushi053.github.io/CashLens/terms.html")!
+    /// Privacy points at our custom on-device policy. Terms use Apple's
+    /// standard Licensed Application EULA so auto-renew subscription
+    /// language (Guideline 3.1.2) is covered without depending on our
+    /// custom terms page staying in sync.
+    private static let termsOfUseURL = URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!
     private static let privacyPolicyURL = URL(string: "https://rushi053.github.io/CashLens/privacy.html")!
 
     private var restoreAndTerms: some View {

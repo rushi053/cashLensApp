@@ -6,11 +6,12 @@ import SwiftUI
 /// `Assets.xcassets`. `nil` means the primary icon (`AppIcon`) — required by
 /// `UIApplication.setAlternateIconName(_:)` to clear back to the default.
 ///
-/// `previewAssetName` is the asset-catalog name used by the in-app picker to
-/// render a preview tile. Because the project is built with
-/// `ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES`, every appiconset
-/// is also addressable via `UIImage(named:)` so we don't need parallel
-/// imagesets.
+/// `previewAssetName` points at a **regular imageset** (`IconPreview-*`),
+/// not the appiconset. iOS 18+ made `UIImage(named:)` return `nil` for
+/// anything inside an `.appiconset` (Xcode 16 release notes / FB14052579),
+/// so the picker and Appearance studio need a parallel imageset copy to
+/// render the tile. The PNGs are the same art as the app icons; regenerating
+/// via `Scripts/generate_app_icons.swift` refreshes both.
 struct AppIconOption: Identifiable, Hashable, Sendable {
 
     let id: String
@@ -20,7 +21,7 @@ struct AppIconOption: Identifiable, Hashable, Sendable {
     /// primary icon configured in the asset catalog.
     let alternateName: String?
 
-    /// Asset-catalog image name used for the picker preview tile.
+    /// Asset-catalog **imageset** name used for in-app preview tiles.
     let previewAssetName: String
 
     var isPrimary: Bool { alternateName == nil }
@@ -31,56 +32,59 @@ struct AppIconOption: Identifiable, Hashable, Sendable {
         id: "primary",
         displayName: "Mauve",
         alternateName: nil,
-        previewAssetName: "AppIcon"
+        previewAssetName: "IconPreview-Mauve"
     )
 
     static let ocean = AppIconOption(
         id: "ocean",
         displayName: "Ocean",
         alternateName: "AppIcon-Ocean",
-        previewAssetName: "AppIcon-Ocean"
+        previewAssetName: "IconPreview-Ocean"
     )
 
     static let forest = AppIconOption(
         id: "forest",
         displayName: "Forest",
         alternateName: "AppIcon-Forest",
-        previewAssetName: "AppIcon-Forest"
+        previewAssetName: "IconPreview-Forest"
     )
 
     static let sunset = AppIconOption(
         id: "sunset",
         displayName: "Sunset",
         alternateName: "AppIcon-Sunset",
-        previewAssetName: "AppIcon-Sunset"
+        previewAssetName: "IconPreview-Sunset"
     )
 
     static let berry = AppIconOption(
         id: "berry",
         displayName: "Berry",
         alternateName: "AppIcon-Berry",
-        previewAssetName: "AppIcon-Berry"
+        previewAssetName: "IconPreview-Berry"
     )
 
+    /// Matches the Ink theme (`AppTheme.graphite` — persisted id kept
+    /// for existing users). Near-black + cream coin, same swatch as
+    /// `primaryLightHex` `#2C3038`.
     static let graphite = AppIconOption(
         id: "graphite",
-        displayName: "Graphite",
+        displayName: "Ink",
         alternateName: "AppIcon-Graphite",
-        previewAssetName: "AppIcon-Graphite"
+        previewAssetName: "IconPreview-Graphite"
     )
 
     static let monoLight = AppIconOption(
         id: "monoLight",
         displayName: "Mono Light",
         alternateName: "AppIcon-MonoLight",
-        previewAssetName: "AppIcon-MonoLight"
+        previewAssetName: "IconPreview-MonoLight"
     )
 
     static let monoDark = AppIconOption(
         id: "monoDark",
         displayName: "Mono Dark",
         alternateName: "AppIcon-MonoDark",
-        previewAssetName: "AppIcon-MonoDark"
+        previewAssetName: "IconPreview-MonoDark"
     )
 
     /// Display order in the picker grid.

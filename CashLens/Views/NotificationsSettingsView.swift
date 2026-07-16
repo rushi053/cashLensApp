@@ -1,7 +1,7 @@
 import SwiftUI
 import UserNotifications
 
-/// Notifications & Reminders hub — pushed from "You → Notifications".
+/// Notifications & Reminders hub — sheet from "You → Notifications".
 ///
 /// Owns all reminder schedules + the Smart Insights toggle so the
 /// Settings root stays calm and scannable instead of stacking 4–9
@@ -9,6 +9,10 @@ import UserNotifications
 /// per category (with the schedule sub-row appearing only when the
 /// toggle is on), plus a dedicated Smart Insights group at the
 /// bottom for the Pro feature.
+///
+/// Presented as a sheet (not a nav push) so the You tab never hosts
+/// a root `UINavigationController` — that controller was the source
+/// of permanent tab-switch stutter after first visiting You.
 ///
 /// State management:
 /// - All `@AppStorage` keys are the same ones `ProfileView` used to
@@ -20,6 +24,7 @@ import UserNotifications
 struct NotificationsSettingsView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var proManager: ProManager
+    @Environment(\.dismiss) private var dismiss
 
     // MARK: - Weekly digest
 
@@ -66,63 +71,66 @@ struct NotificationsSettingsView: View {
     // MARK: - Body
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: Theme.Spacing.xxl) {
-                introBlock
+        VStack(spacing: 0) {
+            SheetHeader(
+                title: "Notifications",
+                subtitle: "Reminders & insights",
+                onClose: { dismiss() }
+            )
 
-                SettingsGroup(title: "Reminders") {
-                    weeklyDigestToggleRow
-                    if weeklySummaryEnabled {
-                        scheduleRow(
-                            value: weeklySummaryScheduleText(),
-                            enabled: weeklySummaryEnabled
-                        ) {
-                            weeklyTempWeekday = weeklySummaryWeekday
-                            weeklyTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
-                            showingWeeklySchedule = true
+            ScrollView {
+                VStack(spacing: Theme.Spacing.xxl) {
+                    introBlock
+
+                    SettingsGroup(title: "Reminders") {
+                        weeklyDigestToggleRow
+                        if weeklySummaryEnabled {
+                            scheduleRow(
+                                value: weeklySummaryScheduleText(),
+                                enabled: weeklySummaryEnabled
+                            ) {
+                                weeklyTempWeekday = weeklySummaryWeekday
+                                weeklyTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
+                                showingWeeklySchedule = true
+                            }
+                        }
+
+                        monthlyDigestToggleRow
+                        if monthlyDigestEnabled {
+                            scheduleRow(
+                                value: monthlyDigestScheduleText(),
+                                enabled: monthlyDigestEnabled
+                            ) {
+                                monthlyTempDayOfMonth = monthlyDigestDayOfMonth
+                                monthlyTempTime = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
+                                showingMonthlySchedule = true
+                            }
+                        }
+
+                        backupReminderToggleRow
+                        if backupReminderEnabled {
+                            scheduleRow(
+                                value: backupReminderScheduleText(),
+                                enabled: backupReminderEnabled
+                            ) {
+                                backupTempDayOfMonth = backupReminderDayOfMonth
+                                backupTempTime = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
+                                showingBackupSchedule = true
+                            }
                         }
                     }
 
-                    monthlyDigestToggleRow
-                    if monthlyDigestEnabled {
-                        scheduleRow(
-                            value: monthlyDigestScheduleText(),
-                            enabled: monthlyDigestEnabled
-                        ) {
-                            monthlyTempDayOfMonth = monthlyDigestDayOfMonth
-                            monthlyTempTime = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
-                            showingMonthlySchedule = true
-                        }
+                    SettingsGroup(title: "Premium") {
+                        smartInsightsToggleRow
                     }
 
-                    backupReminderToggleRow
-                    if backupReminderEnabled {
-                        scheduleRow(
-                            value: backupReminderScheduleText(),
-                            enabled: backupReminderEnabled
-                        ) {
-                            backupTempDayOfMonth = backupReminderDayOfMonth
-                            backupTempTime = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
-                            showingBackupSchedule = true
-                        }
-                    }
+                    footerNote
                 }
-
-                SettingsGroup(title: "Premium") {
-                    smartInsightsToggleRow
-                }
-
-                footerNote
+                .padding()
+                .padding(.bottom, Theme.Spacing.xl)
             }
-            .padding()
-            .padding(.bottom, Theme.Spacing.xl)
         }
         .background(Color.systemBackground)
-        .navigationTitle("Notifications")
-        .navigationBarTitleDisplayMode(.large)
-        // Parent tab root (You) hides its nav bar; pushed views must
-        // explicitly opt back in or the back button disappears.
-        .navigationBarHidden(false)
         .sheet(isPresented: $showingWeeklySchedule) {
             weeklyScheduleSheet
         }

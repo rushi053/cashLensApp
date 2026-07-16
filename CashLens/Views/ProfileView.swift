@@ -15,7 +15,7 @@ import UserNotifications
 ///   7. **Manage** — navigation rows to dedicated managers (Budgets / Categories /
 ///      Subscriptions), each with a live count badge. Split off from General
 ///      because these are screens-of-data, not set-and-forget values.
-///   8. **Notifications** — a single nav row pushing `NotificationsSettingsView`.
+///   8. **Notifications** — a single row presenting `NotificationsSettingsView` as a sheet.
 ///   9. **Data** — Backup Health card + Export / Import / Clear.
 ///  10. **About** — Support / Rate / Restore Purchases (free users) / About +
 ///      community icon row + version footer.
@@ -25,9 +25,10 @@ import UserNotifications
 /// Pickers use `Menu` rather than inline accordions for native, glitch-free
 /// dropdowns.
 ///
-/// NOTE: the legacy sheet-from-Home presentation (X close button,
-/// `presentationMode` dismiss, UIKit "Profile" title) was removed —
-/// this view is only ever mounted as the tab root now.
+/// NOTE: no root `NavigationView`/`NavigationStack` — Privacy and
+/// Notifications are sheets (same as Budgets / Categories). A root
+/// nav controller under TabView caused permanent tab-switch stutter
+/// after the first visit to You.
 struct ProfileView: View {
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
@@ -57,10 +58,26 @@ struct ProfileView: View {
     @State private var showingThemePicker = false
     @State private var showingAppIconPicker = false
     @State private var showingSiriTips = false
+    @State private var showingPrivacy = false
+    @State private var showingNotifications = false
 
     /// Shown when enabling App Lock fails its required authentication
     /// (no passcode set, or the user cancelled the prompt).
     @State private var showingAppLockEnableFailed = false
+
+    /// Cached badge / backup-card numbers. PERF: reading
+    /// `viewModel.expenses.count` / filtering budgets & subscriptions
+    /// inside `body` re-walked those arrays on every EnvironmentObject
+    /// invalidation — including while You was off-screen after the
+    /// first visit. Refresh only on appear + targeted publishes.
+    @State private var cachedExpenseCount: Int = 0
+    @State private var cachedActiveBudgetCount: Int = 0
+    @State private var cachedActiveSubCount: Int = 0
+    @State private var cachedCustomCategoryCount: Int = 0
+    /// Gates badge-cache refreshes while this view is on screen.
+    /// MainTabView also unmounts Profile when You isn't selected —
+    /// this is a second line of defense for sheet presentations.
+    @State private var isYouVisible = false
 
     /// Restore Purchases (About section, free users only). The row is
     /// the standard escape hatch for "I paid on my old phone" — it
@@ -111,102 +128,126 @@ struct ProfileView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: Theme.Spacing.xxl) {
-                    // In-content page title — same treatment as
-                    // Today/Activity/Insights. The UIKit large-title
-                    // bar is hidden below because its expand/settle
-                    // layout re-ran on every tab switch, stuttering
-                    // the tab bar's selection animation — the exact
-                    // bug fixed for Activity earlier.
-                    HStack {
-                        Text("You")
-                            .font(Theme.Typography.pageTitle)
-                            .foregroundColor(.primary)
-                        Spacer()
-                    }
-                    .padding(.top, Theme.Spacing.sm)
+        // PERF: NO root `NavigationView` / `NavigationStack`.
+        // TabView keeps visited tabs mounted for the session. A root
+        // nav controller on You stayed alive after the first visit and
+        // re-laid out on every later tab switch — the exact "smooth
+        // until I open You, then everything stutters" report. Privacy
+        // and Notifications are sheets (same pattern as Budgets /
+        // Categories / Subscriptions), so no UINavigationController
+        // lives under the tab bar. Matches Insights, which never had
+        // a nav wrapper for the same reason.
+        ScrollView {
+            VStack(spacing: Theme.Spacing.xxl) {
+                HStack {
+                    Text("You")
+                        .font(Theme.Typography.pageTitle)
+                        .foregroundColor(.primary)
+                    Spacer()
+                }
+                .padding(.top, Theme.Spacing.sm)
 
-                    profileHeader
-                    proSection
-                    backupBanner
-                    generalSection
-                    privacySection
-                    personalizationSection
-                    manageSection
-                    notificationsSection
-                    dataSection
-                    aboutSection
-                    versionFooter
-                }
-                .padding()
-                .padding(.bottom, Theme.Spacing.xl)
+                profileHeader
+                proSection
+                backupBanner
+                generalSection
+                privacySection
+                personalizationSection
+                manageSection
+                notificationsSection
+                dataSection
+                aboutSection
+                versionFooter
             }
-            .navigationTitle("")
-            // No UIKit nav bar at the root (in-content title above).
-            // Pushed children (Privacy, Notifications) re-show the bar
-            // with their own titles + back button, per-view as always.
-            .navigationBarHidden(true)
-            .background(Color.systemBackground)
-            .alert(item: $activeAlert) { alert in
-                switch alert {
-                case .clearAllData:
-                    return Alert(
-                        title: Text("Clear All Data"),
-                        message: Text("Are you sure you want to delete ALL your data? This includes expenses, subscriptions, custom categories, and deleted category preferences. This action cannot be undone."),
-                        primaryButton: .destructive(Text("Delete All")) {
-                            withAnimation {
-                                viewModel.clearAllData()
-                            }
-                            HapticManager.shared.heavyTap()
-                        },
-                        secondaryButton: .cancel()
-                    )
-                }
-            }
-            .onAppear {
-                tempUserName = viewModel.userName
-                reloadBackupMetadata()
-            }
-            // NOTE: no `.onChange(of: showingExportSheet)` reload —
-            // `ExportDataView` posts `.backupMetadataDidChange` the
-            // moment a backup completes (handled below), so reloading
-            // again on sheet open/close was pure duplicate work.
-            // PERF: Previously this listened to **every**
-            // `UserDefaults.didChangeNotification` app-wide. Any
-            // unrelated default write — currency change, theme bump,
-            // draft autosave on AddExpense, draft autosave on
-            // QuickSearch recents, summary preferences toggle, smart
-            // insight history, even the digest scheduler's last-fire
-            // timestamp — caused a full re-read of backup metadata
-            // from UserDefaults while Profile was mounted. We use
-            // `backupMetadataDidChange` (posted explicitly by
-            // `BackupExporter` / `BackupImporter` whenever they touch
-            // the backup keys) so only meaningful events trigger a
-            // refresh.
-            .onReceive(NotificationCenter.default.publisher(for: .backupMetadataDidChange)) { _ in
-                reloadBackupMetadata()
-            }
-            .sheet(isPresented: $showingCurrencyPicker) {
-                CurrencyPickerView(viewModel: viewModel)
-            }
-            .sheet(isPresented: $showingPaywall) {
-                PaywallView()
-            }
-            .sheet(isPresented: $showingThemePicker) {
-                AppearanceStudioView()
-                    .environmentObject(themeStore)
-                    .environmentObject(proManager)
-                    .environmentObject(appIconStore)
-                    .environmentObject(viewModel)
-            }
-            .sheet(isPresented: $showingAppIconPicker) {
-                AppIconPickerView()
-                    .environmentObject(appIconStore)
-                    .environmentObject(proManager)
+            .padding()
+            .padding(.bottom, Theme.Spacing.xl)
+        }
+        .background(Color.systemBackground)
+        .alert(item: $activeAlert) { alert in
+            switch alert {
+            case .clearAllData:
+                return Alert(
+                    title: Text("Clear All Data"),
+                    message: Text("Are you sure you want to delete ALL your data? This includes expenses, subscriptions, custom categories, and deleted category preferences. This action cannot be undone."),
+                    primaryButton: .destructive(Text("Delete All")) {
+                        withAnimation {
+                            viewModel.clearAllData()
+                        }
+                        HapticManager.shared.heavyTap()
+                    },
+                    secondaryButton: .cancel()
+                )
             }
         }
+        .onAppear {
+            isYouVisible = true
+            tempUserName = viewModel.userName
+            reloadBackupMetadata()
+            refreshBadgeCaches()
+        }
+        .onDisappear {
+            isYouVisible = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .backupMetadataDidChange)) { _ in
+            reloadBackupMetadata()
+        }
+        // Keep Manage-row badges current without walking arrays inside
+        // `body`. Skip while You is off-screen so a save on Today
+        // doesn't re-diff the entire settings tree mid tab-switch.
+        .onReceive(viewModel.$expenses) { expenses in
+            guard isYouVisible else { return }
+            let count = expenses.count
+            if count != cachedExpenseCount { cachedExpenseCount = count }
+        }
+        .onReceive(budgetViewModel.$budgets) { _ in
+            guard isYouVisible else { return }
+            let count = budgetViewModel.activeBudgets.count
+            if count != cachedActiveBudgetCount { cachedActiveBudgetCount = count }
+        }
+        .onReceive(subscriptionViewModel.$subscriptions) { _ in
+            guard isYouVisible else { return }
+            let count = subscriptionViewModel.activeSubscriptionsCount
+            if count != cachedActiveSubCount { cachedActiveSubCount = count }
+        }
+        .onReceive(categoryViewModel.$customCategories) { cats in
+            guard isYouVisible else { return }
+            let count = cats.count
+            if count != cachedCustomCategoryCount { cachedCustomCategoryCount = count }
+        }
+        .sheet(isPresented: $showingCurrencyPicker) {
+            CurrencyPickerView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
+        }
+        .sheet(isPresented: $showingThemePicker) {
+            AppearanceStudioView()
+                .environmentObject(themeStore)
+                .environmentObject(proManager)
+                .environmentObject(appIconStore)
+                .environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showingAppIconPicker) {
+            AppIconPickerView()
+                .environmentObject(appIconStore)
+                .environmentObject(proManager)
+        }
+        .sheet(isPresented: $showingPrivacy) {
+            PrivacyDashboardView()
+                .environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showingNotifications) {
+            NotificationsSettingsView()
+                .environmentObject(viewModel)
+                .environmentObject(proManager)
+        }
+    }
+
+    private func refreshBadgeCaches() {
+        cachedExpenseCount = viewModel.expenses.count
+        cachedActiveBudgetCount = budgetViewModel.activeBudgets.count
+        cachedActiveSubCount = subscriptionViewModel.activeSubscriptionsCount
+        cachedCustomCategoryCount = categoryViewModel.customCategories.count
     }
 
     /// Pulls the latest backup metadata into `@State` so the banner + Backup
@@ -597,20 +638,18 @@ struct ProfileView: View {
     }
 
     private var privacyDashboardRow: some View {
-        NavigationLink {
-            PrivacyDashboardView()
-                .environmentObject(viewModel)
-        } label: {
-            SettingsRow(
-                icon: "hand.raised.fill",
-                title: "Privacy",
-                showsChevron: true,
-                style: .bare
-            ) {
-                SettingsRowValue(text: "On-device")
-            }
+        SettingsRow(
+            icon: "hand.raised.fill",
+            title: "Privacy",
+            showsChevron: true,
+            style: .bare
+        ) {
+            SettingsRowValue(text: "On-device")
         }
-        .buttonStyle(.plain)
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            showingPrivacy = true
+        }
     }
 
     // MARK: - Manage
@@ -658,8 +697,8 @@ struct ProfileView: View {
             // Live count badge — matches the Budgets ("N active") and
             // Categories ("N custom") rows so all three Manage rows
             // answer "is there anything in here?" without a tap.
-            if subscriptionViewModel.activeSubscriptionsCount > 0 {
-                Text("\(subscriptionViewModel.activeSubscriptionsCount) active")
+            if cachedActiveSubCount > 0 {
+                Text("\(cachedActiveSubCount) active")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -676,8 +715,8 @@ struct ProfileView: View {
     /// existing swipe-to-delete + restore flow.
     private var categoriesRow: some View {
         SettingsRow(icon: "square.grid.2x2.fill", title: "Categories", style: .bare) {
-            if !categoryViewModel.customCategories.isEmpty {
-                Text("\(categoryViewModel.customCategories.count) custom")
+            if cachedCustomCategoryCount > 0 {
+                Text("\(cachedCustomCategoryCount) custom")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -727,8 +766,8 @@ struct ProfileView: View {
 
     private var budgetManagementRow: some View {
         SettingsRow(icon: "target", title: "Manage Budgets", style: .bare) {
-            if !budgetViewModel.activeBudgets.isEmpty {
-                Text("\(budgetViewModel.activeBudgets.count) active")
+            if cachedActiveBudgetCount > 0 {
+                Text("\(cachedActiveBudgetCount) active")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -797,17 +836,15 @@ struct ProfileView: View {
                         Text(appIconStore.currentIcon.displayName)
                             .font(.subheadline)
                             .foregroundColor(.secondary)
-                        if let ui = UIImage(named: appIconStore.currentIcon.previewAssetName) {
-                            Image(uiImage: ui)
-                                .resizable()
-                                .interpolation(.high)
-                                .frame(width: 22, height: 22)
-                                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                                )
-                        }
+                        Image(appIconStore.currentIcon.previewAssetName)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 22, height: 22)
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                            )
                     } else {
                         proLockChip
                     }
@@ -841,26 +878,23 @@ struct ProfileView: View {
     /// Single nav row that hides the 4–9 reminder + insight rows
     /// behind a focused sub-page. The trailing value shows the live
     /// "N active" count so the state is glanceable without opening
-    /// the sub-page; tapping pushes the dedicated
-    /// `NotificationsSettingsView` where every toggle + schedule
-    /// lives.
+    /// the sub-page; tapping presents the dedicated
+    /// `NotificationsSettingsView` sheet (no root nav push — see
+    /// the body PERF note).
     private var notificationsSection: some View {
         SettingsGroup(title: "Notifications") {
-            NavigationLink {
-                NotificationsSettingsView()
-                    .environmentObject(viewModel)
-                    .environmentObject(proManager)
-            } label: {
-                SettingsRow(
-                    icon: "bell.fill",
-                    title: "Reminders & Insights",
-                    showsChevron: true,
-                    style: .bare
-                ) {
-                    SettingsRowValue(text: activeNotificationsLabel)
-                }
+            SettingsRow(
+                icon: "bell.fill",
+                title: "Reminders & Insights",
+                showsChevron: true,
+                style: .bare
+            ) {
+                SettingsRowValue(text: activeNotificationsLabel)
             }
-            .buttonStyle(.plain)
+            .onTapGesture {
+                HapticManager.shared.lightTap()
+                showingNotifications = true
+            }
         }
     }
 
@@ -1201,7 +1235,7 @@ struct ProfileView: View {
 
                 backupStatDivider
 
-                backupStatCell(title: "Expenses", value: "\(viewModel.expenses.count)")
+                backupStatCell(title: "Expenses", value: "\(cachedExpenseCount)")
             }
 
             if status != .good {

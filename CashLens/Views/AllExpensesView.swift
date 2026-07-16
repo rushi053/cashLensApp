@@ -782,8 +782,35 @@ struct AllExpensesView: View {
         return "\(totalMatchCount) \(noun) totaling \(viewModel.formattedAmount(totalNetAmount))"
     }
 
+    /// Wraps Activity content in `NavigationView` only when this
+    /// screen is presented as a sheet / deep-link (needs Back +
+    /// toolbar). As the tab root, returns content bare so no
+    /// `UINavigationController` sits under the tab bar for the
+    /// rest of the session.
+    @ViewBuilder
+    private func activityNavContainer<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if isRootTab {
+            content()
+        } else {
+            NavigationView {
+                content()
+            }
+            .if(isIPad) { view in
+                view.navigationViewStyle(StackNavigationViewStyle())
+            }
+        }
+    }
+
     var body: some View {
-        NavigationView {
+        // PERF: as the Activity tab root, skip `NavigationView`
+        // entirely. TabView keeps visited tabs mounted — a hidden
+        // UINavigationController still re-lays out on every tab
+        // switch (same permanent-stutter class as the old You-tab
+        // nav wrapper). Sheet / deep-link presentations keep the
+        // NavigationView so Back + toolbar still work.
+        activityNavContainer {
             ZStack {
                 Color.systemBackground.edgesIgnoringSafeArea(.all)
                 
@@ -839,10 +866,7 @@ struct AllExpensesView: View {
                     // v2 nav fix: as the Activity tab root the screen
                     // draws its own in-content page title (same
                     // treatment as Today and Insights) instead of a
-                    // UIKit large-title bar. The legacy NavigationView
-                    // large title was the only one of the four tabs
-                    // whose chrome re-laid itself out on every tab
-                    // switch — the "different animation" on Activity.
+                    // UIKit large-title bar.
                     if isRootTab && !isIPad {
                         activityPageHeader
                             .opacity(animateContent ? 1 : 0)
@@ -905,9 +929,7 @@ struct AllExpensesView: View {
             .navigationBarTitleDisplayMode(.inline)
             // Hidden on iPad (custom header above) AND as the tab
             // root, where the in-content `activityPageHeader` draws
-            // the title. The old UIKit large-title bar re-ran its
-            // expand/settle layout on every tab switch — the one tab
-            // whose appearance visibly animated.
+            // the title.
             .navigationBarHidden(isIPad || isRootTab)
             .toolbar {
                 if !isIPad && !isRootTab {
@@ -1024,9 +1046,6 @@ struct AllExpensesView: View {
                     recomputePending = true
                 }
             }
-        }
-        .if(isIPad) { view in
-            view.navigationViewStyle(StackNavigationViewStyle())
         }
         .sheet(item: $selectedExpense) { expense in
             AddExpenseView(

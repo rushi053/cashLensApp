@@ -198,31 +198,20 @@ struct AppIconPickerView: View {
         .buttonStyle(.plain)
     }
 
-    /// Loads the icon image from the asset catalog. Falls back to a neutral
-    /// placeholder if the asset is missing — defensive so we don't crash if
-    /// the build settings get out of sync with the picker catalog.
+    /// Loads the icon preview from its dedicated **imageset**
+    /// (`IconPreview-*`). Appiconsets themselves can't be read via
+    /// `UIImage(named:)` / `Image(_:)` on iOS 18+ — Apple returns nil
+    /// and asks apps to keep a parallel imageset for in-app display.
     private func iconImage(_ icon: AppIconOption, size: CGFloat, cornerRadius: CGFloat) -> some View {
-        Group {
-            if let ui = UIImage(named: icon.previewAssetName) {
-                Image(uiImage: ui)
-                    .resizable()
-                    .interpolation(.high)
-            } else {
+        Image(icon.previewAssetName)
+            .resizable()
+            .interpolation(.high)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.tertiarySystemBackground)
-                    .overlay(
-                        Image(systemName: "questionmark.app.dashed")
-                            .font(.system(size: size * 0.35, weight: .semibold))
-                            .foregroundColor(.secondary)
-                    )
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
-        )
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+            )
     }
 
     // MARK: - Pro CTA / Notices
