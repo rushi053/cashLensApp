@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
 import { useReveal } from "./hooks/useReveal";
-import { InsightsPhone, PrivacyPhone, TodayPhone } from "./components/Phones";
 
-const APP_STORE =
-  "https://apps.apple.com/us/app/cashlens/id6743153951";
+const APP_STORE = "https://apps.apple.com/us/app/cashlens/id6743153951";
 
 function Reveal({
   className = "",
@@ -20,13 +18,39 @@ function Reveal({
   );
 }
 
+function Shot({
+  src,
+  alt,
+}: {
+  src: string;
+  alt: string;
+}) {
+  return (
+    <div className="shot">
+      <img src={src} alt={alt} loading="lazy" decoding="async" />
+    </div>
+  );
+}
+
+const mosaic = [
+  { src: "/screenshots/2.jpg", caption: "Summary always at a glance" },
+  { src: "/screenshots/3.jpg", caption: "Quickly add expenses" },
+  { src: "/screenshots/5.jpg", caption: "Stop paying for what you don’t use" },
+  { src: "/screenshots/6.jpg", caption: "Calendar view of your month" },
+  { src: "/screenshots/7.jpg", caption: "Widgets, Siri & Shortcuts" },
+  { src: "/screenshots/8.jpg", caption: "Visual spending habits" },
+  { src: "/screenshots/9.jpg", caption: "See where every cent goes" },
+  { src: "/screenshots/10.jpg", caption: "Dark mode for the owls" },
+  { src: "/screenshots/11.jpg", caption: "Insights you’ll actually use" },
+];
+
 export default function App() {
   return (
     <div className="site">
       <nav className="nav" aria-label="Primary">
         <div className="nav-inner">
           <a className="brand" href="#top">
-            <img src="/images/app-icon.png" alt="" width={28} height={28} />
+            <img src="/images/app-icon.png" alt="" width={30} height={30} />
             CashLens
           </a>
           <div className="nav-links">
@@ -42,191 +66,156 @@ export default function App() {
       </nav>
 
       <header className="hero" id="top">
-        <div className="hero-grain" aria-hidden="true" />
-        <div className="hero-grid">
+        <div className="hero-inner">
           <div className="hero-copy">
-            <p className="hero-brand">
-              <span>CashLens</span>
-            </p>
-            <h1>See your spending clearly — privately.</h1>
+            <p className="hero-brand">CashLens</p>
+            <h1>Am I on track today?</h1>
             <p className="hero-sub">
-              A calm expense tracker with no accounts, no cloud, and no
-              analytics. Your money stays on your iPhone.
+              Privacy-first expense tracking for iPhone. No accounts, no cloud,
+              no ads — just a clear read on your money.
             </p>
             <div className="cta-row">
-              <a className="btn-primary" href={APP_STORE} target="_blank" rel="noreferrer">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <a className="btn btn-dark" href={APP_STORE} target="_blank" rel="noreferrer">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path d="M18.71 19.5C17.88 20.74 17 21.95 15.66 21.97C14.32 22 13.89 21.18 12.37 21.18C10.84 21.18 10.37 21.95 9.09997 22C7.78997 22.05 6.79997 20.68 5.95997 19.47C4.24997 16.97 2.93997 12.45 4.69997 9.39C5.56997 7.87 7.12997 6.91 8.81997 6.88C10.1 6.86 11.32 7.75 12.11 7.75C12.89 7.75 14.37 6.68 15.92 6.84C16.57 6.87 18.39 7.1 19.56 8.82C19.47 8.88 17.39 10.1 17.41 12.63C17.44 15.65 20.06 16.66 20.09 16.67C20.06 16.74 19.67 18.11 18.71 19.5ZM13 3.5C13.73 2.67 14.94 2.04 15.94 2C16.07 3.17 15.6 4.35 14.9 5.19C14.21 6.04 13.09 6.7 11.95 6.61C11.8 5.46 12.36 4.26 13 3.5Z" />
                 </svg>
                 Download on the App Store
               </a>
-              <a className="btn-ghost" href="#privacy">
-                Why private matters
+              <a className="btn btn-lavender" href="#privacy">
+                Why it’s private
               </a>
             </div>
           </div>
-          <div className="hero-stage">
-            <TodayPhone />
+          <div className="hero-shot">
+            <img
+              src="/screenshots/1.jpg"
+              alt="CashLens budgets screen — Am I on track today?"
+              fetchPriority="high"
+            />
           </div>
         </div>
       </header>
 
-      <section className="privacy" id="privacy">
-        <div className="section privacy-layout">
-          <Reveal>
-            <p className="section-kicker">Privacy by architecture</p>
-            <h2 className="section-title">Zero servers. Zero trackers. Zero accounts.</h2>
-            <p className="section-lead">
-              CashLens doesn’t sync your expenses to the cloud, doesn’t profile
-              how you spend, and never asks you to sign up. The only network
-              path is Apple’s App Store for purchases — plus links you open
-              yourself.
-            </p>
-            <ul className="trust-list">
-              <li>
-                <i>✓</i>
-                <span>On-device storage with optional Face ID App Lock</span>
-              </li>
-              <li>
-                <i>✓</i>
-                <span>Works offline — airplane mode included</span>
-              </li>
-              <li>
-                <i>✓</i>
-                <span>Full export & backup whenever you want</span>
-              </li>
-              <li>
-                <i>✓</i>
-                <span>App Store privacy label: Data Not Collected</span>
-              </li>
-            </ul>
+      <section className="band band-ink" id="privacy">
+        <div className="wrap split">
+          <Reveal className="split-copy">
+            <div className="band-head">
+              <p className="kicker">Privacy</p>
+              <h2>100% local. No accounts. No ads.</h2>
+              <p className="lead">
+                Your expenses never leave this iPhone. No CashLens servers, no
+                analytics, no sign-up — App Store privacy label: Data Not Collected.
+              </p>
+              <div className="chips">
+                <span className="chip">0 servers</span>
+                <span className="chip">0 trackers</span>
+                <span className="chip">0 accounts</span>
+                <span className="chip">Face ID lock</span>
+              </div>
+            </div>
           </Reveal>
           <Reveal>
-            <div className="mini-phone-wrap">
-              <PrivacyPhone />
-            </div>
+            <Shot src="/screenshots/4.jpg" alt="CashLens privacy dashboard" />
           </Reveal>
         </div>
       </section>
 
-      <section className="features" id="features">
-        <div className="section">
-          <Reveal>
-            <p className="section-kicker">Built for daily clarity</p>
-            <h2 className="section-title">Everything you need. Nothing that watches you.</h2>
-            <p className="section-lead">
-              Fast logging, calm insights, bills you won’t forget — designed to
-              respect your attention.
-            </p>
+      <section className="band band-lavender">
+        <div className="wrap split reverse">
+          <Reveal className="split-copy">
+            <div className="band-head">
+              <p className="kicker">Today</p>
+              <h2>Summary always at a glance</h2>
+              <p className="lead">
+                Totals, top categories, a week spark, and recent spends — so you
+                know where you stand in seconds.
+              </p>
+            </div>
           </Reveal>
-          <div className="feature-rail">
-            {[
-              {
-                icon: "◎",
-                title: "Today verdict",
-                body: "Open the app and know if you’re on track — daily pace, recent spends, and a clear pulse on your week.",
-              },
-              {
-                icon: "☰",
-                title: "Activity that stays tidy",
-                body: "Search, calendar, tags, bulk edit, and refunds. Find any expense without spreadsheet pain.",
-              },
-              {
-                icon: "◔",
-                title: "Insights & forecasts",
-                body: "Category breakdowns, trends, heatmaps — plus Pro forecasts with subscription cashflow overlay.",
-              },
-              {
-                icon: "↻",
-                title: "Bills & subscriptions",
-                body: "Track renewals, pause when needed, and get reminded before money leaves your account.",
-              },
-              {
-                icon: "▢",
-                title: "Widgets & Siri",
-                body: "Home Screen and Lock Screen widgets. Log with Shortcuts — without opening the app.",
-              },
-              {
-                icon: "⌁",
-                title: "Receipts on-device",
-                body: "Scan or attach receipts with on-device OCR. Archive backups include your photos.",
-              },
-            ].map((f) => (
-              <Reveal key={f.title}>
-                <article className="feature">
-                  <div className="feature-icon" aria-hidden="true">
-                    {f.icon}
-                  </div>
-                  <h3>{f.title}</h3>
-                  <p>{f.body}</p>
-                </article>
+          <Reveal>
+            <Shot src="/screenshots/2.jpg" alt="CashLens Today summary" />
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="band band-lime">
+        <div className="wrap split">
+          <Reveal className="split-copy">
+            <div className="band-head">
+              <p className="kicker">Subscriptions</p>
+              <h2>Stop paying for what you don’t use</h2>
+              <p className="lead">
+                See monthly burn, what’s due soon, and mark renewals paid —
+                before they surprise you.
+              </p>
+            </div>
+          </Reveal>
+          <Reveal>
+            <Shot src="/screenshots/5.jpg" alt="CashLens subscriptions" />
+          </Reveal>
+        </div>
+      </section>
+
+      <section className="band band-paper" id="features">
+        <div className="wrap">
+          <Reveal>
+            <div className="band-head">
+              <p className="kicker">Everything in CashLens</p>
+              <h2>Built for real daily money habits</h2>
+              <p className="lead">
+                Budgets, activity, insights, widgets, and dark mode — the same
+                screens you’ll see in the App Store.
+              </p>
+            </div>
+          </Reveal>
+          <div className="mosaic">
+            {mosaic.map((item) => (
+              <Reveal key={item.src}>
+                <figure className="tile">
+                  <img src={item.src} alt={item.caption} loading="lazy" decoding="async" />
+                  <figcaption>{item.caption}</figcaption>
+                </figure>
               </Reveal>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="showcase" id="product">
-        <div className="section">
-          <Reveal>
-            <p className="section-kicker">Product</p>
-            <h2 className="section-title">Designed to feel quiet and expensive.</h2>
+      <section className="band band-lavender">
+        <div className="wrap split reverse">
+          <Reveal className="split-copy">
+            <div className="band-head">
+              <p className="kicker">Insights</p>
+              <h2>See where every cent goes</h2>
+              <p className="lead">
+                Category breakdowns, forecasts, and highlights — calm charts
+                without the spreadsheet noise.
+              </p>
+            </div>
           </Reveal>
-
-          <div className="showcase-block">
-            <Reveal className="showcase-copy">
-              <h3 className="section-title" style={{ fontSize: "clamp(1.7rem, 3vw, 2.3rem)" }}>
-                Know where the month went
-              </h3>
-              <p className="section-lead">
-                Beautiful charts without the dashboard noise. Payment methods,
-                categories, and tags help you spot habits — still entirely on
-                your device.
-              </p>
-            </Reveal>
-            <Reveal>
-              <div className="mini-phone-wrap">
-                <InsightsPhone />
-              </div>
-            </Reveal>
-          </div>
-
-          <div className="showcase-block reverse">
-            <Reveal className="showcase-copy">
-              <h3 className="section-title" style={{ fontSize: "clamp(1.7rem, 3vw, 2.3rem)" }}>
-                Budgets that nudge — never nag
-              </h3>
-              <p className="section-lead">
-                Category and weekly budgets with clear progress. Alerts at 80%
-                and 100%. Pro themes and alternate icons make it feel like your
-                app.
-              </p>
-            </Reveal>
-            <Reveal>
-              <div className="mini-phone-wrap">
-                <TodayPhone />
-              </div>
-            </Reveal>
-          </div>
+          <Reveal>
+            <Shot src="/screenshots/9.jpg" alt="CashLens category insights" />
+          </Reveal>
         </div>
       </section>
 
-      <section className="pricing" id="pro">
-        <div className="section">
+      <section className="band band-paper" id="pro">
+        <div className="wrap">
           <Reveal>
-            <p className="section-kicker">Pricing</p>
-            <h2 className="section-title">Generous free. Pro when you want more.</h2>
-            <p className="section-lead">
-              Unlimited tracking, widgets, Siri, App Lock, and full export stay
-              free. Upgrade for budgets, OCR, forecasts, and polish.
-            </p>
+            <div className="band-head">
+              <p className="kicker">Pricing</p>
+              <h2>Generous free. Pro when you want more.</h2>
+              <p className="lead">
+                Unlimited tracking, widgets, Siri, App Lock, and export stay free.
+              </p>
+            </div>
           </Reveal>
           <div className="price-grid">
             <Reveal>
               <div className="price">
-                <p className="price-tag">Free forever</p>
+                <p className="tag">Free forever</p>
                 <h3>CashLens</h3>
-                <p className="amount">
+                <p className="amt">
                   $0 <small>/ always</small>
                 </p>
                 <ul>
@@ -234,32 +223,31 @@ export default function App() {
                   <li>Today, Activity & basic Insights</li>
                   <li>Subscriptions & reminders</li>
                   <li>Widgets, Siri & App Lock</li>
-                  <li>JSON / CSV / archive export</li>
+                  <li>Full export & backup</li>
                 </ul>
               </div>
             </Reveal>
             <Reveal>
               <div className="price featured">
-                <p className="price-tag">Most popular</p>
+                <p className="tag">Most popular</p>
                 <h3>CashLens Pro</h3>
-                <p className="amount">
+                <p className="amt">
                   $19.99 <small>/ year</small>
                 </p>
                 <ul>
                   <li>7-day free trial</li>
                   <li>Budgets & smart alerts</li>
                   <li>Receipt OCR & PDF reports</li>
-                  <li>Advanced insights & forecasts</li>
+                  <li>Forecasts & advanced insights</li>
                   <li>Themes, icons & Pro widgets</li>
-                  <li>CSV import from other apps</li>
                 </ul>
               </div>
             </Reveal>
             <Reveal>
               <div className="price">
-                <p className="price-tag">Pay once</p>
+                <p className="tag">Pay once</p>
                 <h3>Lifetime</h3>
-                <p className="amount">
+                <p className="amt">
                   $39.99 <small>/ forever</small>
                 </p>
                 <ul>
@@ -271,42 +259,30 @@ export default function App() {
               </div>
             </Reveal>
           </div>
-          <Reveal>
-            <p className="section-lead" style={{ marginTop: 24 }}>
-              Also available monthly at $2.99. Tip jar supporters can earn Pro
-              through Coffee / Lunch / Fuel donations.
-            </p>
-          </Reveal>
         </div>
       </section>
 
-      <section className="faq" id="faq">
-        <div className="section">
+      <section className="band band-paper" id="faq">
+        <div className="wrap">
           <Reveal>
-            <p className="section-kicker">FAQ</p>
-            <h2 className="section-title">Straight answers.</h2>
+            <div className="band-head">
+              <p className="kicker">FAQ</p>
+              <h2>Straight answers</h2>
+            </div>
           </Reveal>
           <div className="faq-list">
             {[
               {
                 q: "Does CashLens connect to my bank?",
-                a: "No. There’s no Plaid, no bank login, and no automatic sync. You enter expenses (or import a CSV). That’s how we keep your finances private.",
+                a: "No. No Plaid, no bank login, no automatic sync. You enter expenses or import a CSV — that’s how we keep your finances private.",
               },
               {
                 q: "Where is my data stored?",
-                a: "Only on your device — including the App Group used by widgets. There’s no CashLens server copy. Export regularly if you want an off-phone backup.",
+                a: "Only on your device. There’s no CashLens cloud copy. Export anytime if you want an off-phone backup.",
               },
               {
-                q: "Can I use it offline?",
-                a: "Yes. Logging, budgets, insights, and history all work without a network. Purchases use the App Store when you choose to buy Pro.",
-              },
-              {
-                q: "What’s included for free?",
-                a: "Unlimited expense tracking, subscriptions, basic insights, widgets, Siri, App Lock, and full export/backup. Pro adds budgets, receipt OCR, forecasts, themes, and more.",
-              },
-              {
-                q: "Is there a free trial?",
-                a: "Yes — CashLens Pro monthly and yearly include a 7-day free trial via the App Store. Cancel anytime in Subscriptions settings.",
+                q: "What’s free vs Pro?",
+                a: "Free includes unlimited tracking, subscriptions, widgets, Siri, App Lock, and export. Pro adds budgets, receipt OCR, forecasts, themes, and more. Yearly includes a 7-day free trial.",
               },
             ].map((item) => (
               <Reveal key={item.q}>
@@ -321,24 +297,24 @@ export default function App() {
       </section>
 
       <section className="final">
-        <div className="section">
-          <Reveal>
-            <h2 className="section-title">Your money. Your device. Your lens.</h2>
-            <p className="section-lead">
-              Download CashLens and start tracking in seconds — no account
-              required.
-            </p>
-            <div className="cta-row">
-              <a className="btn-primary" href={APP_STORE} target="_blank" rel="noreferrer">
-                Download on the App Store
-              </a>
-            </div>
-          </Reveal>
-        </div>
+        <Reveal>
+          <h2>Your money. Your device. Your lens.</h2>
+          <p className="lead">
+            Download CashLens and start in seconds — no account required.
+          </p>
+          <div className="cta-row">
+            <a className="btn btn-dark" href={APP_STORE} target="_blank" rel="noreferrer">
+              Download on the App Store
+            </a>
+            <a className="btn btn-lime" href="#features">
+              See the screens
+            </a>
+          </div>
+        </Reveal>
       </section>
 
       <footer className="footer">
-        <div className="footer-inner">
+        <div className="footer-grid">
           <div>
             <div className="footer-brand">CashLens</div>
             <p>
@@ -374,7 +350,7 @@ export default function App() {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Terms of Use (EULA)
+                  Terms of Use
                 </a>
               </li>
               <li>
