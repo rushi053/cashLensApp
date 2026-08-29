@@ -12,7 +12,7 @@
       "destination": "/privacy.html"
     },
     {
-      "source": "/((?!privacy(?:\\.html)?$|screenshots/|images/|assets/|alf/|favicon\\.svg|icons\\.svg).*)",
+      "source": "/((?!privacy(?:\\.html)?$|screenshots/|images/|assets/|favicon\\.svg|icons\\.svg).*)",
       "destination": "/index.html"
     }
   ],
