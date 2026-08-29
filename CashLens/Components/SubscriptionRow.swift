@@ -142,7 +142,9 @@ struct SubscriptionRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(subscription.name), \(subscription.formattedAmount), \(statusText)")
-        .accessibilityHint("Tap to edit. Long-press for more actions.")
+        .accessibilityHint(showMarkAsPaid
+            ? "Tap to edit. Use Mark paid, or long-press for more actions."
+            : "Tap to edit. Long-press for more actions. Mark paid appears when this bill is due today or overdue.")
     }
 
     // MARK: - Pieces

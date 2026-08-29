@@ -458,7 +458,24 @@ struct SubscriptionsView: View {
             } else {
                 rows(for: subs)
             }
+
+            markPaidHint
         }
+    }
+
+    /// Users were writing in after the redesign because Mark paid only
+    /// appears on due/overdue rows — pause/edit/delete still look like
+    /// the only actions. One quiet line under the list, always visible
+    /// whenever there are subscriptions.
+    private var markPaidHint: some View {
+        Text("Mark paid appears when a bill is due today or overdue. Long-press a row for more.")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, Theme.Spacing.sm)
+            .accessibilityLabel("Mark paid appears when a bill is due today or overdue. Long-press a row for more actions.")
     }
 
     private func rows(for subs: [Subscription]) -> some View {

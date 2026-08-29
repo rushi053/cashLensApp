@@ -32,9 +32,15 @@ enum UserDefaultsKeys {
     static let quickSearchRecents = "quick_search_recents"
     
     // MARK: - Feedback
+    /// Legacy (pre-2.0): permanent "never ask again" flag. Read once for
+    /// migration in `FeedbackManager`, never written anymore.
     static let hasRequestedFeedback = "hasRequestedFeedback"
     static let successfulActionsCount = "successfulActionsCount"
     static let lastFeedbackAttempt = "lastFeedbackAttempt"
+    static let feedbackPromptCount = "feedbackPromptCount"
+    static let feedbackUsageDayCount = "feedbackUsageDayCount"
+    static let feedbackLastUsageDay = "feedbackLastUsageDay"
+    static let feedbackLegacyMigrated = "feedbackLegacyMigrated"
     
     // MARK: - Notifications
     static let weeklySummaryEnabled = "weeklySummaryEnabled"

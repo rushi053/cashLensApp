@@ -490,6 +490,10 @@ struct ExportDataView: View {
                     self.showingShareSheet = true
                     Self.recordBackup(format: self.exportFormat)
                     self.refreshBackupMetadata()
+                    // A successful backup is a moment of clear value — good
+                    // time to (politely) ask for a rating. The prompt renders
+                    // under this sheet and becomes visible once it closes.
+                    FeedbackManager.shared.registerDelightMoment()
                 } else {
                     self.alertMessage = "We couldn't create the export file. Make sure CashLens has enough storage and try again."
                 }

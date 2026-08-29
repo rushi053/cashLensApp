@@ -1,0 +1,2909 @@
+{
+  "schema": {
+    "version": "2.0",
+    "minimumReaderVersion": "2.0",
+    "exportedAt": "2026-07-16T14:01:00Z",
+    "appVersion": "2.0.0 (6)",
+    "device": "Screenshot Demo"
+  },
+  "data": {
+    "expenses": [
+      {
+        "id": "235a99ee-62e7-5b8f-b5ac-79db07e0abd2",
+        "title": "Trader Joe's Snack",
+        "amount": 6.49,
+        "currency": "USD",
+        "date": "2026-07-16T18:10:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "quick"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "38275b52-cef4-5665-a1c7-eed7ce3c859a",
+        "title": "Sweetgreen",
+        "amount": 14.8,
+        "currency": "USD",
+        "date": "2026-07-16T12:35:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "notes": "Harvest bowl",
+        "tags": [
+          "lunch",
+          "work"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "9041a349-ac78-5d58-9617-2989d6e961a1",
+        "title": "Uber",
+        "amount": 11.2,
+        "currency": "USD",
+        "date": "2026-07-16T09:05:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "5ab5ca74-658a-5a29-9880-73aa0ca5ea42",
+        "title": "Blue Bottle Coffee",
+        "amount": 5.45,
+        "currency": "USD",
+        "date": "2026-07-16T08:12:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "notes": "Oat latte",
+        "tags": [
+          "coffee",
+          "morning"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "c95e9e5a-2a30-5df2-9346-478a78506bdf",
+        "title": "Thai Basil",
+        "amount": 38.9,
+        "currency": "USD",
+        "date": "2026-07-15T19:45:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "notes": "Dinner with Alex",
+        "tags": [
+          "dinner",
+          "date"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "96cf8684-fcf9-5984-9bf6-28122533e8be",
+        "title": "Trader Joe's",
+        "amount": 72.4,
+        "currency": "USD",
+        "date": "2026-07-15T17:40:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly",
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "4e601e40-a50c-5c78-97b1-6679c0ada8cf",
+        "title": "CVS Pharmacy",
+        "amount": 18.75,
+        "currency": "USD",
+        "date": "2026-07-15T11:15:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "7bbe7964-b6a7-5fb8-b497-9ee0ec159f78",
+        "title": "Shell Gas",
+        "amount": 48.2,
+        "currency": "USD",
+        "date": "2026-07-15T08:20:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "4e636cce-5dcd-5d40-8454-b64ec4ee0bab",
+        "title": "Lyft",
+        "amount": 9.8,
+        "currency": "USD",
+        "date": "2026-07-14T21:10:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "night"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "4d92c951-e571-55f0-88bc-98137be39545",
+        "title": "Target",
+        "amount": 54.3,
+        "currency": "USD",
+        "date": "2026-07-14T16:20:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "88472d22-1919-5361-86d0-802225895d8b",
+        "title": "Chipotle",
+        "amount": 12.65,
+        "currency": "USD",
+        "date": "2026-07-14T13:05:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "969f80c9-3041-5bea-a1dd-13616bae09ab",
+        "title": "Whole Foods",
+        "amount": 86.15,
+        "currency": "USD",
+        "date": "2026-07-13T18:30:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "2ea4a028-9be8-581f-81eb-117438aa814f",
+        "title": "Amazon",
+        "amount": 29.99,
+        "currency": "USD",
+        "date": "2026-07-13T14:00:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home",
+          "order"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "4707db3c-41c9-5c75-9f7e-fdcef7afdfcf",
+        "title": "Starbucks",
+        "amount": 6.25,
+        "currency": "USD",
+        "date": "2026-07-13T08:40:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "cb130686-72a5-51f1-9c7b-20c3c9aed8f2",
+        "title": "Uber",
+        "amount": 16.4,
+        "currency": "USD",
+        "date": "2026-07-12T22:05:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "night"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "571d22b5-d3a9-51ad-8ba8-26fdd9f33f1d",
+        "title": "Cinema Snacks",
+        "amount": 14.5,
+        "currency": "USD",
+        "date": "2026-07-12T19:40:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "058e6d1a-8339-5f38-8b35-096a6072ac52",
+        "title": "AMC Movies",
+        "amount": 32.0,
+        "currency": "USD",
+        "date": "2026-07-12T19:15:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend",
+          "fun"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "5c8edc0f-771e-532a-b3b9-a3fb2f8184a6",
+        "title": "Petco",
+        "amount": 41.2,
+        "currency": "USD",
+        "date": "2026-07-11T15:00:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "pets"
+        ],
+        "paymentMethod": "debit",
+        "customCategoryId": "2d5c4346-341e-5b15-a019-c47c51568d2c"
+      },
+      {
+        "id": "6e4fb697-75cb-54ee-b23d-6b7e62192e1e",
+        "title": "Shake Shack",
+        "amount": 15.9,
+        "currency": "USD",
+        "date": "2026-07-11T12:50:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "e24b4ad7-b742-5dbb-bbef-25695faceb61",
+        "title": "Local Roasters",
+        "amount": 4.75,
+        "currency": "USD",
+        "date": "2026-07-11T08:15:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee",
+          "morning"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "2d23b717-053c-5b96-a5bb-2ea43d112d9f",
+        "title": "Olive Garden",
+        "amount": 46.8,
+        "currency": "USD",
+        "date": "2026-07-10T19:20:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "family"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "986ebac9-4a43-5e4f-aa43-3e827d52b310",
+        "title": "Barber Shop",
+        "amount": 35.0,
+        "currency": "USD",
+        "date": "2026-07-10T11:00:00Z",
+        "category": "Other",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "selfcare"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "2f2e0c06-e941-5b2e-97f9-94335bd2ede0",
+        "title": "City Parking",
+        "amount": 8.0,
+        "currency": "USD",
+        "date": "2026-07-10T10:30:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "wallet"
+      },
+      {
+        "id": "b2517d34-2232-55e6-9c01-d76c75c0de8e",
+        "title": "Lyft",
+        "amount": 13.44,
+        "currency": "USD",
+        "date": "2026-07-09T10:14:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "b6990562-c9d7-55cb-8969-7e3c145fcd5e",
+        "title": "Uber",
+        "amount": 11.5,
+        "currency": "USD",
+        "date": "2026-07-09T09:07:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "e54ec5cc-a7f4-5cbd-b734-9498804ed5f1",
+        "title": "Adobe Creative Cloud",
+        "amount": 59.99,
+        "currency": "USD",
+        "date": "2026-07-09T09:00:00Z",
+        "category": "Other",
+        "isFromSubscription": true,
+        "isRefund": false,
+        "tags": [
+          "subscription"
+        ],
+        "paymentMethod": "credit",
+        "subscriptionId": "52ab4077-d190-53aa-9f8a-fba4a9c82d38"
+      },
+      {
+        "id": "0d0b01a9-c2a6-503d-bac5-99c20be96b38",
+        "title": "Blue Bottle Coffee",
+        "amount": 5.67,
+        "currency": "USD",
+        "date": "2026-07-08T12:28:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee",
+          "morning"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "b3685699-e3f3-51be-8441-96ec9a61acad",
+        "title": "Starbucks",
+        "amount": 5.85,
+        "currency": "USD",
+        "date": "2026-07-08T11:21:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "bfbe1996-4c0f-5ecd-9452-f3431685e8ed",
+        "title": "YouTube Premium",
+        "amount": 13.99,
+        "currency": "USD",
+        "date": "2026-07-08T09:00:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": true,
+        "isRefund": false,
+        "tags": [
+          "subscription"
+        ],
+        "paymentMethod": "credit",
+        "subscriptionId": "50725a69-15b9-5fee-88fd-b5d36dda488c"
+      },
+      {
+        "id": "b9fe21e8-47f3-5666-b474-c5cd6759574b",
+        "title": "Sweetgreen",
+        "amount": 16.91,
+        "currency": "USD",
+        "date": "2026-07-07T14:42:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch",
+          "work"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "abe9a71c-e586-590d-a252-0cea9b0f7774",
+        "title": "Chipotle",
+        "amount": 14.26,
+        "currency": "USD",
+        "date": "2026-07-07T13:35:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "adc7b735-6b88-5c96-b84a-4da26d87f334",
+        "title": "Whole Foods",
+        "amount": 72.22,
+        "currency": "USD",
+        "date": "2026-07-06T16:56:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "c9f6cd6e-6580-58cb-9b92-c5a39564bfc8",
+        "title": "Trader Joe's",
+        "amount": 56.32,
+        "currency": "USD",
+        "date": "2026-07-06T15:49:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "e4c0959b-5130-5881-b172-0e1442ca6d2d",
+        "title": "Fitness Club",
+        "amount": 49.0,
+        "currency": "USD",
+        "date": "2026-07-06T09:00:00Z",
+        "category": "Health",
+        "isFromSubscription": true,
+        "isRefund": false,
+        "tags": [
+          "subscription"
+        ],
+        "paymentMethod": "credit",
+        "subscriptionId": "7c6ee497-e4b4-5274-a51d-5dff8a037acb"
+      },
+      {
+        "id": "f2dda2bd-a2d1-5b22-ab8f-e6b946fa982f",
+        "title": "Shell Gas",
+        "amount": 46.8,
+        "currency": "USD",
+        "date": "2026-07-05T19:17:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "cbf15bf2-493b-54ef-8975-0f083f325141",
+        "title": "Target",
+        "amount": 42.0,
+        "currency": "USD",
+        "date": "2026-07-05T18:10:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "0243e9fc-6ff0-5d97-97e9-4c2a9f21d5b8",
+        "title": "Amazon",
+        "amount": 26.3,
+        "currency": "USD",
+        "date": "2026-07-05T17:03:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "order"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "4bc4de77-cc17-5f21-bf09-37d3f280af5d",
+        "title": "Netflix snack run",
+        "amount": 9.68,
+        "currency": "USD",
+        "date": "2026-07-04T10:38:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "night"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "fec18b9a-14e2-5295-b7d7-cbb1bab3ebb4",
+        "title": "Pharmacy — Refill",
+        "amount": 24.64,
+        "currency": "USD",
+        "date": "2026-07-04T09:31:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "b9d52230-6bd2-5f7a-a243-231db4b28410",
+        "title": "Spotify Family",
+        "amount": 16.99,
+        "currency": "USD",
+        "date": "2026-07-04T09:00:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": true,
+        "isRefund": false,
+        "tags": [
+          "subscription"
+        ],
+        "paymentMethod": "credit",
+        "subscriptionId": "6a2d53b6-f102-5c9a-8175-07b22614151f"
+      },
+      {
+        "id": "3479c141-a308-523c-b26d-cee0d03987b5",
+        "title": "CVS Pharmacy",
+        "amount": 17.5,
+        "currency": "USD",
+        "date": "2026-07-04T08:24:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "750f2c79-e5c2-593f-8834-d5f949d35932",
+        "title": "Uber Eats — Sushi",
+        "amount": 29.76,
+        "currency": "USD",
+        "date": "2026-07-03T12:52:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "delivery"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "585f3803-3bee-50bc-aa87-8998baeaca06",
+        "title": "DoorDash — Tacos",
+        "amount": 22.54,
+        "currency": "USD",
+        "date": "2026-07-03T11:45:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "delivery"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "dbe7aae2-0862-575f-a83f-abd761550be2",
+        "title": "Bookshop",
+        "amount": 18.72,
+        "currency": "USD",
+        "date": "2026-07-02T14:06:00Z",
+        "category": "Education",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "books"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "b4c4f7e2-3780-5de6-b019-bb6091e982c8",
+        "title": "Apple App",
+        "amount": 4.99,
+        "currency": "USD",
+        "date": "2026-07-02T13:59:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "apps"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "cb0cf28f-0b21-5b81-8721-832296bda0f0",
+        "title": "Netflix",
+        "amount": 15.49,
+        "currency": "USD",
+        "date": "2026-07-02T09:00:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": true,
+        "isRefund": false,
+        "tags": [
+          "subscription"
+        ],
+        "paymentMethod": "credit",
+        "subscriptionId": "78bb3238-8135-593c-b097-45b0a2fa1071"
+      },
+      {
+        "id": "5e9d1aa0-c175-5063-a591-836a8f3dc488",
+        "title": "Dry Cleaning",
+        "amount": 31.36,
+        "currency": "USD",
+        "date": "2026-07-01T16:20:00Z",
+        "category": "Other",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "chores"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "21931298-a834-5234-9f7c-8b605b857889",
+        "title": "Coursera",
+        "amount": 52.92,
+        "currency": "USD",
+        "date": "2026-07-01T15:13:00Z",
+        "category": "Education",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "learning"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "f91e5c23-9ffd-5bfd-ae61-92389d00f14d",
+        "title": "iCloud+",
+        "amount": 2.99,
+        "currency": "USD",
+        "date": "2026-07-01T09:00:00Z",
+        "category": "Utilities",
+        "isFromSubscription": true,
+        "isRefund": false,
+        "tags": [
+          "subscription"
+        ],
+        "paymentMethod": "credit",
+        "subscriptionId": "4af10b90-a33c-5fc2-afa8-6a066ffa6a33"
+      },
+      {
+        "id": "de3c3137-6b1f-5dcd-b002-b79f53d1ba7c",
+        "title": "Internet Bill",
+        "amount": 64.4,
+        "currency": "USD",
+        "date": "2026-06-30T18:34:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "654a8caf-1cb9-5951-8a37-122d9f3166c2",
+        "title": "Electric Bill",
+        "amount": 80.96,
+        "currency": "USD",
+        "date": "2026-06-30T17:27:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "bcea94d8-63fc-5282-9ef9-b4edda680d70",
+        "title": "Phone Bill",
+        "amount": 81.6,
+        "currency": "USD",
+        "date": "2026-06-29T19:41:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "78ecb8e9-01c9-57d6-b33a-70017d8cd8c2",
+        "title": "Metro Card",
+        "amount": 33.0,
+        "currency": "USD",
+        "date": "2026-06-29T08:48:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "transit"
+        ],
+        "paymentMethod": "wallet"
+      },
+      {
+        "id": "e0388458-2556-507e-b64a-61741b832d06",
+        "title": "Nike",
+        "amount": 99.68,
+        "currency": "USD",
+        "date": "2026-06-28T11:09:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "clothes"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "e0b3d154-34ad-5877-ba3b-41f4b40007b7",
+        "title": "H&M",
+        "amount": 60.48,
+        "currency": "USD",
+        "date": "2026-06-28T10:02:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "clothes"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "3db8b261-a9bc-5c97-8c87-348787c583a9",
+        "title": "Apartment Utilities Split",
+        "amount": 140.0,
+        "currency": "USD",
+        "date": "2026-06-28T10:00:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills",
+          "home"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "60ba5717-72a3-5d1a-a574-3d17ef781daa",
+        "title": "Parking Garage",
+        "amount": 18.72,
+        "currency": "USD",
+        "date": "2026-06-28T09:55:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "c3f73320-2999-5287-be46-9fd520f21825",
+        "title": "Yoga Class",
+        "amount": 21.12,
+        "currency": "USD",
+        "date": "2026-06-27T14:30:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fitness"
+        ],
+        "paymentMethod": "wallet"
+      },
+      {
+        "id": "af90b8ec-b2cd-5174-ab80-7ad83dac5d79",
+        "title": "Vet Visit Copay",
+        "amount": 59.8,
+        "currency": "USD",
+        "date": "2026-06-27T13:23:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "pets",
+          "health"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "dc4942f1-781d-5bd5-89e4-fc7010850e0e",
+        "title": "Petco",
+        "amount": 31.68,
+        "currency": "USD",
+        "date": "2026-06-27T12:16:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "pets"
+        ],
+        "paymentMethod": "debit",
+        "customCategoryId": "2d5c4346-341e-5b15-a019-c47c51568d2c"
+      },
+      {
+        "id": "5804978c-4c6b-5c79-a6c6-53c654b9194a",
+        "title": "Spotify merch",
+        "amount": 29.12,
+        "currency": "USD",
+        "date": "2026-06-26T16:44:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fun"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "7aea1ffb-d243-5dc6-a622-aba00d74f7e7",
+        "title": "Concert Ticket",
+        "amount": 75.0,
+        "currency": "USD",
+        "date": "2026-06-26T15:37:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend",
+          "fun"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "4b637f09-1404-5dd1-b5d5-ed7fa67912f2",
+        "title": "Anniversary Dinner",
+        "amount": 128.0,
+        "currency": "USD",
+        "date": "2026-06-25T20:15:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "notes": "Special night out",
+        "tags": [
+          "dinner",
+          "date"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "54180054-c6ce-5263-9630-a32ed4d1bddc",
+        "title": "Airbnb cleaning fee",
+        "amount": 50.4,
+        "currency": "USD",
+        "date": "2026-06-25T18:58:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "9450e615-eb74-5574-baf9-4fbbc1a6a358",
+        "title": "Airport Lounge snack",
+        "amount": 17.28,
+        "currency": "USD",
+        "date": "2026-06-25T17:51:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "ee47a1fd-73a1-5043-a8c5-30e1464b71cf",
+        "title": "Hotel — City Weekend",
+        "amount": 166.32,
+        "currency": "USD",
+        "date": "2026-06-24T19:05:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend",
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "6d35a6e1-5004-5716-b789-36962bea03e3",
+        "title": "Flight seat upgrade",
+        "amount": 45.08,
+        "currency": "USD",
+        "date": "2026-06-24T08:12:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "1684bc85-07ab-5033-983c-2d46e276edec",
+        "title": "Bakery",
+        "amount": 9.75,
+        "currency": "USD",
+        "date": "2026-06-23T10:26:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "aa2a0193-0b06-50ef-8bba-251722fcbfc7",
+        "title": "Farmers Market",
+        "amount": 27.36,
+        "currency": "USD",
+        "date": "2026-06-23T09:19:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fresh"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "2efa71f4-32fa-5ba4-8755-2ffe3edd1f34",
+        "title": "Birthday Gift",
+        "amount": 43.2,
+        "currency": "USD",
+        "date": "2026-06-22T12:40:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "gift"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "654b1f8d-edb8-5cb2-9017-86c97a503f93",
+        "title": "Wine Bar",
+        "amount": 43.68,
+        "currency": "USD",
+        "date": "2026-06-22T11:33:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "date"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "14fff935-c1e4-50f8-8e34-4f1a656b4c70",
+        "title": "Refund — Amazon",
+        "amount": 27.59,
+        "currency": "USD",
+        "date": "2026-06-21T15:01:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": true,
+        "tags": [
+          "order",
+          "refund"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "8ed61e75-a480-5ea7-92dc-2719493d1d67",
+        "title": "Home Depot",
+        "amount": 33.44,
+        "currency": "USD",
+        "date": "2026-06-21T14:54:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "7e6f3ee1-2899-5ad2-b687-14bd30d1acba",
+        "title": "IKEA",
+        "amount": 75.04,
+        "currency": "USD",
+        "date": "2026-06-21T13:47:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "51a91033-be35-5319-9b37-dcfcd72eba92",
+        "title": "Starbucks",
+        "amount": 6.08,
+        "currency": "USD",
+        "date": "2026-06-20T18:22:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "d87bc743-6438-55fa-9a2c-2b391f041811",
+        "title": "Lyft",
+        "amount": 14.0,
+        "currency": "USD",
+        "date": "2026-06-20T17:15:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "b3bafb10-eca0-5b2c-8f71-d6fd38ed4197",
+        "title": "Uber",
+        "amount": 12.0,
+        "currency": "USD",
+        "date": "2026-06-20T16:08:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "12ab4dc1-cf2a-50f4-b285-d0ade3326b3d",
+        "title": "Blue Bottle Coffee",
+        "amount": 5.89,
+        "currency": "USD",
+        "date": "2026-06-19T19:29:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee",
+          "morning"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "20e1d667-f2ab-58a1-8c90-1c17efd6df3c",
+        "title": "Chipotle",
+        "amount": 14.78,
+        "currency": "USD",
+        "date": "2026-06-19T08:36:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "7bc49a65-a25b-5a59-bb4a-3d21ad5f6bef",
+        "title": "Running Shoes",
+        "amount": 132.0,
+        "currency": "USD",
+        "date": "2026-06-18T15:00:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fitness",
+          "clothes"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "5bf09af8-043a-5987-a347-0f5d2208a0a1",
+        "title": "Trader Joe's",
+        "amount": 58.88,
+        "currency": "USD",
+        "date": "2026-06-18T10:50:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "7bbdd1d4-9ec9-54ba-b29b-f76296601adc",
+        "title": "Sweetgreen",
+        "amount": 13.29,
+        "currency": "USD",
+        "date": "2026-06-18T09:43:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch",
+          "work"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "b745c07f-9c1b-57e6-b2be-d07b674399e9",
+        "title": "Amazon",
+        "amount": 27.4,
+        "currency": "USD",
+        "date": "2026-06-17T12:04:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "order"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "07f790d6-df27-5e72-a324-25779c931fb4",
+        "title": "Whole Foods",
+        "amount": 75.36,
+        "currency": "USD",
+        "date": "2026-06-17T11:57:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "3cc7871b-56d4-5df1-bdd0-3160836bb72d",
+        "title": "Shell Gas",
+        "amount": 48.6,
+        "currency": "USD",
+        "date": "2026-06-16T14:18:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "121e201c-491f-5417-a158-c7c6670f7154",
+        "title": "Target",
+        "amount": 43.68,
+        "currency": "USD",
+        "date": "2026-06-16T13:11:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "134d13cb-0333-5c53-905e-16696ca9da04",
+        "title": "Pharmacy — Refill",
+        "amount": 19.36,
+        "currency": "USD",
+        "date": "2026-06-15T16:32:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "9b3137df-9cd6-5483-85ab-e248df6cd258",
+        "title": "CVS Pharmacy",
+        "amount": 18.14,
+        "currency": "USD",
+        "date": "2026-06-15T15:25:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "67276766-845f-59df-b06a-6adc73d15f53",
+        "title": "Uber Eats — Sushi",
+        "amount": 31.0,
+        "currency": "USD",
+        "date": "2026-06-14T19:53:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "delivery"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "5d03b417-4c63-5b75-b160-30c674c4dbee",
+        "title": "DoorDash — Tacos",
+        "amount": 23.52,
+        "currency": "USD",
+        "date": "2026-06-14T18:46:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "delivery"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "e2546b85-8243-5f1b-8887-a1718c534742",
+        "title": "Netflix snack run",
+        "amount": 10.12,
+        "currency": "USD",
+        "date": "2026-06-14T17:39:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "night"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "ece5f349-dd47-5768-a8b3-2dfda7846223",
+        "title": "Coursera",
+        "amount": 54.88,
+        "currency": "USD",
+        "date": "2026-06-13T10:14:00Z",
+        "category": "Education",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "learning"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "cbe0afbe-2805-57a9-951d-85a48b3ea618",
+        "title": "Bookshop",
+        "amount": 19.44,
+        "currency": "USD",
+        "date": "2026-06-13T09:07:00Z",
+        "category": "Education",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "books"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "f0459b67-5ed2-5fef-b555-c7c0c0b9b277",
+        "title": "Apple App",
+        "amount": 5.19,
+        "currency": "USD",
+        "date": "2026-06-13T08:00:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "apps"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "16d1a135-1792-59aa-95df-4ced88a12516",
+        "title": "Electric Bill",
+        "amount": 84.64,
+        "currency": "USD",
+        "date": "2026-06-12T12:28:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "f3d18c92-a978-533e-9077-051a5a8e6175",
+        "title": "Dry Cleaning",
+        "amount": 24.64,
+        "currency": "USD",
+        "date": "2026-06-12T11:21:00Z",
+        "category": "Other",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "chores"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "588fde43-b0a1-5880-ad51-014f4b549db9",
+        "title": "Weekend Getaway Airbnb",
+        "amount": 246.0,
+        "currency": "USD",
+        "date": "2026-06-11T16:00:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip",
+          "weekend"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "2f190844-4dda-5916-84f5-a5b94dc64042",
+        "title": "Phone Bill",
+        "amount": 85.0,
+        "currency": "USD",
+        "date": "2026-06-11T14:42:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "93212efd-deca-5b68-bf2a-a0229dea7c6b",
+        "title": "Internet Bill",
+        "amount": 67.2,
+        "currency": "USD",
+        "date": "2026-06-11T13:35:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "ed76de27-9af2-564f-ab83-c090c751e4ef",
+        "title": "Parking Garage",
+        "amount": 19.44,
+        "currency": "USD",
+        "date": "2026-06-10T16:56:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "ea8cef1a-6d98-5a78-b08b-08e73913cb7f",
+        "title": "Metro Card",
+        "amount": 34.32,
+        "currency": "USD",
+        "date": "2026-06-10T15:49:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "transit"
+        ],
+        "paymentMethod": "wallet"
+      },
+      {
+        "id": "c1223653-1812-5197-9d03-8a7347493970",
+        "title": "Nike",
+        "amount": 78.32,
+        "currency": "USD",
+        "date": "2026-06-09T18:10:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "clothes"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "23dba3ac-a4f9-54c2-bbde-e642a9ab55f3",
+        "title": "H&M",
+        "amount": 62.72,
+        "currency": "USD",
+        "date": "2026-06-09T17:03:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "clothes"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "f98c4e70-9593-5603-8c9f-6f93db1b024a",
+        "title": "Petco",
+        "amount": 33.12,
+        "currency": "USD",
+        "date": "2026-06-08T19:17:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "pets"
+        ],
+        "paymentMethod": "debit",
+        "customCategoryId": "2d5c4346-341e-5b15-a019-c47c51568d2c"
+      },
+      {
+        "id": "bc1e4328-4a88-541d-9b45-b2453a91a2a2",
+        "title": "Vet Visit Copay",
+        "amount": 62.4,
+        "currency": "USD",
+        "date": "2026-06-08T08:24:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "pets",
+          "health"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "0c6e4b22-cf8d-58c0-87f6-d1a37b490ba1",
+        "title": "Spotify merch",
+        "amount": 30.24,
+        "currency": "USD",
+        "date": "2026-06-07T11:45:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fun"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "8ce73b09-87da-5bbf-aec9-1a683b012735",
+        "title": "Concert Ticket",
+        "amount": 78.0,
+        "currency": "USD",
+        "date": "2026-06-07T10:38:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend",
+          "fun"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "2519be0d-7204-56d8-baad-fe80b31aa77a",
+        "title": "Yoga Class",
+        "amount": 22.0,
+        "currency": "USD",
+        "date": "2026-06-07T09:31:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fitness"
+        ],
+        "paymentMethod": "wallet"
+      },
+      {
+        "id": "7e4e2171-2b38-58ad-91fb-443bdde1286d",
+        "title": "Hotel — City Weekend",
+        "amount": 173.88,
+        "currency": "USD",
+        "date": "2026-06-06T14:06:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend",
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "78acd094-d178-5930-98b0-c917f8ee66ef",
+        "title": "Airbnb cleaning fee",
+        "amount": 39.6,
+        "currency": "USD",
+        "date": "2026-06-06T13:59:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "be27ecf9-f605-5d9a-9609-b1a2f65c9203",
+        "title": "Airport Lounge snack",
+        "amount": 17.92,
+        "currency": "USD",
+        "date": "2026-06-06T12:52:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "bb88be42-5116-57d5-92c1-642ff063cd1e",
+        "title": "Farmers Market",
+        "amount": 28.5,
+        "currency": "USD",
+        "date": "2026-06-05T16:20:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fresh"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "e9aefc22-1f14-5696-83e7-5781b5289bed",
+        "title": "Flight seat upgrade",
+        "amount": 47.04,
+        "currency": "USD",
+        "date": "2026-06-05T15:13:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "76ea5e14-a054-5d08-8d4f-47a888273ff3",
+        "title": "Wine Bar",
+        "amount": 45.36,
+        "currency": "USD",
+        "date": "2026-06-04T18:34:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "date"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "1ea343b2-7765-57ce-820e-2884303e0f37",
+        "title": "Bakery",
+        "amount": 10.14,
+        "currency": "USD",
+        "date": "2026-06-04T17:27:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "784de28a-3aa2-5333-acab-d874690b5141",
+        "title": "Birthday Gift",
+        "amount": 44.8,
+        "currency": "USD",
+        "date": "2026-06-03T19:41:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "gift"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "e31c78e3-4843-53e7-8f0a-c5ac041b1c3e",
+        "title": "IKEA",
+        "amount": 58.96,
+        "currency": "USD",
+        "date": "2026-06-03T08:48:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "8c82b870-3ce3-5dee-9a01-068ab78287a7",
+        "title": "Refund — Amazon",
+        "amount": 28.79,
+        "currency": "USD",
+        "date": "2026-06-02T10:02:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": true,
+        "tags": [
+          "order",
+          "refund"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "86885acc-4d55-57e0-bdda-dbba8b664e90",
+        "title": "Home Depot",
+        "amount": 34.96,
+        "currency": "USD",
+        "date": "2026-06-02T09:55:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "a25bed3c-c4d8-58d2-a7ef-4b225c2eb77d",
+        "title": "Lyft",
+        "amount": 14.56,
+        "currency": "USD",
+        "date": "2026-06-01T12:16:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "c2950521-1a49-542e-9893-4eccf9c6000f",
+        "title": "Uber",
+        "amount": 12.5,
+        "currency": "USD",
+        "date": "2026-06-01T11:09:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "083fe994-d0c7-58a1-b8d8-94ce221370ca",
+        "title": "Chipotle",
+        "amount": 11.62,
+        "currency": "USD",
+        "date": "2026-05-31T15:37:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "a906ba11-83f3-5deb-8697-2501b2259a1b",
+        "title": "Blue Bottle Coffee",
+        "amount": 6.1,
+        "currency": "USD",
+        "date": "2026-05-31T14:30:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee",
+          "morning"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "8db659b3-9f83-5be8-9287-85bde7e76bb8",
+        "title": "Starbucks",
+        "amount": 6.32,
+        "currency": "USD",
+        "date": "2026-05-31T13:23:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "ddc235d3-285c-543a-ad57-07be7032ee0c",
+        "title": "Whole Foods",
+        "amount": 78.5,
+        "currency": "USD",
+        "date": "2026-05-30T18:58:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "5ee359a0-9fed-5253-abe5-4a48515620d9",
+        "title": "Trader Joe's",
+        "amount": 61.44,
+        "currency": "USD",
+        "date": "2026-05-30T17:51:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "26d8f969-8d97-5d7d-84c0-e6b7b120c6e3",
+        "title": "Sweetgreen",
+        "amount": 13.89,
+        "currency": "USD",
+        "date": "2026-05-30T16:44:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch",
+          "work"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "5bc3794e-7fb6-5f21-a3e1-1febd31a57fe",
+        "title": "Amazon",
+        "amount": 28.5,
+        "currency": "USD",
+        "date": "2026-05-29T19:05:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "order"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "afd223fe-e04a-5837-b1f2-a38d5e1ff9a0",
+        "title": "Target",
+        "amount": 45.36,
+        "currency": "USD",
+        "date": "2026-05-29T08:12:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "254ccd15-f488-5d5e-8fc5-1942b27a38d2",
+        "title": "CVS Pharmacy",
+        "amount": 14.26,
+        "currency": "USD",
+        "date": "2026-05-28T10:26:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "815b703e-e2a2-57c2-ab13-2cd5e48d99db",
+        "title": "Shell Gas",
+        "amount": 50.4,
+        "currency": "USD",
+        "date": "2026-05-28T09:19:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "a7ff972f-84e3-5846-9cea-650a702f7cdb",
+        "title": "Netflix snack run",
+        "amount": 10.56,
+        "currency": "USD",
+        "date": "2026-05-27T12:40:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "night"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "62e022d8-7624-596c-a7ce-97cea99fb2da",
+        "title": "Pharmacy — Refill",
+        "amount": 20.24,
+        "currency": "USD",
+        "date": "2026-05-27T11:33:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "1e20abe9-311f-53eb-8075-f808d9695b7e",
+        "title": "Uber Eats — Sushi",
+        "amount": 32.24,
+        "currency": "USD",
+        "date": "2026-05-26T14:54:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "delivery"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "440898d7-746c-5299-aa6a-08b7d613b500",
+        "title": "DoorDash — Tacos",
+        "amount": 24.5,
+        "currency": "USD",
+        "date": "2026-05-26T13:47:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "delivery"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "f6ee423f-c494-5a21-81cb-ec71a36bda09",
+        "title": "Bookshop",
+        "amount": 20.16,
+        "currency": "USD",
+        "date": "2026-05-25T16:08:00Z",
+        "category": "Education",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "books"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "23e4fc74-11e1-58ad-8c1a-9d157e70ab97",
+        "title": "Apple App",
+        "amount": 5.39,
+        "currency": "USD",
+        "date": "2026-05-25T15:01:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "apps"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "48a736bd-0a18-5680-833b-96861b362db1",
+        "title": "Electric Bill",
+        "amount": 88.32,
+        "currency": "USD",
+        "date": "2026-05-24T19:29:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "9a39c563-7c57-5324-b497-447c70aebe9f",
+        "title": "Dry Cleaning",
+        "amount": 25.76,
+        "currency": "USD",
+        "date": "2026-05-24T18:22:00Z",
+        "category": "Other",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "chores"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "f4326c60-76d4-5a5b-8a4e-6b67fe6b2b89",
+        "title": "Coursera",
+        "amount": 43.12,
+        "currency": "USD",
+        "date": "2026-05-24T17:15:00Z",
+        "category": "Education",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "learning"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "c39d3675-d4cb-5758-99b5-95466c56086c",
+        "title": "Metro Card",
+        "amount": 35.64,
+        "currency": "USD",
+        "date": "2026-05-23T10:50:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "transit"
+        ],
+        "paymentMethod": "wallet"
+      },
+      {
+        "id": "68dac04b-14bb-5d21-bb37-8e31bc631bf4",
+        "title": "Phone Bill",
+        "amount": 88.4,
+        "currency": "USD",
+        "date": "2026-05-23T09:43:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "58f8f528-8dcf-5145-86d8-9aa9256cc24c",
+        "title": "Internet Bill",
+        "amount": 70.0,
+        "currency": "USD",
+        "date": "2026-05-23T08:36:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "ada57ad3-9ba1-5791-ad9e-eda20cc34205",
+        "title": "H&M",
+        "amount": 49.28,
+        "currency": "USD",
+        "date": "2026-05-22T12:04:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "clothes"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "52e6140c-4649-5d79-8073-8c2065a16a25",
+        "title": "Parking Garage",
+        "amount": 20.16,
+        "currency": "USD",
+        "date": "2026-05-22T11:57:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "b844a16f-ddaf-5f27-85b0-29bb5c6291df",
+        "title": "Petco",
+        "amount": 34.56,
+        "currency": "USD",
+        "date": "2026-05-21T14:18:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "pets"
+        ],
+        "paymentMethod": "debit",
+        "customCategoryId": "2d5c4346-341e-5b15-a019-c47c51568d2c"
+      },
+      {
+        "id": "48b811a3-f894-503e-a6ad-58de4b7c8443",
+        "title": "Nike",
+        "amount": 81.88,
+        "currency": "USD",
+        "date": "2026-05-21T13:11:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "clothes"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "ec559cdb-e7f2-58ae-a240-291abaa7afc9",
+        "title": "Yoga Class",
+        "amount": 22.88,
+        "currency": "USD",
+        "date": "2026-05-20T16:32:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fitness"
+        ],
+        "paymentMethod": "wallet"
+      },
+      {
+        "id": "ad95b427-dafd-57f6-b0a0-7d11388ce2f8",
+        "title": "Vet Visit Copay",
+        "amount": 65.0,
+        "currency": "USD",
+        "date": "2026-05-20T15:25:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "pets",
+          "health"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "465327df-6596-5aad-979f-d237e45ff4cd",
+        "title": "Spotify merch",
+        "amount": 31.36,
+        "currency": "USD",
+        "date": "2026-05-19T18:46:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fun"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "bf1a47fd-1836-5956-9c14-535d498e378d",
+        "title": "Concert Ticket",
+        "amount": 81.0,
+        "currency": "USD",
+        "date": "2026-05-19T17:39:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend",
+          "fun"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "e4c0789c-2d26-53d0-bbed-5bd6e1f8b860",
+        "title": "Airport Lounge snack",
+        "amount": 14.08,
+        "currency": "USD",
+        "date": "2026-05-18T19:53:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "cd4be696-d869-5ec7-950a-db337659b48d",
+        "title": "Airbnb cleaning fee",
+        "amount": 41.4,
+        "currency": "USD",
+        "date": "2026-05-18T08:00:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "3d27bb29-6794-5787-9f00-4eaa57eada3b",
+        "title": "Farmers Market",
+        "amount": 29.64,
+        "currency": "USD",
+        "date": "2026-05-17T11:21:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "fresh"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "16e56544-5234-5b82-a4c7-061ac5320f22",
+        "title": "Flight seat upgrade",
+        "amount": 49.0,
+        "currency": "USD",
+        "date": "2026-05-17T10:14:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "20a2cad5-9e35-55da-b6e1-06b6ba21c765",
+        "title": "Hotel — City Weekend",
+        "amount": 181.44,
+        "currency": "USD",
+        "date": "2026-05-17T09:07:00Z",
+        "category": "Travel",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend",
+          "trip"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "a04654a1-dfd5-5b90-9623-1c2c2464cdbc",
+        "title": "Birthday Gift",
+        "amount": 35.2,
+        "currency": "USD",
+        "date": "2026-05-16T14:42:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "gift"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "f5a838f8-ac18-5b1f-af4f-0c5a1e062670",
+        "title": "Wine Bar",
+        "amount": 47.04,
+        "currency": "USD",
+        "date": "2026-05-16T13:35:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "date"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "f62021a0-d389-5f33-85a4-62db6213ab93",
+        "title": "Bakery",
+        "amount": 10.53,
+        "currency": "USD",
+        "date": "2026-05-16T12:28:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekend"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "879188e0-a9f7-5194-bafb-486a7c700f51",
+        "title": "Home Depot",
+        "amount": 36.48,
+        "currency": "USD",
+        "date": "2026-05-15T16:56:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "216bbc1d-cd94-57da-bbab-4b41ff82c002",
+        "title": "IKEA",
+        "amount": 61.64,
+        "currency": "USD",
+        "date": "2026-05-15T15:49:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "3e53ea76-ba38-5757-a8dd-3fb8322f1f4f",
+        "title": "Uber",
+        "amount": 13.0,
+        "currency": "USD",
+        "date": "2026-05-14T18:10:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "944f014d-aa32-5d9d-95c1-a9e2a1219fbc",
+        "title": "Refund — Amazon",
+        "amount": 29.99,
+        "currency": "USD",
+        "date": "2026-05-14T17:03:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": true,
+        "tags": [
+          "order",
+          "refund"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "a8cf0b05-4498-5918-8167-5eb365d5b172",
+        "title": "Lyft",
+        "amount": 15.12,
+        "currency": "USD",
+        "date": "2026-05-13T19:17:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "commute"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "3f9d2af4-86b0-5654-a885-da7a8a9690bb",
+        "title": "Starbucks",
+        "amount": 6.55,
+        "currency": "USD",
+        "date": "2026-05-13T08:24:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "9a4e508c-550d-5984-81bd-cfd77dbdc429",
+        "title": "Chipotle",
+        "amount": 12.14,
+        "currency": "USD",
+        "date": "2026-05-12T10:38:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "f45248e5-653f-57a7-a8b7-6e5c433544ad",
+        "title": "Blue Bottle Coffee",
+        "amount": 4.8,
+        "currency": "USD",
+        "date": "2026-05-12T09:31:00Z",
+        "category": "Custom",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "coffee",
+          "morning"
+        ],
+        "paymentMethod": "wallet",
+        "customCategoryId": "95ff644e-c9b0-5e1d-888a-038d14bd48bf"
+      },
+      {
+        "id": "37864b93-ac3a-5bcb-9273-ab7be3f39b89",
+        "title": "Trader Joe's",
+        "amount": 64.0,
+        "currency": "USD",
+        "date": "2026-05-11T12:52:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "8d5e2a23-7983-53c8-8334-1ceae9a06d96",
+        "title": "Sweetgreen",
+        "amount": 14.5,
+        "currency": "USD",
+        "date": "2026-05-11T11:45:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "lunch",
+          "work"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "4513a9af-d946-508b-81ed-1ba9f0d2dfb7",
+        "title": "Target",
+        "amount": 47.04,
+        "currency": "USD",
+        "date": "2026-05-10T15:13:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "home"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "7b54b9fa-e27b-5dbd-9281-38b98516daca",
+        "title": "Amazon",
+        "amount": 29.59,
+        "currency": "USD",
+        "date": "2026-05-10T14:06:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "order"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "d22dc678-7b4f-567a-8401-4f905da313c9",
+        "title": "Whole Foods",
+        "amount": 81.64,
+        "currency": "USD",
+        "date": "2026-05-10T13:59:00Z",
+        "category": "Groceries",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "weekly"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "6fc82784-7aed-55b7-9f74-5f388697ed3a",
+        "title": "Pharmacy — Refill",
+        "amount": 21.12,
+        "currency": "USD",
+        "date": "2026-05-09T18:34:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "907c1033-80ea-500b-930f-70ba4e151e4e",
+        "title": "CVS Pharmacy",
+        "amount": 14.9,
+        "currency": "USD",
+        "date": "2026-05-09T17:27:00Z",
+        "category": "Health",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "health"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "138dfd1b-0355-5266-9b03-8b45de13a537",
+        "title": "Shell Gas",
+        "amount": 39.6,
+        "currency": "USD",
+        "date": "2026-05-09T16:20:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "373abb45-a7f7-5aec-97c2-c2a58d91cc44",
+        "title": "Netflix snack run",
+        "amount": 11.0,
+        "currency": "USD",
+        "date": "2026-05-08T19:41:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "night"
+        ],
+        "paymentMethod": "cash"
+      },
+      {
+        "id": "8e6afd95-ec83-5c89-930b-2b5ab22ea24f",
+        "title": "DoorDash — Tacos",
+        "amount": 25.48,
+        "currency": "USD",
+        "date": "2026-05-08T08:48:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "delivery"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "73478fe3-73be-5bac-9710-b48d51aff4bc",
+        "title": "Apple App",
+        "amount": 5.59,
+        "currency": "USD",
+        "date": "2026-05-07T10:02:00Z",
+        "category": "Entertainment",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "apps"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "c572f7b4-3a0f-53d9-8acb-808df66925bb",
+        "title": "Uber Eats — Sushi",
+        "amount": 33.48,
+        "currency": "USD",
+        "date": "2026-05-07T09:55:00Z",
+        "category": "Food",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "dinner",
+          "delivery"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "687dd985-2719-5c41-b975-77e0d836a90e",
+        "title": "Coursera",
+        "amount": 45.08,
+        "currency": "USD",
+        "date": "2026-05-06T12:16:00Z",
+        "category": "Education",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "learning"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "cbb9e967-591f-5b78-a8a5-4dd0d1ba81f9",
+        "title": "Bookshop",
+        "amount": 15.84,
+        "currency": "USD",
+        "date": "2026-05-06T11:09:00Z",
+        "category": "Education",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "books"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "4cec2b79-a618-57b5-91e6-7432f8b38afa",
+        "title": "Electric Bill",
+        "amount": 92.0,
+        "currency": "USD",
+        "date": "2026-05-05T14:30:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "3810c54f-78e1-5044-978e-625dfc3d312e",
+        "title": "Dry Cleaning",
+        "amount": 26.88,
+        "currency": "USD",
+        "date": "2026-05-05T13:23:00Z",
+        "category": "Other",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "chores"
+        ],
+        "paymentMethod": "debit"
+      },
+      {
+        "id": "b702a6f0-8dab-54ff-90f4-835d772398b9",
+        "title": "Phone Bill",
+        "amount": 91.8,
+        "currency": "USD",
+        "date": "2026-05-04T16:44:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "dc2622a6-5db7-5dc1-bca2-fa2cb2748d2c",
+        "title": "Internet Bill",
+        "amount": 72.8,
+        "currency": "USD",
+        "date": "2026-05-04T15:37:00Z",
+        "category": "Utilities",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "bills"
+        ],
+        "paymentMethod": "bank"
+      },
+      {
+        "id": "a92c768a-a8ea-5fc8-9919-133948ea2be7",
+        "title": "H&M",
+        "amount": 51.52,
+        "currency": "USD",
+        "date": "2026-05-03T19:05:00Z",
+        "category": "Shopping",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "clothes"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "24a38ee7-76e9-5556-9234-467aa3544903",
+        "title": "Parking Garage",
+        "amount": 15.84,
+        "currency": "USD",
+        "date": "2026-05-03T18:58:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "car"
+        ],
+        "paymentMethod": "credit"
+      },
+      {
+        "id": "32887338-75c5-59de-a01c-f2afc54c6164",
+        "title": "Metro Card",
+        "amount": 36.96,
+        "currency": "USD",
+        "date": "2026-05-03T17:51:00Z",
+        "category": "Transportation",
+        "isFromSubscription": false,
+        "isRefund": false,
+        "tags": [
+          "transit"
+        ],
+        "paymentMethod": "wallet"
+      }
+    ],
+    "subscriptions": [
+      {
+        "id": "78bb3238-8135-593c-b097-45b0a2fa1071",
+        "name": "Netflix",
+        "amount": 15.49,
+        "currency": "USD",
+        "startDate": "2025-06-11T09:00:00Z",
+        "frequency": "Monthly",
+        "nextDueDate": "2026-07-18T09:00:00Z",
+        "category": "Entertainment",
+        "notes": "Premium plan",
+        "isActive": true,
+        "reminderEnabled": true,
+        "reminderDaysBefore": 1
+      },
+      {
+        "id": "6a2d53b6-f102-5c9a-8175-07b22614151f",
+        "name": "Spotify Family",
+        "amount": 16.99,
+        "currency": "USD",
+        "startDate": "2025-03-03T10:00:00Z",
+        "frequency": "Monthly",
+        "nextDueDate": "2026-07-20T10:00:00Z",
+        "category": "Entertainment",
+        "isActive": true,
+        "reminderEnabled": true,
+        "reminderDaysBefore": 2
+      },
+      {
+        "id": "4af10b90-a33c-5fc2-afa8-6a066ffa6a33",
+        "name": "iCloud+",
+        "amount": 2.99,
+        "currency": "USD",
+        "startDate": "2024-08-15T08:00:00Z",
+        "frequency": "Monthly",
+        "nextDueDate": "2026-07-17T08:00:00Z",
+        "category": "Utilities",
+        "notes": "200GB",
+        "isActive": true,
+        "reminderEnabled": true,
+        "reminderDaysBefore": 1
+      },
+      {
+        "id": "7c6ee497-e4b4-5274-a51d-5dff8a037acb",
+        "name": "Fitness Club",
+        "amount": 49.0,
+        "currency": "USD",
+        "startDate": "2025-12-28T07:00:00Z",
+        "frequency": "Monthly",
+        "nextDueDate": "2026-07-22T07:00:00Z",
+        "category": "Health",
+        "notes": "Membership",
+        "isActive": true,
+        "reminderEnabled": true,
+        "reminderDaysBefore": 3
+      },
+      {
+        "id": "52ab4077-d190-53aa-9f8a-fba4a9c82d38",
+        "name": "Adobe Creative Cloud",
+        "amount": 59.99,
+        "currency": "USD",
+        "startDate": "2025-09-19T11:00:00Z",
+        "frequency": "Monthly",
+        "nextDueDate": "2026-07-25T11:00:00Z",
+        "category": "Other",
+        "notes": "Photography plan",
+        "isActive": true,
+        "reminderEnabled": true,
+        "reminderDaysBefore": 2
+      },
+      {
+        "id": "50725a69-15b9-5fee-88fd-b5d36dda488c",
+        "name": "YouTube Premium",
+        "amount": 13.99,
+        "currency": "USD",
+        "startDate": "2026-01-17T14:00:00Z",
+        "frequency": "Monthly",
+        "nextDueDate": "2026-07-28T14:00:00Z",
+        "category": "Entertainment",
+        "isActive": true,
+        "reminderEnabled": true,
+        "reminderDaysBefore": 1
+      }
+    ],
+    "customCategories": [
+      {
+        "id": "95ff644e-c9b0-5e1d-888a-038d14bd48bf",
+        "name": "Coffee",
+        "icon": "cup.and.saucer.fill",
+        "colorName": "food"
+      },
+      {
+        "id": "2d5c4346-341e-5b15-a019-c47c51568d2c",
+        "name": "Pets",
+        "icon": "pawprint.fill",
+        "colorName": "other"
+      }
+    ],
+    "budgets": [
+      {
+        "id": "8e3000b7-0bed-5544-9821-f983fe7e615a",
+        "name": "Monthly Spend",
+        "amount": 3200.0,
+        "period": "Monthly",
+        "categoryFilter": {
+          "type": "overall"
+        },
+        "alertAtPercentages": [
+          80.0,
+          100.0
+        ],
+        "isActive": true,
+        "createdAt": "2026-05-17T12:00:00Z"
+      },
+      {
+        "id": "928d219f-1e54-5e05-bbfd-1e7fe928776a",
+        "name": "Food & Coffee",
+        "amount": 650.0,
+        "period": "Monthly",
+        "categoryFilter": {
+          "type": "default",
+          "rawValue": "Food"
+        },
+        "alertAtPercentages": [
+          80.0,
+          100.0
+        ],
+        "isActive": true,
+        "createdAt": "2026-05-17T12:00:00Z"
+      },
+      {
+        "id": "3f2d8d7f-3ec0-56b6-a307-c8bb8a71c19d",
+        "name": "Groceries",
+        "amount": 450.0,
+        "period": "Monthly",
+        "categoryFilter": {
+          "type": "default",
+          "rawValue": "Groceries"
+        },
+        "alertAtPercentages": [
+          80.0,
+          100.0
+        ],
+        "isActive": true,
+        "createdAt": "2026-05-17T12:00:00Z"
+      },
+      {
+        "id": "3cebcd7d-0c2b-55d7-9d02-5618fd017a94",
+        "name": "This Week",
+        "amount": 280.0,
+        "period": "Weekly",
+        "categoryFilter": {
+          "type": "overall"
+        },
+        "alertAtPercentages": [
+          80.0,
+          100.0
+        ],
+        "isActive": true,
+        "createdAt": "2026-07-02T12:00:00Z"
+      }
+    ],
+    "deletedDefaultCategories": []
+  },
+  "preferences": {
+    "userName": "Alex",
+    "selectedCurrency": "USD",
+    "defaultHomeTimeFrame": "Month",
+    "appearanceMode": "system",
+    "preferredSummaryCategories": [
+      "Food",
+      "Groceries",
+      "Transportation",
+      "Entertainment",
+      "Shopping"
+    ],
+    "notifications": {
+      "weeklySummary": {
+        "enabled": true,
+        "weekday": 2,
+        "hour": 9,
+        "minute": 0
+      },
+      "monthlyDigest": {
+        "enabled": true,
+        "dayOfMonth": 1,
+        "hour": 9,
+        "minute": 0
+      },
+      "backupReminder": {
+        "enabled": true,
+        "dayOfMonth": 1,
+        "hour": 10,
+        "minute": 0
+      }
+    }
+  }
+}

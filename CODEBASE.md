@@ -160,7 +160,6 @@ CashLens/
 │   ├── ProInsightsSection.swift    # Pro Insights section (Daily Pace / Velocity / YoY) + free teaser
 │   ├── ForecastSection.swift       # Forecast section (horizon switcher, projection card, sub-cards) + free teaser
 │   ├── SplashScreenView.swift      # Branded splash (~2s auto-dismiss)
-│   ├── FeedbackRequestView.swift   # In-app rate/share overlay
 │   └── DiagnosticsView.swift       # Debug-only data health tools
 │
 ├── Components/
@@ -282,7 +281,7 @@ All preference keys are centralized in a caseless enum:
 | **Summary** | `preferredSummaryCategories` |
 | **Categories** | `deletedDefaultCategories` |
 | **Drafts** | `expenseDraft` |
-| **Feedback** | `hasRequestedFeedback`, `successfulActionsCount`, `lastFeedbackAttempt` |
+| **Feedback** | `successfulActionsCount`, `lastFeedbackAttempt`, `feedbackPromptCount`, `feedbackUsageDayCount`, `feedbackLastUsageDay`, `feedbackLegacyMigrated` (+ legacy `hasRequestedFeedback`, read once for migration) |
 | **Notifications** | Weekly/monthly/backup: `*Enabled`, `*Weekday`/`*DayOfMonth`, `*Hour`, `*Minute` |
 | **Smart Insights (Pro)** | `smartInsightsEnabled`, `smartInsightsHistory`, `smartInsightsLastFireDate` |
 | **Backup** | `lastBackupDate`, `lastBackupFormat`, `totalBackupCount` |
@@ -716,7 +715,7 @@ Forecasting is a Pro-only section that sits directly under **Pro Insights** on t
 | `ImportDataView` | `ImportDataView.swift` | File picker (`.fileImporter`), progress overlay with fake progress, success/error alerts. |
 | `DonationView` | `DonationView.swift` | StoreKit tip jar: gradient cards per product, processing overlay. |
 | `AboutView` | `AboutView.swift` | Static info: features, what's new, contact email, website, privacy. |
-| `FeedbackRequestView` | `FeedbackRequestView.swift` | Overlay prompt: rate (SKStoreReviewController), share, dismiss. Gated by `FeedbackManager`. |
+| `FeedbackManager` | `Utilities/FeedbackManager.swift` | Rating ask logic (no UI — `MainTabView` calls the native `requestReview` star sheet directly for a one-tap rating). Asks after 12 actions across 3+ distinct days, or 5 actions right after a successful export; 30-day cooldown, max 3 asks lifetime, Apple's 3/year throttle as backstop. Replaced the old `FeedbackRequestView` custom modal in 2.0.1. |
 | `DiagnosticsView` | `DiagnosticsView.swift` | `#if DEBUG` only. Data refresh, currency checks, smoke tests, feedback reset. |
 
 ---
@@ -906,7 +905,7 @@ Phase F focused on removing build warnings, unblocking Swift 6 concurrency, and 
 **Deprecations:**
 - All deprecated `.onChange(of:perform:)` call sites converted to the two-param / zero-param iOS 17 form (across `StatisticsView`, `AllExpensesView`, `QuickSearchView`, `SpendingHeatmap`).
 - `Locale.currencyCode` → `Locale.current.currency?.identifier` in `ExpenseViewModel.autoSelectCurrencyIfNeeded()`.
-- `SKStoreReviewController.requestReview(in:)` replaced with SwiftUI's `@Environment(\.requestReview)` action in `FeedbackRequestView`; removes the window scene lookup entirely and the `StoreKit` duplicate import.
+- `SKStoreReviewController.requestReview(in:)` replaced with SwiftUI's `@Environment(\.requestReview)` action (now invoked from `MainTabView`); removes the window scene lookup entirely and the `StoreKit` duplicate import.
 
 **Misc. view sweep (AboutView, ImportDataView, ExportDataView, OnboardingView, CurrencyPickerView):**
 - Replaced `.background(Color.secondarySystemBackground).cornerRadius(16)` with `.cardSurface()` in five screens.

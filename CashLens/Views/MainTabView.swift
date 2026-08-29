@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 
 /// v2 information architecture — see `redesign/v2` notes in
 /// the project README and the audit canvases.
@@ -39,7 +40,11 @@ struct MainTabView: View {
     @State private var selectedTab: Tab = .today
     @State private var showingAddExpense = false
     @State private var showingCurrencyPicker = false
-    @State private var showingFeedbackRequest = false
+
+    /// Native one-tap rating sheet. `FeedbackManager` decides *when* to
+    /// ask; this action shows Apple's in-app star prompt directly — no
+    /// intermediate modal, so rating is a single tap.
+    @Environment(\.requestReview) private var requestReview
 
     // MARK: - Post-value paywall trigger
 
@@ -299,16 +304,6 @@ struct MainTabView: View {
             }
             .animation(Theme.Motion.snappy, value: shouldShowFAB)
         }
-        .overlay {
-            if showingFeedbackRequest {
-                FeedbackRequestView()
-                    .transition(.asymmetric(
-                        insertion: .scale.combined(with: .opacity),
-                        removal: .scale.combined(with: .opacity)
-                    ))
-                    .zIndex(100)
-            }
-        }
         .sheet(isPresented: $showingAddExpense) {
             AddExpenseView(viewModel: viewModel)
                 .environmentObject(categoryViewModel)
@@ -320,7 +315,12 @@ struct MainTabView: View {
             checkAndShowCurrencyPicker()
         }
         .onReceive(feedbackManager.$shouldShowFeedbackRequest) { shouldShow in
-            showingFeedbackRequest = shouldShow
+            guard shouldShow else { return }
+            feedbackManager.consumePromptTrigger()
+            // Never over the app-lock cover; the missed ask retries
+            // naturally at the next eligible moment (30d cooldown).
+            guard !AppLockManager.shared.isLocked else { return }
+            requestReview()
         }
         .onChange(of: selectedTab) { _, _ in
             HapticManager.shared.selectionChanged()
@@ -465,16 +465,6 @@ struct MainTabView: View {
                         }
                     )
                 }
-
-                // Feedback Request Modal
-                if showingFeedbackRequest {
-                    FeedbackRequestView()
-                        .transition(.asymmetric(
-                            insertion: .scale.combined(with: .opacity),
-                            removal: .scale.combined(with: .opacity)
-                        ))
-                        .zIndex(100)
-                }
             }
             .ignoresSafeArea(.all, edges: .bottom)
             .sheet(isPresented: $showingAddExpense) {
@@ -488,7 +478,10 @@ struct MainTabView: View {
                 checkAndShowCurrencyPicker()
             }
             .onReceive(feedbackManager.$shouldShowFeedbackRequest) { shouldShow in
-                showingFeedbackRequest = shouldShow
+                guard shouldShow else { return }
+                feedbackManager.consumePromptTrigger()
+                guard !AppLockManager.shared.isLocked else { return }
+                requestReview()
             }
             .onReceive(NotificationCenter.default.publisher(for: .themeDidChange)) { _ in
                 // Legacy `UITabBar.appearance()` caches resolved tint colors.

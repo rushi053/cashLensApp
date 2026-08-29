@@ -1,0 +1,189 @@
+Date,Title,Amount,Currency,Category,Notes,Tags,Payment Method
+2026-05-03,Metro Card,36.96,USD,Transportation,,transit,wallet
+2026-05-03,Parking Garage,15.84,USD,Transportation,,car,credit
+2026-05-03,H&M,51.52,USD,Shopping,,clothes,credit
+2026-05-04,Internet Bill,72.80,USD,Utilities,,bills,bank
+2026-05-04,Phone Bill,91.80,USD,Utilities,,bills,bank
+2026-05-05,Dry Cleaning,26.88,USD,Other,,chores,debit
+2026-05-05,Electric Bill,92.00,USD,Utilities,,bills,bank
+2026-05-06,Bookshop,15.84,USD,Education,,books,debit
+2026-05-06,Coursera,45.08,USD,Education,,learning,credit
+2026-05-07,Uber Eats — Sushi,33.48,USD,Food,,dinner;delivery,credit
+2026-05-07,Apple App,5.59,USD,Entertainment,,apps,credit
+2026-05-08,DoorDash — Tacos,25.48,USD,Food,,dinner;delivery,credit
+2026-05-08,Netflix snack run,11.00,USD,Food,,night,cash
+2026-05-09,Shell Gas,39.60,USD,Transportation,,car,credit
+2026-05-09,CVS Pharmacy,14.90,USD,Health,,health,debit
+2026-05-09,Pharmacy — Refill,21.12,USD,Health,,health,debit
+2026-05-10,Whole Foods,81.64,USD,Groceries,,weekly,debit
+2026-05-10,Amazon,29.59,USD,Shopping,,order,credit
+2026-05-10,Target,47.04,USD,Shopping,,home,debit
+2026-05-11,Sweetgreen,14.50,USD,Food,,lunch;work,credit
+2026-05-11,Trader Joe's,64.00,USD,Groceries,,weekly,debit
+2026-05-12,Blue Bottle Coffee,4.80,USD,Food,,coffee;morning,wallet
+2026-05-12,Chipotle,12.14,USD,Food,,lunch,credit
+2026-05-13,Starbucks,6.55,USD,Food,,coffee,wallet
+2026-05-13,Lyft,15.12,USD,Transportation,,commute,credit
+2026-05-14,Refund — Amazon,29.99,USD,Shopping,refund,order;refund,credit
+2026-05-14,Uber,13.00,USD,Transportation,,commute,credit
+2026-05-15,IKEA,61.64,USD,Shopping,,home,debit
+2026-05-15,Home Depot,36.48,USD,Shopping,,home,debit
+2026-05-16,Bakery,10.53,USD,Food,,weekend,cash
+2026-05-16,Wine Bar,47.04,USD,Food,,dinner;date,credit
+2026-05-16,Birthday Gift,35.20,USD,Shopping,,gift,credit
+2026-05-17,Hotel — City Weekend,181.44,USD,Travel,,weekend;trip,credit
+2026-05-17,Flight seat upgrade,49.00,USD,Travel,,trip,credit
+2026-05-17,Farmers Market,29.64,USD,Groceries,,fresh,cash
+2026-05-18,Airbnb cleaning fee,41.40,USD,Travel,,trip,credit
+2026-05-18,Airport Lounge snack,14.08,USD,Travel,,trip,credit
+2026-05-19,Concert Ticket,81.00,USD,Entertainment,,weekend;fun,credit
+2026-05-19,Spotify merch,31.36,USD,Shopping,,fun,credit
+2026-05-20,Vet Visit Copay,65.00,USD,Health,,pets;health,credit
+2026-05-20,Yoga Class,22.88,USD,Health,,fitness,wallet
+2026-05-21,Nike,81.88,USD,Shopping,,clothes,credit
+2026-05-21,Petco,34.56,USD,Other,,pets,debit
+2026-05-22,Parking Garage,20.16,USD,Transportation,,car,credit
+2026-05-22,H&M,49.28,USD,Shopping,,clothes,credit
+2026-05-23,Internet Bill,70.00,USD,Utilities,,bills,bank
+2026-05-23,Phone Bill,88.40,USD,Utilities,,bills,bank
+2026-05-23,Metro Card,35.64,USD,Transportation,,transit,wallet
+2026-05-24,Coursera,43.12,USD,Education,,learning,credit
+2026-05-24,Dry Cleaning,25.76,USD,Other,,chores,debit
+2026-05-24,Electric Bill,88.32,USD,Utilities,,bills,bank
+2026-05-25,Apple App,5.39,USD,Entertainment,,apps,credit
+2026-05-25,Bookshop,20.16,USD,Education,,books,debit
+2026-05-26,DoorDash — Tacos,24.50,USD,Food,,dinner;delivery,credit
+2026-05-26,Uber Eats — Sushi,32.24,USD,Food,,dinner;delivery,credit
+2026-05-27,Pharmacy — Refill,20.24,USD,Health,,health,debit
+2026-05-27,Netflix snack run,10.56,USD,Food,,night,cash
+2026-05-28,Shell Gas,50.40,USD,Transportation,,car,credit
+2026-05-28,CVS Pharmacy,14.26,USD,Health,,health,debit
+2026-05-29,Target,45.36,USD,Shopping,,home,debit
+2026-05-29,Amazon,28.50,USD,Shopping,,order,credit
+2026-05-30,Sweetgreen,13.89,USD,Food,,lunch;work,credit
+2026-05-30,Trader Joe's,61.44,USD,Groceries,,weekly,debit
+2026-05-30,Whole Foods,78.50,USD,Groceries,,weekly,debit
+2026-05-31,Starbucks,6.32,USD,Food,,coffee,wallet
+2026-05-31,Blue Bottle Coffee,6.10,USD,Food,,coffee;morning,wallet
+2026-05-31,Chipotle,11.62,USD,Food,,lunch,credit
+2026-06-01,Uber,12.50,USD,Transportation,,commute,credit
+2026-06-01,Lyft,14.56,USD,Transportation,,commute,credit
+2026-06-02,Home Depot,34.96,USD,Shopping,,home,debit
+2026-06-02,Refund — Amazon,28.79,USD,Shopping,refund,order;refund,credit
+2026-06-03,IKEA,58.96,USD,Shopping,,home,debit
+2026-06-03,Birthday Gift,44.80,USD,Shopping,,gift,credit
+2026-06-04,Bakery,10.14,USD,Food,,weekend,cash
+2026-06-04,Wine Bar,45.36,USD,Food,,dinner;date,credit
+2026-06-05,Flight seat upgrade,47.04,USD,Travel,,trip,credit
+2026-06-05,Farmers Market,28.50,USD,Groceries,,fresh,cash
+2026-06-06,Airport Lounge snack,17.92,USD,Travel,,trip,credit
+2026-06-06,Airbnb cleaning fee,39.60,USD,Travel,,trip,credit
+2026-06-06,Hotel — City Weekend,173.88,USD,Travel,,weekend;trip,credit
+2026-06-07,Yoga Class,22.00,USD,Health,,fitness,wallet
+2026-06-07,Concert Ticket,78.00,USD,Entertainment,,weekend;fun,credit
+2026-06-07,Spotify merch,30.24,USD,Shopping,,fun,credit
+2026-06-08,Vet Visit Copay,62.40,USD,Health,,pets;health,credit
+2026-06-08,Petco,33.12,USD,Other,,pets,debit
+2026-06-09,H&M,62.72,USD,Shopping,,clothes,credit
+2026-06-09,Nike,78.32,USD,Shopping,,clothes,credit
+2026-06-10,Metro Card,34.32,USD,Transportation,,transit,wallet
+2026-06-10,Parking Garage,19.44,USD,Transportation,,car,credit
+2026-06-11,Internet Bill,67.20,USD,Utilities,,bills,bank
+2026-06-11,Phone Bill,85.00,USD,Utilities,,bills,bank
+2026-06-11,Weekend Getaway Airbnb,246.00,USD,Travel,,trip;weekend,credit
+2026-06-12,Dry Cleaning,24.64,USD,Other,,chores,debit
+2026-06-12,Electric Bill,84.64,USD,Utilities,,bills,bank
+2026-06-13,Apple App,5.19,USD,Entertainment,,apps,credit
+2026-06-13,Bookshop,19.44,USD,Education,,books,debit
+2026-06-13,Coursera,54.88,USD,Education,,learning,credit
+2026-06-14,Netflix snack run,10.12,USD,Food,,night,cash
+2026-06-14,DoorDash — Tacos,23.52,USD,Food,,dinner;delivery,credit
+2026-06-14,Uber Eats — Sushi,31.00,USD,Food,,dinner;delivery,credit
+2026-06-15,CVS Pharmacy,18.14,USD,Health,,health,debit
+2026-06-15,Pharmacy — Refill,19.36,USD,Health,,health,debit
+2026-06-16,Target,43.68,USD,Shopping,,home,debit
+2026-06-16,Shell Gas,48.60,USD,Transportation,,car,credit
+2026-06-17,Whole Foods,75.36,USD,Groceries,,weekly,debit
+2026-06-17,Amazon,27.40,USD,Shopping,,order,credit
+2026-06-18,Sweetgreen,13.29,USD,Food,,lunch;work,credit
+2026-06-18,Trader Joe's,58.88,USD,Groceries,,weekly,debit
+2026-06-18,Running Shoes,132.00,USD,Shopping,,fitness;clothes,credit
+2026-06-19,Chipotle,14.78,USD,Food,,lunch,credit
+2026-06-19,Blue Bottle Coffee,5.89,USD,Food,,coffee;morning,wallet
+2026-06-20,Uber,12.00,USD,Transportation,,commute,credit
+2026-06-20,Lyft,14.00,USD,Transportation,,commute,credit
+2026-06-20,Starbucks,6.08,USD,Food,,coffee,wallet
+2026-06-21,IKEA,75.04,USD,Shopping,,home,debit
+2026-06-21,Home Depot,33.44,USD,Shopping,,home,debit
+2026-06-21,Refund — Amazon,27.59,USD,Shopping,refund,order;refund,credit
+2026-06-22,Wine Bar,43.68,USD,Food,,dinner;date,credit
+2026-06-22,Birthday Gift,43.20,USD,Shopping,,gift,credit
+2026-06-23,Farmers Market,27.36,USD,Groceries,,fresh,cash
+2026-06-23,Bakery,9.75,USD,Food,,weekend,cash
+2026-06-24,Flight seat upgrade,45.08,USD,Travel,,trip,credit
+2026-06-24,Hotel — City Weekend,166.32,USD,Travel,,weekend;trip,credit
+2026-06-25,Airport Lounge snack,17.28,USD,Travel,,trip,credit
+2026-06-25,Airbnb cleaning fee,50.40,USD,Travel,,trip,credit
+2026-06-25,Anniversary Dinner,128.00,USD,Food,Special night out,dinner;date,credit
+2026-06-26,Concert Ticket,75.00,USD,Entertainment,,weekend;fun,credit
+2026-06-26,Spotify merch,29.12,USD,Shopping,,fun,credit
+2026-06-27,Petco,31.68,USD,Other,,pets,debit
+2026-06-27,Vet Visit Copay,59.80,USD,Health,,pets;health,credit
+2026-06-27,Yoga Class,21.12,USD,Health,,fitness,wallet
+2026-06-28,Parking Garage,18.72,USD,Transportation,,car,credit
+2026-06-28,Apartment Utilities Split,140.00,USD,Utilities,,bills;home,bank
+2026-06-28,H&M,60.48,USD,Shopping,,clothes,credit
+2026-06-28,Nike,99.68,USD,Shopping,,clothes,credit
+2026-06-29,Metro Card,33.00,USD,Transportation,,transit,wallet
+2026-06-29,Phone Bill,81.60,USD,Utilities,,bills,bank
+2026-06-30,Electric Bill,80.96,USD,Utilities,,bills,bank
+2026-06-30,Internet Bill,64.40,USD,Utilities,,bills,bank
+2026-07-01,iCloud+,2.99,USD,Utilities,,subscription,credit
+2026-07-01,Coursera,52.92,USD,Education,,learning,credit
+2026-07-01,Dry Cleaning,31.36,USD,Other,,chores,debit
+2026-07-02,Netflix,15.49,USD,Entertainment,,subscription,credit
+2026-07-02,Apple App,4.99,USD,Entertainment,,apps,credit
+2026-07-02,Bookshop,18.72,USD,Education,,books,debit
+2026-07-03,DoorDash — Tacos,22.54,USD,Food,,dinner;delivery,credit
+2026-07-03,Uber Eats — Sushi,29.76,USD,Food,,dinner;delivery,credit
+2026-07-04,CVS Pharmacy,17.50,USD,Health,,health,debit
+2026-07-04,Spotify Family,16.99,USD,Entertainment,,subscription,credit
+2026-07-04,Pharmacy — Refill,24.64,USD,Health,,health,debit
+2026-07-04,Netflix snack run,9.68,USD,Food,,night,cash
+2026-07-05,Amazon,26.30,USD,Shopping,,order,credit
+2026-07-05,Target,42.00,USD,Shopping,,home,debit
+2026-07-05,Shell Gas,46.80,USD,Transportation,,car,credit
+2026-07-06,Fitness Club,49.00,USD,Health,,subscription,credit
+2026-07-06,Trader Joe's,56.32,USD,Groceries,,weekly,debit
+2026-07-06,Whole Foods,72.22,USD,Groceries,,weekly,debit
+2026-07-07,Chipotle,14.26,USD,Food,,lunch,credit
+2026-07-07,Sweetgreen,16.91,USD,Food,,lunch;work,credit
+2026-07-08,YouTube Premium,13.99,USD,Entertainment,,subscription,credit
+2026-07-08,Starbucks,5.85,USD,Food,,coffee,wallet
+2026-07-08,Blue Bottle Coffee,5.67,USD,Food,,coffee;morning,wallet
+2026-07-09,Adobe Creative Cloud,59.99,USD,Other,,subscription,credit
+2026-07-09,Uber,11.50,USD,Transportation,,commute,credit
+2026-07-09,Lyft,13.44,USD,Transportation,,commute,credit
+2026-07-10,City Parking,8.00,USD,Transportation,,car,wallet
+2026-07-10,Barber Shop,35.00,USD,Other,,selfcare,cash
+2026-07-10,Olive Garden,46.80,USD,Food,,dinner;family,credit
+2026-07-11,Local Roasters,4.75,USD,Food,,coffee;morning,wallet
+2026-07-11,Shake Shack,15.90,USD,Food,,lunch,credit
+2026-07-11,Petco,41.20,USD,Other,,pets,debit
+2026-07-12,AMC Movies,32.00,USD,Entertainment,,weekend;fun,credit
+2026-07-12,Cinema Snacks,14.50,USD,Food,,weekend,cash
+2026-07-12,Uber,16.40,USD,Transportation,,night,credit
+2026-07-13,Starbucks,6.25,USD,Food,,coffee,wallet
+2026-07-13,Amazon,29.99,USD,Shopping,,home;order,credit
+2026-07-13,Whole Foods,86.15,USD,Groceries,,weekly,debit
+2026-07-14,Chipotle,12.65,USD,Food,,lunch,credit
+2026-07-14,Target,54.30,USD,Shopping,,home,debit
+2026-07-14,Lyft,9.80,USD,Transportation,,night,credit
+2026-07-15,Shell Gas,48.20,USD,Transportation,,car,credit
+2026-07-15,CVS Pharmacy,18.75,USD,Health,,health,debit
+2026-07-15,Trader Joe's,72.40,USD,Groceries,,weekly;home,debit
+2026-07-15,Thai Basil,38.90,USD,Food,Dinner with Alex,dinner;date,credit
+2026-07-16,Blue Bottle Coffee,5.45,USD,Food,Oat latte,coffee;morning,wallet
+2026-07-16,Uber,11.20,USD,Transportation,,commute,credit
+2026-07-16,Sweetgreen,14.80,USD,Food,Harvest bowl,lunch;work,credit
+2026-07-16,Trader Joe's Snack,6.49,USD,Groceries,,quick,debit
