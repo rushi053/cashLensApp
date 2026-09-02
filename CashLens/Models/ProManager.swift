@@ -56,6 +56,7 @@ class ProManager: ObservableObject {
         }
         Task { await checkEntitlements() }
         listenForTransactions()
+        listenForPurchaseIntents()
     }
 
     // MARK: - Load Products
@@ -219,6 +220,36 @@ class ProManager: ObservableObject {
                     // finish it — otherwise StoreKit redelivers it forever
                     // and the queue can wedge.
                     await transaction.finish()
+                }
+            }
+        }
+    }
+
+    // MARK: - Promoted In-App Purchases (App Store product page / search)
+
+    /// Completes purchases a user starts *on the App Store itself* via
+    /// promoted In-App Purchases. Without this listener the App Store
+    /// refuses to display our promoted products at all (per Apple's
+    /// promoted-IAP requirements), so this is what makes the App Store
+    /// Connect "Promote" configuration actually take effect.
+    ///
+    /// Scoped to Pro products only: `purchase()` grants the store
+    /// entitlement on success, which would be wrong for a tip-jar
+    /// product — and donations are never promoted anyway.
+    private func listenForPurchaseIntents() {
+        Task { [weak self] in
+            for await intent in PurchaseIntent.intents {
+                guard let self else { break }
+                let product = intent.product
+                guard Self.allProIDs.contains(product.id) else { continue }
+                do {
+                    try await self.purchase(product)
+                } catch ProPurchaseError.userCancelled {
+                    // User backed out of the sheet — not an error.
+                } catch {
+                    // Surfaced by the same UI that shows in-app purchase
+                    // failures; the user lands in the app either way.
+                    self.purchaseError = error.localizedDescription
                 }
             }
         }
