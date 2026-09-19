@@ -47,6 +47,11 @@ enum PaywallContext {
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Compact height (iPhone landscape, short windows): the header
+    /// goes horizontal (glyph beside the title) and the CTA leaves the
+    /// scroll to sit in a pinned bottom bar, so the purchase button is
+    /// on screen without scrolling past six feature rows.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @StateObject private var proManager = ProManager.shared
     @State private var selectedPlan: SelectedPlan = .yearly
     @State private var isProcessing = false
@@ -199,8 +204,10 @@ struct PaywallView: View {
                         .modifier(SectionEntrance(order: 2, animate: entranceState))
                     pricingSection
                         .modifier(SectionEntrance(order: 3, animate: entranceState))
-                    ctaSection
-                        .modifier(SectionEntrance(order: 4, animate: entranceState))
+                    if !isCompactHeight {
+                        ctaSection
+                            .modifier(SectionEntrance(order: 4, animate: entranceState))
+                    }
                     restoreAndTerms
                         .modifier(SectionEntrance(order: 5, animate: entranceState))
                 }
@@ -211,6 +218,19 @@ struct PaywallView: View {
                 // Regular width (full-screen iPad / Duo inner): keep
                 // the plan cards and copy at a readable measure.
                 .readableColumn(maxWidth: 640)
+            }
+            // Compact height: the CTA is pinned below the scroll so the
+            // exact charge and the purchase button never leave the
+            // screen. `safeAreaInset` also insets the scroll content,
+            // so the terms block still scrolls fully into view.
+            .safeAreaInset(edge: .bottom) {
+                if isCompactHeight {
+                    ctaSection
+                        .padding(.horizontal, Theme.Spacing.xl)
+                        .padding(.vertical, Theme.Spacing.sm)
+                        .readableColumn(maxWidth: 640)
+                        .background(.bar)
+                }
             }
 
             if isProcessing {
@@ -258,6 +278,10 @@ struct PaywallView: View {
         reduceMotion ? true : animateIn
     }
 
+    private var isCompactHeight: Bool {
+        verticalSizeClass == .compact
+    }
+
     /// Every presentation counts as one impression, regardless of the
     /// entry point — onAppear is the single choke point all
     /// presentations flow through.
@@ -281,20 +305,38 @@ struct PaywallView: View {
             }
             .padding(.bottom, Theme.Spacing.md)
 
-            // Calm crown mark — hierarchical glyph, no disc, no glow.
-            HeroGlyph(systemName: "crown.fill")
+            if isCompactHeight {
+                // Landscape: glyph beside the copy saves ~90pt of
+                // height so the plan cards land above the fold.
+                HStack(spacing: Theme.Spacing.lg) {
+                    HeroGlyph(systemName: "crown.fill")
+                    VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                        Text("CashLens Pro")
+                            .font(Theme.Typography.pageTitle)
+                            .foregroundColor(.primary)
+                        Text("See where your money goes — and where it's headed.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                }
+            } else {
+                // Calm crown mark — hierarchical glyph, no disc, no glow.
+                HeroGlyph(systemName: "crown.fill")
 
-            Text("CashLens Pro")
-                .font(Theme.Typography.pageTitle)
-                .foregroundColor(.primary)
+                Text("CashLens Pro")
+                    .font(Theme.Typography.pageTitle)
+                    .foregroundColor(.primary)
 
-            // Benefit-led subtitle: the job the user is hiring Pro for,
-            // not a feature inventory.
-            Text("See where your money goes — and where it's headed.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.Spacing.md)
+                // Benefit-led subtitle: the job the user is hiring Pro for,
+                // not a feature inventory.
+                Text("See where your money goes — and where it's headed.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, Theme.Spacing.md)
+            }
         }
     }
 
