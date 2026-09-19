@@ -162,6 +162,8 @@ struct BudgetSetupView: View {
         SheetHeader(
             eyebrow: "Budget",
             title: isEditing ? "Editing" : "Add New",
+            // Esc belongs to the picker / paywall while one is up.
+            escapeClosesSheet: !showingCategoryPicker && !showingProPaywall,
             onClose: { dismiss() }
         ) {
             headerTrailingSlot
@@ -719,6 +721,9 @@ struct BudgetSetupView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { showingCategoryPicker = false }
+                        // Safe: the presenting sheet's close button drops
+                        // its Esc shortcut while this picker is up.
+                        .keyboardShortcut(.cancelAction)
                         .fontWeight(.semibold)
                         .foregroundColor(.appPrimary)
                 }
