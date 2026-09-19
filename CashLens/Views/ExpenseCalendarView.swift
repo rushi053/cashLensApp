@@ -172,7 +172,7 @@ struct ExpenseCalendarView: View {
                 // Embedded in the Activity tab the content must clear
                 // the floating/custom tab bar; as a sheet the smaller
                 // inset is enough.
-                .padding(.bottom, isEmbedded ? Theme.Spacing.tabBarInset : Theme.Spacing.xxxl)
+                .padding(.bottom, isEmbedded ? Theme.Spacing.scrollBottomClearance : Theme.Spacing.xxxl)
             }
         }
     }

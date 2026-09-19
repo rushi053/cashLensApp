@@ -252,7 +252,7 @@ struct TodayView: View {
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.top, Theme.Spacing.lg)
-            .padding(.bottom, Theme.Spacing.tabBarInset)
+            .padding(.bottom, Theme.Spacing.scrollBottomClearance)
             // Regular width (iPad, Duo inner): centered readable column
             // instead of a screen-wide status card.
             .readableColumn()
