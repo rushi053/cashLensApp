@@ -2,7 +2,7 @@
   "configurations" : [
     {
       "id" : "A1B2C3D4-0000-0000-0000-000000000001",
-      "name" : "RuntimeSmoke",
+      "name" : "Screenshots",
       "options" : {
 
       }
@@ -20,6 +20,9 @@
   },
   "testTargets" : [
     {
+      "selectedTests" : [
+        "ScreenshotSuiteUITests"
+      ],
       "target" : {
         "containerPath" : "container:CashLens.xcodeproj",
         "identifier" : "B2D466732D7F5EA300EAF1A9",

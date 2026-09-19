@@ -71,3 +71,6 @@ iOSInjectionProject/
 # Website (local deps / build)
 website/node_modules/
 website/dist/
+
+## Screenshot suite output (Scripts/screenshots.sh)
+/build/
