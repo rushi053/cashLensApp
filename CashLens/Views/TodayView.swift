@@ -1896,6 +1896,19 @@ struct TodayView: View {
             // load — no baseline to celebrate against yet).
             let previousStreak = streak?.currentStreak
             streak = result.streak
+            // A long streak is a delight moment — let the rating prompt
+            // know (it decides whether this version has asked yet).
+            // Only for a real, active user: the streak chip must be
+            // showing, the count must be the full history, and there
+            // must be a logged expense in the last 30 days — otherwise
+            // an empty or abandoned ledger reads as a "90-day streak".
+            if viewModel.isFullyHydrated,
+               result.streak.isMeaningful,
+               result.streak.currentStreak >= ReviewPromptManager.streakThreshold,
+               let recentCutoff = Calendar.current.date(byAdding: .day, value: -30, to: now),
+               expensesSnapshot.contains(where: { $0.date >= recentCutoff && $0.date <= now }) {
+                ReviewPromptManager.shared.recordStreak(days: result.streak.currentStreak)
+            }
             if let previousStreak, result.streak.currentStreak > previousStreak {
                 streakPop = true
                 Task { @MainActor in

@@ -237,10 +237,15 @@ struct PaywallView: View {
                 animateIn = true
             }
             recordImpression()
+            // The rating prompt must never stack on top of a paywall.
+            ReviewPromptManager.shared.paywallDidAppear()
             // Resolve trial eligibility right at the decision moment.
             // Copy defaults to non-trial until this lands, so a slow
             // network can only ever under-promise.
             Task { await proManager.refreshIntroOfferEligibility() }
+        }
+        .onDisappear {
+            ReviewPromptManager.shared.paywallDidDisappear()
         }
     }
 

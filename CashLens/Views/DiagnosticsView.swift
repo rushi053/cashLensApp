@@ -40,9 +40,9 @@ struct DiagnosticsView: View {
                     }
                 }
                 
-                Section(header: Text("Feedback Prompt")) {
-                    Button("Reset Feedback State (debug)") {
-                        FeedbackManager.shared.resetFeedbackState()
+                Section(header: Text("Review Prompt")) {
+                    Button("Reset Review Prompt State (debug)") {
+                        ReviewPromptManager.shared.resetForDebugging()
                     }
                 }
                 

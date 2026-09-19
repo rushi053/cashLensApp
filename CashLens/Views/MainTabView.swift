@@ -35,15 +35,15 @@ struct MainTabView: View {
     /// a new accent theme. Without this subscription SwiftUI has no reason
     /// to re-evaluate the body and the tint visually lags behind.
     @EnvironmentObject private var themeStore: ThemeStore
-    @StateObject private var feedbackManager = FeedbackManager.shared
+    @StateObject private var reviewPromptManager = ReviewPromptManager.shared
     @EnvironmentObject private var proManager: ProManager
     @State private var selectedTab: Tab = .today
     @State private var showingAddExpense = false
     @State private var showingCurrencyPicker = false
 
-    /// Native one-tap rating sheet. `FeedbackManager` decides *when* to
-    /// ask; this action shows Apple's in-app star prompt directly — no
-    /// intermediate modal, so rating is a single tap.
+    /// Native one-tap rating sheet. `ReviewPromptManager` decides *when*
+    /// to ask; this action shows Apple's in-app star prompt directly —
+    /// no intermediate modal, so rating is a single tap.
     @Environment(\.requestReview) private var requestReview
 
     // MARK: - Post-value paywall trigger
@@ -141,8 +141,21 @@ struct MainTabView: View {
                     ? viewModel.expenses.count
                     : nil
             } else {
+                // The rating ask waits for a quiet moment after this
+                // sheet settles (and yields entirely if the paywall
+                // below takes the moment instead).
+                reviewPromptManager.noteSheetDismissed()
                 maybeShowPostValuePaywall()
             }
+        }
+        .onReceive(reviewPromptManager.$shouldRequestReview) { shouldShow in
+            guard shouldShow else { return }
+            reviewPromptManager.consume()
+            // Never over the app-lock cover. The version's ask is spent
+            // either way — this can only happen if the app was locked
+            // within the 2s settle window, which is vanishingly rare.
+            guard !AppLockManager.shared.isLocked else { return }
+            requestReview()
         }
         .sheet(isPresented: $showingAutoPaywall) {
             PaywallView(context: .insights)
@@ -314,14 +327,6 @@ struct MainTabView: View {
         .onAppear {
             checkAndShowCurrencyPicker()
         }
-        .onReceive(feedbackManager.$shouldShowFeedbackRequest) { shouldShow in
-            guard shouldShow else { return }
-            feedbackManager.consumePromptTrigger()
-            // Never over the app-lock cover; the missed ask retries
-            // naturally at the next eligible moment (30d cooldown).
-            guard !AppLockManager.shared.isLocked else { return }
-            requestReview()
-        }
         .onChange(of: selectedTab) { _, _ in
             HapticManager.shared.selectionChanged()
         }
@@ -476,12 +481,6 @@ struct MainTabView: View {
             }
             .onAppear {
                 checkAndShowCurrencyPicker()
-            }
-            .onReceive(feedbackManager.$shouldShowFeedbackRequest) { shouldShow in
-                guard shouldShow else { return }
-                feedbackManager.consumePromptTrigger()
-                guard !AppLockManager.shared.isLocked else { return }
-                requestReview()
             }
             .onReceive(NotificationCenter.default.publisher(for: .themeDidChange)) { _ in
                 // Legacy `UITabBar.appearance()` caches resolved tint colors.
