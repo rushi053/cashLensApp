@@ -123,6 +123,10 @@ struct SheetCloseButton: View {
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
+        // Esc on a hardware keyboard closes the sheet through the same
+        // action as the tap — so screens with custom dismiss handling
+        // (`AddExpenseView.onDismissRequest`) behave identically.
+        .keyboardShortcut(.cancelAction)
         .accessibilityLabel("Close")
     }
 }

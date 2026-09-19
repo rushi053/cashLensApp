@@ -130,12 +130,15 @@ struct ExportDataView: View {
                 }
             }
             .navigationBarTitle("Export", displayMode: .inline)
-            .navigationBarItems(trailing:
-                Button("Done") { dismiss() }
-                    .fontWeight(.semibold)
-                    .foregroundColor(.appPrimary)
-                    .disabled(isExporting)
-            )
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                        .foregroundColor(.appPrimary)
+                        .disabled(isExporting)
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
             .sheet(isPresented: $showingShareSheet) {
                 if let url = exportURL {
                     ShareSheet(items: [url])

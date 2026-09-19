@@ -53,6 +53,7 @@ struct AppIconPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .fontWeight(.semibold)
                 }
             }
@@ -112,13 +113,6 @@ struct AppIconPickerView: View {
     // MARK: - Grid
 
     private var iconGrid: some View {
-        // Adaptive: 62pt minimum (60pt tile + breathing room) still
-        // yields 4 columns at the SE's ~303pt card content width, and
-        // 6 in an iPad form sheet.
-        let columns = [
-            GridItem(.adaptive(minimum: 62, maximum: 96), spacing: Theme.Spacing.lg)
-        ]
-
         return VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             HStack {
                 Text("Icons")
@@ -141,7 +135,15 @@ struct AppIconPickerView: View {
                 }
             }
 
-            LazyVGrid(columns: columns, spacing: Theme.Spacing.xl) {
+            // Even-column adaptive grid: 62pt minimum (60pt tile +
+            // breathing room) yields 4 columns at the SE's ~303pt card
+            // content width and 6 in an iPad form sheet; odd counts
+            // round down so no tile sits on a Duo fold.
+            EvenColumnGrid(
+                minimumItemWidth: 62,
+                columnSpacing: Theme.Spacing.lg,
+                rowSpacing: Theme.Spacing.xl
+            ) {
                 ForEach(AppIconOption.all) { icon in
                     iconTile(icon)
                 }

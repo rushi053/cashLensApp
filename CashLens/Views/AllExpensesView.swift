@@ -3,6 +3,13 @@ import SwiftUI
 struct AllExpensesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.bulkSelectionBinding) private var bulkSelectionBinding
+    /// Regular width as the tab root (iPad, iPhone Duo inner display):
+    /// the ledger becomes the sidebar column of a `NavigationSplitView`
+    /// and the expense editor opens in the detail column instead of a
+    /// sheet. Compact width keeps the stack + sheet flow. Same
+    /// hierarchy either way, so a Duo fold mid-session lands on the
+    /// same screen.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var proManager: ProManager
@@ -778,22 +785,104 @@ struct AllExpensesView: View {
         return "\(totalMatchCount) \(noun) totaling \(viewModel.formattedAmount(totalNetAmount))"
     }
 
-    /// Wraps Activity content in `NavigationStack` only when this
-    /// screen is presented as a sheet / deep-link (needs Back +
-    /// toolbar). As the tab root, returns content bare so no
-    /// `UINavigationController` sits under the tab bar for the
-    /// rest of the session.
+    /// Navigation container for Activity content:
+    ///   • tab root, regular width → `NavigationSplitView` (ledger as
+    ///     the sidebar column, editor in the detail column);
+    ///   • tab root, compact width → bare content, so no
+    ///     `UINavigationController` sits under the tab bar for the
+    ///     rest of the session (see PERF note in `body`);
+    ///   • sheet / deep-link → `NavigationStack` (needs Back + toolbar).
     @ViewBuilder
     private func activityNavContainer<Content: View>(
         @ViewBuilder content: () -> Content
     ) -> some View {
-        if isRootTab {
+        if showsEditorInDetailColumn {
+            NavigationSplitView {
+                content()
+                    // Narrow-regular windows (11" iPad at 50/50 ≈ 597pt,
+                    // Duo inner ≈ 626pt) must still leave ≥ ~300pt for
+                    // the editor, so the ledger yields first. Anything
+                    // narrower than that is compact and never gets here.
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
+            } detail: {
+                editorDetailColumn
+            }
+            .navigationSplitViewStyle(.balanced)
+        } else if isRootTab {
             content()
         } else {
             NavigationStack {
                 content()
             }
         }
+    }
+
+    /// Root tab + regular width → list | detail. Sheet / deep-link
+    /// presentations (form sheets report compact width on iPad) and
+    /// every compact-width case keep the sheet editor.
+    private var showsEditorInDetailColumn: Bool {
+        isRootTab && horizontalSizeClass == .regular
+    }
+
+    /// The editor sheet is disabled while the detail column owns the
+    /// selection. If the size class flips mid-edit (Duo fold, iPad
+    /// Split View resize) the editor moves columns; unsaved field
+    /// edits in the old presentation are lost — accepted.
+    private var editorSheetItem: Binding<Expense?> {
+        showsEditorInDetailColumn ? .constant(nil) : $selectedExpense
+    }
+
+    @ViewBuilder
+    private var editorDetailColumn: some View {
+        if let expense = selectedExpense {
+            expenseEditor(for: expense)
+                .onDismissRequest { selectedExpense = nil }
+                // Fresh editor state per expense — the `@State`
+                // fields are seeded in `init`, which only reruns on
+                // an identity change.
+                .id(expense.id)
+                .environmentObject(categoryViewModel)
+        } else {
+            ContentUnavailableView(
+                "Select an expense",
+                systemImage: "list.bullet.rectangle",
+                description: Text("Pick an expense from the list to view or edit it.")
+            )
+        }
+    }
+
+    /// The edit form for `expense`, shared by the compact sheet and the
+    /// regular-width detail column.
+    private func expenseEditor(for expense: Expense) -> AddExpenseView {
+        AddExpenseView(
+            viewModel: viewModel,
+            title: expense.title,
+            amount: viewModel.formattedAmount(expense.amount),
+            date: expense.date,
+            selectedCategory: expense.category,
+            selectedCustomCategoryId: expense.customCategoryId,
+            notes: expense.notes ?? "",
+            tags: expense.tags ?? [],
+            isRefund: expense.isRefund,
+            paymentMethod: expense.paymentMethod,
+            receiptImagePath: expense.receiptImagePath,
+            isEditing: true,
+            expenseId: expense.id,
+            onSave: { title, amount, date, category, customCategoryId, notes, tags, isRefund, paymentMethod, receiptImagePath in
+                var updatedExpense = expense
+                updatedExpense.title = title
+                updatedExpense.amount = amount
+                updatedExpense.date = date
+                updatedExpense.category = category
+                updatedExpense.customCategoryId = customCategoryId
+                updatedExpense.notes = notes
+                updatedExpense.tags = tags
+                updatedExpense.isRefund = isRefund
+                updatedExpense.paymentMethod = paymentMethod
+                updatedExpense.receiptImagePath = receiptImagePath
+                viewModel.updateExpense(updatedExpense)
+            }
+        )
     }
 
     var body: some View {
@@ -884,16 +973,15 @@ struct AllExpensesView: View {
             .toolbar {
                 if !isRootTab {
                     ToolbarItem(placement: .navigationBarLeading) {
+                        // Title + symbol as one `Label` so the system can
+                        // use the title in overflow / a Duo vertical bar.
                         Button(action: {
                             dismiss()
                         }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Back")
-                                    .fontWeight(.medium)
-                            }
-                            .foregroundColor(.appPrimary)
+                            Label("Back", systemImage: "chevron.left")
+                                .labelStyle(.titleAndIcon)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.appPrimary)
                         }
                     }
 
@@ -963,6 +1051,14 @@ struct AllExpensesView: View {
             .onChange(of: sortOption) {
                 recomputeResults(resetPagination: true)
             }
+            // Cmd-F (see `AppCommands`): only the visible tab root
+            // answers, so a sheet-presented copy of this screen never
+            // opens a second Quick Search.
+            .onReceive(AppCommandCenter.shared.commands) { command in
+                guard command == .presentActivitySearch, isRootTab, isTabVisible,
+                      !showingQuickSearch else { return }
+                showingQuickSearch = true
+            }
             .onChange(of: useDateRangeFilter) {
                 recomputeResults(resetPagination: true)
             }
@@ -997,37 +1093,9 @@ struct AllExpensesView: View {
                 }
             }
         }
-        .sheet(item: $selectedExpense) { expense in
-            AddExpenseView(
-                viewModel: viewModel,
-                title: expense.title,
-                amount: viewModel.formattedAmount(expense.amount),
-                date: expense.date,
-                selectedCategory: expense.category,
-                selectedCustomCategoryId: expense.customCategoryId,
-                notes: expense.notes ?? "",
-                tags: expense.tags ?? [],
-                isRefund: expense.isRefund,
-                paymentMethod: expense.paymentMethod,
-                receiptImagePath: expense.receiptImagePath,
-                isEditing: true,
-                expenseId: expense.id,
-                onSave: { title, amount, date, category, customCategoryId, notes, tags, isRefund, paymentMethod, receiptImagePath in
-                    var updatedExpense = expense
-                    updatedExpense.title = title
-                    updatedExpense.amount = amount
-                    updatedExpense.date = date
-                    updatedExpense.category = category
-                    updatedExpense.customCategoryId = customCategoryId
-                    updatedExpense.notes = notes
-                    updatedExpense.tags = tags
-                    updatedExpense.isRefund = isRefund
-                    updatedExpense.paymentMethod = paymentMethod
-                    updatedExpense.receiptImagePath = receiptImagePath
-                    viewModel.updateExpense(updatedExpense)
-                }
-            )
-            .environmentObject(categoryViewModel)
+        .sheet(item: editorSheetItem) { expense in
+            expenseEditor(for: expense)
+                .environmentObject(categoryViewModel)
         }
         .sheet(isPresented: $showingDateRangePicker) {
             dateRangeSheet

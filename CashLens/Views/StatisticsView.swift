@@ -149,7 +149,7 @@ struct StatisticsView: View {
                     }
                 }
                 .padding(.horizontal, isWideLayout ? Theme.Spacing.xxxl : Theme.Spacing.xl)
-                .padding(.bottom, Theme.Spacing.tabBarInset)
+                .padding(.bottom, Theme.Spacing.scrollBottomClearance)
                 .frame(maxWidth: isWideLayout ? 1200 : .infinity)
                 .frame(maxWidth: .infinity)
             }

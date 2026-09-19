@@ -121,6 +121,11 @@ struct CashLensApp: App {
                 appLockManager.handleScenePhase(newPhase)
             }
         }
+        // Hardware-keyboard shortcuts (Cmd-N / Cmd-F / Cmd-,). See
+        // `AppCommands`; `MainTabView` and the Activity root react.
+        .commands {
+            AppCommands()
+        }
     }
 
     private var mainContent: some View {

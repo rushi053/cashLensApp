@@ -86,6 +86,9 @@ struct ExpenseCard: View, Equatable {
             .overlay(rowBorder)
             .shadow(color: rowShadowColor, radius: 6, x: 0, y: 2)
             .contentShape(Rectangle())
+            // Pointer feedback on iPad / Duo with a trackpad; no-op
+            // without an indirect pointer.
+            .hoverEffect(.highlight)
     }
 
     private var rowContent: some View {

@@ -280,7 +280,7 @@ struct QuickSearchView: View {
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
                 .padding(.top, Theme.Spacing.xs)
-                .padding(.bottom, Theme.Spacing.tabBarInset)
+                .padding(.bottom, Theme.Spacing.xxxl)
             }
         }
     }
@@ -520,7 +520,7 @@ struct QuickSearchView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
                 }
 
-                Spacer(minLength: Theme.Spacing.tabBarInset)
+                Spacer(minLength: Theme.Spacing.xxxl)
             }
             .padding(.top, Theme.Spacing.xs)
         }

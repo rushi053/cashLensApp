@@ -18,12 +18,15 @@ enum Theme {
         static let xl:  CGFloat = 20
         static let xxl: CGFloat = 24
         static let xxxl: CGFloat = 32
-        /// Inset applied to scroll views so content clears the custom tab bar.
-        /// Trimmed from 120 → 100 in the v2 polish pass: both tab bar paths
-        /// (native Liquid Glass on iOS 26, material bar on 18–25) now let
-        /// content read through them, so the old opaque-bar safety margin
-        /// was just dead space at the bottom of every scroll view.
-        static let tabBarInset: CGFloat = 100
+        /// Breathing room below the last row of a tab-root scroll view so
+        /// the floating "+" button never sits on top of it. The tab bar
+        /// itself is *not* part of this number any more: on iOS 26 the
+        /// system `TabView` insets content via the safe area, and the
+        /// legacy custom bar adds a matching `safeAreaPadding` in
+        /// `MainTabView`. (Replaces the old `tabBarInset = 100`, which
+        /// double-counted the bar and left ~100pt of dead space on iPad,
+        /// where `.sidebarAdaptable` has no bottom bar at all.)
+        static let scrollBottomClearance: CGFloat = 32
     }
 
     // MARK: - Corner Radius

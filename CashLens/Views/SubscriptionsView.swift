@@ -65,7 +65,7 @@ struct SubscriptionsView: View {
                     listSection
                 }
                 .padding(.horizontal, Theme.Spacing.xxl)
-                .padding(.bottom, Theme.Spacing.tabBarInset)
+                .padding(.bottom, Theme.Spacing.xxxl)
             }
         }
         .background(Color.systemBackground)

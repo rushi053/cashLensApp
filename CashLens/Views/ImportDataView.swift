@@ -83,12 +83,15 @@ struct ImportDataView: View {
                 }
             }
             .navigationBarTitle("Import", displayMode: .inline)
-            .navigationBarItems(trailing:
-                Button("Done") { dismiss() }
-                    .fontWeight(.semibold)
-                    .foregroundColor(.appPrimary)
-                    .disabled(isParsing || isApplying)
-            )
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                        .foregroundColor(.appPrimary)
+                        .disabled(isParsing || isApplying)
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
             .fileImporter(
                 isPresented: $showingFilePicker,
                 allowedContentTypes: [
@@ -573,10 +576,13 @@ private struct ImportPreviewSheet: View {
                 confirmBar
             }
             .navigationBarTitle("Review", displayMode: .inline)
-            .navigationBarItems(
-                leading: Button("Cancel") { onCancel(); dismiss() }
-                    .foregroundColor(.secondary)
-            )
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onCancel(); dismiss() }
+                        .foregroundColor(.secondary)
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
             .onAppear { withAnimation { animateIn = true } }
         }
     }

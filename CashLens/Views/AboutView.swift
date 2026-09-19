@@ -127,6 +127,7 @@ struct AboutView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .fontWeight(.semibold)
                         .foregroundColor(.appPrimary)
                 }

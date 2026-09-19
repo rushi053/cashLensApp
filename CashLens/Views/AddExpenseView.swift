@@ -194,6 +194,12 @@ struct AddExpenseView: View {
     /// compatibility shim needed.
     var onSave: ((String, Double, Date, Expense.Category, UUID?, String?, [String]?, Bool, PaymentMethod?, String?) -> Void)?
     var expenseId: UUID?
+    /// When the editor is hosted somewhere `dismiss()` is a no-op — the
+    /// detail column of Activity's `NavigationSplitView` on regular
+    /// width — the host supplies this to clear its selection instead.
+    /// `nil` (the default, every sheet presentation) keeps the normal
+    /// environment dismiss. Set via `onDismissRequest(_:)`.
+    var onDismissRequest: (() -> Void)? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingDraftRestored = false
     @State private var showingDuplicateConfirmation = false
@@ -353,6 +359,9 @@ struct AddExpenseView: View {
             }
         }
         .navigationBarHidden(true)
+        // Duo 27.1: single-Close sheet keeps a horizontal bar on the
+        // outer display. No-op on today's SDK.
+        .duoHorizontalToolbar()
         // App-wide sheet convention: visible grab handle on every
         // custom-chrome sheet, with the header giving it clear air.
         .presentationDragIndicator(.visible)
@@ -1167,14 +1176,15 @@ struct AddExpenseView: View {
     private var categoryPickerSheet: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                // Adaptive columns: 74pt minimum keeps 4 columns on every
-                // iPhone (SE included, 343pt content width) and grows to
-                // 6 in an iPad form sheet, instead of stretching 4 tiles.
-                let columns = [
-                    GridItem(.adaptive(minimum: 74, maximum: 110), spacing: Theme.Spacing.sm + 2, alignment: .top)
-                ]
-
-                LazyVGrid(columns: columns, alignment: .center, spacing: Theme.Spacing.lg) {
+                // Even-column adaptive grid: 74pt minimum keeps 4 columns
+                // on every iPhone (SE included, 343pt content width) and
+                // gives 6 in an iPad form sheet; odd counts at in-between
+                // widths round down so no tile sits on a Duo fold.
+                EvenColumnGrid(
+                    minimumItemWidth: 74,
+                    columnSpacing: Theme.Spacing.sm + 2,
+                    rowSpacing: Theme.Spacing.lg
+                ) {
                     ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         Button {
                             HapticManager.shared.selectionChanged()
@@ -1185,6 +1195,7 @@ struct AddExpenseView: View {
                             categoryGridCell(category).allowsHitTesting(false)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                     }
 
                     ForEach(categoryViewModel.customCategories, id: \.id) { category in
@@ -1197,6 +1208,7 @@ struct AddExpenseView: View {
                             customCategoryGridCell(category).allowsHitTesting(false)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                     }
                 }
                 .padding(Theme.Spacing.lg)
@@ -1942,7 +1954,7 @@ struct AddExpenseView: View {
             onClose: {
                 if !isEditing { clearDraft() }
                 cleanupUnsavedReceipt()
-                dismiss()
+                requestDismiss()
             }
         ) {
             headerTrailingSlot
@@ -3391,7 +3403,7 @@ struct AddExpenseView: View {
             )
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                dismiss()
+                requestDismiss()
             }
         } else {
             if isPotentialDuplicate(amountValue: amountValue) {
@@ -3515,7 +3527,7 @@ struct AddExpenseView: View {
         )
         
         // Dismiss the view
-        dismiss()
+        requestDismiss()
     }
     
     /// User-facing name of the category being saved — resolves custom
@@ -3707,7 +3719,30 @@ struct AddExpenseView: View {
         HapticManager.shared.success()
         
         // Dismiss the view
-        dismiss()
+        requestDismiss()
+    }
+
+    // MARK: - Dismissal
+
+    /// Every "we're done here" path funnels through this so a host that
+    /// can't be dismissed (split-view detail column) can still close the
+    /// editor.
+    private func requestDismiss() {
+        if let onDismissRequest {
+            onDismissRequest()
+        } else {
+            dismiss()
+        }
+    }
+}
+
+extension AddExpenseView {
+    /// Overrides the environment `dismiss` for hosts where it would be a
+    /// no-op (see `onDismissRequest`).
+    func onDismissRequest(_ action: @escaping () -> Void) -> AddExpenseView {
+        var copy = self
+        copy.onDismissRequest = action
+        return copy
     }
 }
 

@@ -70,6 +70,14 @@ struct OnboardingView: View {
 
     @State private var currentStep: OnboardingStep = .welcome
 
+    /// Compact height (iPhone landscape, short multitasking windows):
+    /// each page lays its hero beside the copy + control instead of
+    /// stacking them, and the copy column scrolls, so the CTA footer
+    /// below the pager is always on screen. Regular height keeps the
+    /// original vertical page.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    private var isCompactHeight: Bool { verticalSizeClass == .compact }
+
     // MARK: - First-expense form state
 
     @State private var firstExpenseAmount: String = ""
@@ -193,33 +201,71 @@ struct OnboardingView: View {
 
     @ViewBuilder
     private func pageContent(for step: OnboardingStep) -> some View {
+        if isCompactHeight {
+            compactHeightPage(for: step)
+        } else {
+            regularHeightPage(for: step)
+        }
+    }
+
+    /// Portrait / regular height: hero above copy above control.
+    private func regularHeightPage(for step: OnboardingStep) -> some View {
         VStack(spacing: Theme.Spacing.xl) {
             Spacer(minLength: 0)
 
             hero(for: step)
 
-            VStack(spacing: Theme.Spacing.sm + 2) {
-                Text(step.title)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.7)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(pageDescription(for: step))
-                    .font(.system(size: 15))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, Theme.Spacing.sm)
-            }
+            pageCopy(for: step)
 
             inlineControl(for: step)
 
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Compact height (landscape): hero in the leading half, copy +
+    /// control in a scrolling trailing half. The first-expense page
+    /// has no hero, so its form takes the full width.
+    private func compactHeightPage(for step: OnboardingStep) -> some View {
+        HStack(alignment: .center, spacing: Theme.Spacing.xxl) {
+            if step != .firstExpense {
+                hero(for: step)
+                    .frame(maxWidth: .infinity)
+            }
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: Theme.Spacing.lg) {
+                    pageCopy(for: step)
+                    inlineControl(for: step)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Theme.Spacing.sm)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Title + description shared by both page layouts.
+    private func pageCopy(for step: OnboardingStep) -> some View {
+        VStack(spacing: Theme.Spacing.sm + 2) {
+            Text(step.title)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .multilineTextAlignment(.center)
+                // Wraps freely (vertical fixedSize) — no line cap or
+                // shrink-to-fit, so accessibility sizes reflow instead
+                // of compressing the headline.
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(pageDescription(for: step))
+                .font(.system(size: 15))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Theme.Spacing.sm)
+        }
     }
 
     // MARK: - Heros (per-step focal visual)

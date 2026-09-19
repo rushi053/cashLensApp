@@ -268,7 +268,8 @@ struct BudgetMiniCard: View {
         horizontalSizeClass == .regular ? regularCardHeight : compactCardHeight
     }
 
-    private let iconSize: CGFloat = 40
+    /// Medallion diameter; scales with Dynamic Type alongside the card height.
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 40
     private let horizontalPadding: CGFloat = 16
     private let verticalPadding: CGFloat = 16
 
@@ -299,6 +300,8 @@ struct BudgetMiniCard: View {
             )
         }
         .buttonStyle(ScaleButtonStyle())
+        // Pointer hover lifts the tile (iPad trackpad); no-op on touch.
+        .hoverEffect(.lift)
         .accessibilityLabel(accessibilityLabel)
     }
 

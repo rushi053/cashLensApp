@@ -52,6 +52,7 @@ struct SiriShortcutsTipsView: View {
                 // Export, Import) instead of the one-off X icon.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .fontWeight(.semibold)
                 }
             }

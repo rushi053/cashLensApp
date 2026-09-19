@@ -352,6 +352,32 @@ extension View {
     }
 }
 
+// MARK: - Readable column
+//
+// Single-column status/settings/marketing screens (Today, You, Paywall,
+// Onboarding) stretch into 1000pt+ lines on an iPad or the Duo inner
+// display. Cap the column on regular width and center it; compact
+// width is untouched so no iPhone layout changes.
+struct ReadableColumnModifier: ViewModifier {
+    let maxWidth: CGFloat
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: horizontalSizeClass == .regular ? maxWidth : .infinity)
+            .frame(maxWidth: .infinity)
+    }
+}
+
+extension View {
+    /// Centers content in a `maxWidth` column on regular width only.
+    /// ~680pt keeps card copy at a readable measure while leaving the
+    /// two-tile rows (Today summary) wide enough to breathe.
+    func readableColumn(maxWidth: CGFloat = 680) -> some View {
+        modifier(ReadableColumnModifier(maxWidth: maxWidth))
+    }
+}
+
 // MARK: - Adaptive height (charts)
 //
 // Charts used to ship with fixed heights (200 / 280 / 300) picked per
