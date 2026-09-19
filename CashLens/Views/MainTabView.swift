@@ -41,6 +41,15 @@ struct MainTabView: View {
     @State private var showingAddExpense = false
     @State private var showingCurrencyPicker = false
 
+    /// The only layout input for "wide" chrome. Regular width = iPad
+    /// (full screen or wide Split View), iPhone Duo inner display.
+    /// Compact = every iPhone, iPad Slide Over / narrow Split View, Duo
+    /// outer display. Device idiom and window width are deliberately
+    /// not consulted — both misfire in multitasking and on Duo.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isRegularWidth: Bool { horizontalSizeClass == .regular }
+
     /// Native one-tap rating sheet. `ReviewPromptManager` decides *when*
     /// to ask; this action shows Apple's in-app star prompt directly —
     /// no intermediate modal, so rating is a single tap.
@@ -292,10 +301,22 @@ struct MainTabView: View {
                 youTabRoot(themeId: themeId)
             }
         }
+        // Regular width (iPad, Duo inner display) gets the system
+        // sidebar / top tab bar; compact width keeps the bottom tab bar.
+        // iOS 18+ API, so no availability gate is needed inside this
+        // iOS 26-only path.
+        .tabViewStyle(.sidebarAdaptable)
         .tint(.appPrimary)
         .environment(\.bulkSelectionBinding, $isBulkSelecting)
         .animation(Theme.Motion.snappy, value: isBulkSelecting)
         .overlay(alignment: .bottomTrailing) {
+            // The tab roots intentionally have no navigation container
+            // (custom headers, see TodayView / AllExpensesView), so there
+            // is no toolbar to host "+". The FAB stays an overlay on the
+            // TabView's safe-area frame: it never enters the horizontal
+            // safe area, so a Duo vertical bar or an iPad sidebar can't
+            // collide with it.
+            //
             // ZStack + scoped `.animation(value:)` so the FAB's
             // insert/remove transition runs on its own clock instead of
             // joining the system's tab-switch transaction — hiding it
@@ -303,15 +324,16 @@ struct MainTabView: View {
             // selection animation.
             ZStack {
                 if shouldShowFAB {
-                    let isPad = UIDevice.current.userInterfaceIdiom == .pad
                     FloatingAddButton(
                         action: { showingAddExpense = true },
-                        isIPad: isPad
+                        isRegularWidth: isRegularWidth
                     )
-                    .padding(.trailing, isPad ? 30 : 20)
-                    // Sit just above the floating Liquid Glass tab bar with a
-                    // small visual gap so the FAB feels grouped, not isolated.
-                    .padding(.bottom, isPad ? 82 : 68)
+                    .padding(.trailing, isRegularWidth ? 30 : 20)
+                    // Compact: sit just above the floating Liquid Glass
+                    // tab bar with a small gap so the FAB feels grouped.
+                    // Regular: `.sidebarAdaptable` moves the bar to the
+                    // top / sidebar, so only a normal margin is needed.
+                    .padding(.bottom, isRegularWidth ? 28 : 68)
                     .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -389,10 +411,15 @@ struct MainTabView: View {
                                 Spacer()
                                 FloatingAddButton(
                                     action: { showingAddExpense = true },
-                                    isIPad: isIPad(geometry)
+                                    isRegularWidth: isRegularWidth
                                 )
-                                .padding(.trailing, isIPad(geometry) ? 30 : 20)
-                                .padding(.bottom, tabBarHeight + geometry.safeAreaInsets.bottom + (isIPad(geometry) ? 20 : 10))
+                                // The ZStack ignores only the *bottom*
+                                // safe area (for the bar), so this
+                                // trailing padding is measured from the
+                                // horizontal safe-area edge, not the
+                                // screen edge.
+                                .padding(.trailing, isRegularWidth ? 30 : 20)
+                                .padding(.bottom, tabBarHeight + geometry.safeAreaInsets.bottom + (isRegularWidth ? 20 : 10))
                                 .transition(.scale.combined(with: .opacity))
                             }
                         }
@@ -428,7 +455,7 @@ struct MainTabView: View {
                                         selectedTab = .today
                                         HapticManager.shared.selectionChanged()
                                     },
-                                    isIPad: isIPad(geometry)
+                                    isRegularWidth: isRegularWidth
                                 )
 
                                 TabButton(
@@ -439,7 +466,7 @@ struct MainTabView: View {
                                         selectedTab = .activity
                                         HapticManager.shared.selectionChanged()
                                     },
-                                    isIPad: isIPad(geometry)
+                                    isRegularWidth: isRegularWidth
                                 )
 
                                 TabButton(
@@ -450,7 +477,7 @@ struct MainTabView: View {
                                         selectedTab = .insights
                                         HapticManager.shared.selectionChanged()
                                     },
-                                    isIPad: isIPad(geometry)
+                                    isRegularWidth: isRegularWidth
                                 )
 
                                 TabButton(
@@ -461,10 +488,10 @@ struct MainTabView: View {
                                         selectedTab = .you
                                         HapticManager.shared.selectionChanged()
                                     },
-                                    isIPad: isIPad(geometry)
+                                    isRegularWidth: isRegularWidth
                                 )
                             }
-                            .padding(.top, isIPad(geometry) ? 12 : 8)
+                            .padding(.top, isRegularWidth ? 12 : 8)
 
                             Spacer()
                         }
@@ -503,10 +530,6 @@ struct MainTabView: View {
         }
     }
 
-    private func isIPad(_ geometry: GeometryProxy) -> Bool {
-        return geometry.size.width > 768 || UIDevice.current.userInterfaceIdiom == .pad
-    }
-
     /// You tab content — Profile is mounted only while selected so its
     /// EnvironmentObject fan-out can't tax Today/Activity/Insights
     /// transitions after the first visit.
@@ -531,21 +554,23 @@ struct TabButton: View {
     let label: String
     let isSelected: Bool
     let action: () -> Void
-    let isIPad: Bool
+    /// Regular horizontal size class — roomier item. Size class, not
+    /// device idiom, so Split View / Slide Over and Duo behave.
+    let isRegularWidth: Bool
 
-    init(icon: String, label: String, isSelected: Bool, action: @escaping () -> Void, isIPad: Bool = false) {
+    init(icon: String, label: String, isSelected: Bool, action: @escaping () -> Void, isRegularWidth: Bool = false) {
         self.icon = icon
         self.label = label
         self.isSelected = isSelected
         self.action = action
-        self.isIPad = isIPad
+        self.isRegularWidth = isRegularWidth
     }
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: isIPad ? 6 : 4) {
+            VStack(spacing: isRegularWidth ? 6 : 4) {
                 Image(systemName: icon)
-                    .font(.system(size: isIPad ? 24 : 20, weight: .medium))
+                    .font(.system(size: isRegularWidth ? 24 : 20, weight: .medium))
 
                 // Scaled via UIFontMetrics so the label follows Dynamic
                 // Type (the bar itself stays fixed-height, like the
@@ -553,7 +578,7 @@ struct TabButton: View {
                 Text(label)
                     .font(.system(
                         size: UIFontMetrics(forTextStyle: .caption2)
-                            .scaledValue(for: isIPad ? 11 : 9),
+                            .scaledValue(for: isRegularWidth ? 11 : 9),
                         weight: .medium
                     ))
                     .lineLimit(1)
@@ -561,7 +586,7 @@ struct TabButton: View {
             }
             .foregroundColor(isSelected ? .appPrimary : .secondary)
             .frame(maxWidth: .infinity)
-            .frame(height: isIPad ? 50 : 40)
+            .frame(height: isRegularWidth ? 50 : 40)
         }
         .buttonStyle(PlainButtonStyle())
     }

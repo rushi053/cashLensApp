@@ -2,12 +2,24 @@ import SwiftUI
 
 struct FloatingAddButton: View {
     let action: () -> Void
-    let isIPad: Bool
+    /// Regular horizontal size class (iPad, iPhone Duo inner display):
+    /// slightly larger hit target. Never derived from device idiom.
+    let isRegularWidth: Bool
+
+    /// Hit target and glyph follow Dynamic Type (relative to `.title`
+    /// so they grow with headings, not body copy, and stay proportional).
+    @ScaledMetric(relativeTo: .title) private var compactDiameter: CGFloat = 56
+    @ScaledMetric(relativeTo: .title) private var regularDiameter: CGFloat = 66
+    @ScaledMetric(relativeTo: .title) private var compactGlyph: CGFloat = 24
+    @ScaledMetric(relativeTo: .title) private var regularGlyph: CGFloat = 28
     
-    init(action: @escaping () -> Void, isIPad: Bool = false) {
+    init(action: @escaping () -> Void, isRegularWidth: Bool = false) {
         self.action = action
-        self.isIPad = isIPad
+        self.isRegularWidth = isRegularWidth
     }
+
+    private var diameter: CGFloat { isRegularWidth ? regularDiameter : compactDiameter }
+    private var glyphSize: CGFloat { isRegularWidth ? regularGlyph : compactGlyph }
     
     var body: some View {
         Button(action: {
@@ -20,13 +32,13 @@ struct FloatingAddButton: View {
                 // shows on the app's most prominent brand element.
                 Circle()
                     .fill(LinearGradient.appDuotone)
-                    .frame(width: isIPad ? 66 : 56, height: isIPad ? 66 : 56)
+                    .frame(width: diameter, height: diameter)
                     .shadow(color: Color.appPrimary.opacity(0.3), radius: 8, x: 0, y: 4)
                     .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 2)
                 
                 // Plus icon
                 Image(systemName: "plus")
-                    .font(.system(size: isIPad ? 28 : 24, weight: .semibold))
+                    .font(.system(size: glyphSize, weight: .semibold))
                     .foregroundColor(.white)
             }
         }
