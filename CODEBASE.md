@@ -1,11 +1,14 @@
 # CashLens — Codebase Documentation
 
-> **Version:** 1.0.5 (Build 5) — Current App Store release  
-> **Platform:** iOS 18.0+ (iPhone & iPad)  
-> **Language:** Swift 5.0 / SwiftUI  
-> **Bundle ID:** `com.rushi.CashLens`  
-> **Created by:** Rushiraj Jadeja (October 2025)  
-> **Last updated:** April 2026
+> **App Store:** 2.1, released 2026-08-29 (App Store id `6743153951`; first App Store release 2025-03-24)  
+> **Repo (this branch):** `MARKETING_VERSION = 2.0.1`, `CURRENT_PROJECT_VERSION = 7` in `CashLens.xcodeproj/project.pbxproj` — the store version string was set to 2.1 in App Store Connect. The next release is planned as **2.2 (build 8)**.  
+> **Unshipped relative to store 2.1:** the `PurchaseIntent` listener for promoted In-App Purchases (`ProManager.listenForPurchaseIntents()`, commit `4f702fa`) and `Marketing/PromoImages/` (commit `cfeeb2d`).  
+> **Platform:** iOS 18.0+ (`IPHONEOS_DEPLOYMENT_TARGET = 18.0`), iPhone & iPad (`TARGETED_DEVICE_FAMILY = 1,2`)  
+> **Language:** Swift 5.0 language mode (`SWIFT_VERSION = 5.0`) / SwiftUI; `LastSwiftUpdateCheck = 2600`  
+> **Bundle ID:** `com.rushi.CashLens` · Team `6C72999Z38` · App Group `group.com.rushi.CashLens.shared`  
+> **Created by:** Rushiraj Jadeja — first commit 2025-03-10  
+> **Branches:** `main` is stale at 1.0.5 (2026-01-21, 70 Swift files, 3 tabs). The shipping code is `redesign/v2` (161 Swift files, 4 tabs). This document describes `redesign/v2`.  
+> **Last updated:** 2026-09-19 (docs refresh for 2.2)
 
 ---
 
@@ -29,188 +32,289 @@
 16. [Key Patterns & Conventions](#16-key-patterns--conventions)
 17. [Dependencies](#17-dependencies)
 18. [Build & Run](#18-build--run)
-19. [Widgets (Pro)](#19-widgets-pro)
+19. [Widgets](#19-widgets)
+20. [Siri / App Intents & Quick Log](#20-siri--app-intents--quick-log)
+21. [App Lock](#21-app-lock)
+22. [Release History](#22-release-history)
 
 ---
 
 ## 1. App Overview
 
-CashLens is a **local-first, privacy-focused personal expense tracker** for iOS. All data is stored on-device using Core Data — no accounts, no cloud sync, no server.
+CashLens is a **local-first, privacy-focused personal expense tracker** for iOS. All data is stored on-device using Core Data — no accounts, no cloud sync, no server, no analytics SDK. The app is free with a **CashLens Pro** tier (StoreKit 2 subscriptions + lifetime unlock) and a separate tip jar.
 
 ### Core Features
 
-| Feature | Description |
-|---------|-------------|
-| **Expense Tracking** | Add, edit, delete expenses with amount, title, category, date, notes |
-| **Recurring Bills** | Track subscriptions with frequency, due dates, reminders, pause/resume |
-| **Statistics** | Donut chart, trend line, spending heatmap, category breakdown, insights |
-| **Custom Categories** | User-defined categories with SF Symbol icons and named colors |
-| **Import/Export** | Full backup/restore via `.cashlens.json`; expense-only `.csv` for spreadsheets; **Pro:** import Mint / YNAB / bank CSV with auto column detection |
-| **Notifications** | Weekly/monthly spending digests, backup reminders, subscription due alerts |
-| **Multi-Currency** | 170+ currencies with locale-based auto-detection (single global currency) |
-| **Dark Mode** | System/Light/Dark appearance toggle |
-| **Draft Recovery** | Unfinished expense forms are auto-saved and restorable |
-| **Feedback System** | Smart in-app review prompts after successful actions |
+| Feature | Tier | Description |
+|---------|------|-------------|
+| **Expense Tracking** | Free | Add, edit, delete expenses with amount, title, category, date, notes, tags, payment method, refund flag; templates; draft recovery; smart category suggestion |
+| **Today tab** | Free | Budget verdict hero, 7-day strip, upcoming bills, recent expenses, one insight; sections reorderable/hideable (`TodayCustomizeView`) |
+| **Activity tab** | Free | Full ledger (`AllExpensesView`) with search (`QuickSearchView`), calendar view, filters, bulk select; tag *filtering* and bulk-tag are Pro |
+| **Insights tab** | Free + Pro | Donut, trend pager, heatmap, highlights free; Pro Insights (pace/velocity/YoY), Forecast (30/60/90d), Payment Methods donut, PDF report are Pro |
+| **Recurring Bills** | Free | Subscriptions with frequency, due dates, reminders, pause/resume, manual "Mark paid" (`SubscriptionsView`, reached from You → Subscriptions) |
+| **Budgets & alerts** | Pro | Weekly / monthly / custom-range budgets with 80% / 100% crossing alerts |
+| **Receipts** | Pro capture, free viewing | VisionKit scan or Photos pick, on-device Vision OCR auto-fill of amount + merchant, `.cashlens-archive` backup |
+| **Custom Categories** | Free | User-defined categories with SF Symbol icons and named colors |
+| **Import/Export** | Free + Pro | `.cashlens.json` full backup, `.csv` spreadsheet, `.cashlens-archive` (JSON + receipt photos); **Pro:** import Mint / YNAB / bank CSV with auto column detection |
+| **Notifications** | Free + Pro | Weekly/monthly digests, backup reminder, subscription due alerts, budget alerts (Pro), weekly Smart Insight (Pro) |
+| **Widgets** | Free + Pro | 7 widgets across Home and Lock Screen; Spending Snapshot, Quick Log (1 template) and the Spending lock widget are free (§19) |
+| **Siri / Shortcuts** | Free | `Log Expense` and `Check Spending` App Intents with zero-setup phrases (§20) |
+| **App Lock** | Free | Face ID / Touch ID / passcode lock with grace period (§21) |
+| **Monthly Recap** | Free | Month-in-review sheet with shareable card, surfaced on Today early in a new month and permanently in Insights |
+| **Personalization** | Pro | 12 accent themes (6 Classics + 6 Pastels) and 8 app icons via `AppearanceStudioView` / `AppIconPickerView`; light/dark/system mode is free |
+| **Privacy Dashboard** | Free | You → Privacy: what is stored, how much space, "three zeros" (servers, trackers, accounts) |
+| **Multi-Currency** | Free | 170+ currencies with locale-based auto-detection — **single global currency**; per-expense currency with live rates is *not built* (see `PRO_FEATURES.md` Phase 8) |
+| **Dark Mode** | Free | System/Light/Dark appearance toggle |
+| **Rating prompt** | — | Native `requestReview` sheet driven by `FeedbackManager` (12 actions across 3+ days, or 5 right after an export; 30-day cooldown; max 3 lifetime) |
 
 ---
 
 ## 2. Architecture
 
-The app uses a **MVVM (Model-View-ViewModel)** architecture with Core Data as the persistence layer.
+The app uses a **MVVM (Model-View-ViewModel)** architecture with Core Data as the persistence layer, plus two out-of-process surfaces (widget extension, App Intents) that talk to the store through narrow contracts.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    SwiftUI Views                     │
-│  (HomeView, StatisticsView, SubscriptionsView, ...) │
-└────────────────────┬────────────────────────────────┘
-                     │ @EnvironmentObject / @StateObject
-┌────────────────────▼────────────────────────────────┐
-│                   ViewModels                         │
-│  ExpenseViewModel (+ extensions)                     │
-│  SubscriptionViewModel                               │
-│  CategoryViewModel                                   │
-│  BudgetViewModel (Pro)                               │
-└────────────────────┬────────────────────────────────┘
-                     │ Core Data Fetch/Save
-┌────────────────────▼────────────────────────────────┐
-│              Core Data Entities                      │
-│  ExpenseEntity, SubscriptionEntity,                  │
-│  CustomCategoryEntity, BudgetEntity                  │
-│         ↕ (Bridge via +Extensions.swift)             │
-│  Expense (struct), Subscription (struct),            │
-│  CustomCategory (struct)                             │
-└─────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                       SwiftUI Views                             │
+│  MainTabView → Today / Activity / Insights / You                │
+│  (TodayView, AllExpensesView, StatisticsView, ProfileView)      │
+│  Root overlays: AppLockView, StoreRecoveryView, OnboardingView  │
+└──────────────────────┬─────────────────────────────────────────┘
+                       │ @EnvironmentObject / @StateObject
+┌──────────────────────▼─────────────────────────────────────────┐
+│                      ViewModels                                 │
+│  ExpenseViewModel (+ extensions)   SubscriptionViewModel        │
+│  CategoryViewModel                 BudgetViewModel (Pro)        │
+└──────────────────────┬─────────────────────────────────────────┘
+                       │ Core Data fetch/save (viewContext is the sole UI writer)
+┌──────────────────────▼─────────────────────────────────────────┐
+│                 Core Data (CashLens 2.xcdatamodel)              │
+│  ExpenseEntity, SubscriptionEntity, CustomCategoryEntity,       │
+│  BudgetEntity   ↕ bridge via *Entity+Extensions.swift           │
+│  Expense, Subscription, CustomCategory, Budget (structs)        │
+└──────────────────────┬─────────────────────────────────────────┘
+                       │
+   ┌───────────────────┼────────────────────────────┐
+   ▼                   ▼                            ▼
+ WidgetSnapshot      QuickLogService              ReceiptStorage
+ (App Group JSON,    (headless writes on a        (Documents/Receipts/,
+  read by widgets)    background context: Siri     filename-only refs)
+                      intents + widget queue drain)
 
-Preferences: UserDefaults (via UserDefaultsKeys enum)
-IAP: StoreKit 2 (DonationManager — tip jar only)
+Singletons (@MainActor ObservableObject unless noted):
+  ProManager (StoreKit 2 Pro), DonationManager (tip jar), ThemeStore,
+  AppIconStore, AppLockManager, DeepLinkRouter, FeedbackManager,
+  ExpenseTemplateStore, WidgetSnapshotCoordinator
+Preferences: UserDefaults via UserDefaultsKeys (caseless enum)
 ```
 
 ### Data Flow
 
-1. **Core Data entities** are the durable store
+1. **Core Data entities** are the durable store; the app's `viewContext` is the only UI-driven writer
 2. **Bridge extensions** (`*Entity+Extensions.swift`) convert entities ↔ value-type structs
-3. **ViewModels** hold `@Published` arrays of structs; views bind to these
+3. **ViewModels** hold `@Published` arrays of structs; views bind to these. CRUD paths mutate the in-memory array in place after a successful save (`applyIncremental*`, see Phase G in §11) instead of refetching
 4. **Combine pipelines** debounce filter/sort changes for smooth UI
-5. **UserDefaults** stores lightweight preferences (currency, appearance, onboarding flags, notification schedules)
+5. **UserDefaults** stores lightweight preferences (currency, appearance, onboarding flags, notification schedules, Today layout, App Lock, Pro/donor state)
+6. **Headless writers** (`QuickLogService`) use a fresh background context and post `.expensesChangedExternally`; a live `ExpenseViewModel` reconciles via `loadExpensesAsync()`
+7. **Widgets** never touch Core Data: `WidgetSnapshotCoordinator` projects a versioned `WidgetSnapshot` JSON into the App Group; the interactive Quick Log widget appends `PendingExpenseRecord`s to a per-file queue the app drains on foreground
+8. **Failure surfaces**: `SaveErrorReporter` → `SaveErrorBanner` for any failed `context.save()`; `PersistenceController.storeLoadFailed` → `StoreRecoveryView` (never deletes the store, offers raw `.sqlite` export)
 
 ---
 
 ## 3. Project Structure
 
+Repository root (161 Swift files as of `redesign/v2`, plus the Xcode project, marketing assets, and a legacy `website/` folder):
+
+```
+cashLensApp/
+├── CashLens.xcodeproj/             # Targets: CashLens, CashLensWidgetsExtension, CashLensTests, CashLensUITests
+├── CashLens/                       # Main app target (see tree below)
+├── CashLensWidgets/                # Widget extension target (§19)
+├── Shared/                         # Synchronized folder, member of BOTH app + widget targets
+│   ├── SharedAppGroup.swift        # App Group id + snapshot / queue URLs
+│   ├── WidgetSnapshot.swift        # Versioned widget data contract (schemaVersion 1)
+│   ├── WidgetSnapshotIO.swift      # Atomic read/write, placeholder fallback
+│   └── PendingExpenseQueue.swift   # Per-file cross-process queue for Quick Log widget expenses
+├── CashLensTests/CashLensTests.swift          # Swift Testing stub (`@Test func example`) — no real unit tests
+├── CashLensUITests/                # Template launch tests + RuntimeSmokeUITest.swift (manual walkthrough, header says throwaway)
+├── RuntimeSmoke.xctestplan         # Test plan for RuntimeSmokeUITest; points StoreKit config at CashLens/Donations.storekit
+├── CashLens-Info.plist             # Merged with GENERATE_INFOPLIST_FILE: SKIncludeConsumableInAppPurchaseHistory,
+│                                   #   ITSAppUsesNonExemptEncryption=false, NSFaceIDUsageDescription, cashlens:// URL scheme
+├── CashLensWidgetsExtension.entitlements      # App Group
+├── Donations.storekit              # Root copy of the StoreKit config (project also has CashLens/Donations.storekit)
+├── Marketing/
+│   ├── PromoImages/                # cashlens-pro-{yearly,lifetime}-promo.png for App Store promoted IAPs (unshipped in ASC)
+│   └── ScreenshotSampleData/       # Demo .cashlens.json / .csv + generate_screenshot_data.py for App Store screenshots
+├── Scripts/
+│   ├── generate_app_icons.swift    # CoreGraphics renderer for the 7 alternate app icons
+│   └── generate_stress_test_export.swift      # Produces stress-test-exports/CashLens_StressTest_5000.json
+├── stress-test-exports/            # 5,000-expense JSON for perf testing
+├── website/                        # Vite + React marketing site. NOT what is live at cashlens.app
+│                                   #   (production is a separate Next.js deployment on Vercel whose source is not in this repo)
+├── CODEBASE.md                     # This file
+└── PRO_FEATURES.md                 # Pro roadmap / phase log
+```
+
+Main app target:
+
 ```
 CashLens/
-├── CashLensApp.swift              # App entry point, scene setup, onboarding gate
-├── Persistence.swift              # Core Data stack (PersistenceController)
+├── CashLensApp.swift              # @main. Wires all VMs before first render; StoreRecoveryView gate; AppLockView overlay;
+│                                  #   deep-link sheets (.allExpenses / .export / .addExpense); foreground hooks (entitlements,
+│                                  #   widget snapshot, Quick Log queue drain, notification refresh, receipt orphan sweep)
+├── Persistence.swift              # PersistenceController: SQLite WAL, storeLoadError / storeLoadFailed / storeFileURLs
+├── CashLens.entitlements          # App Group group.com.rushi.CashLens.shared
+├── PrivacyInfo.xcprivacy          # Privacy manifest (UserDefaults accessed-API reason); widget target has its own
+├── Donations.storekit             # StoreKit config: 3 tip consumables + Pro monthly / yearly / lifetime (group D4E8F2A1)
+├── CashLens.xcdatamodeld/         # Two model versions; current = "CashLens 2" (adds Budget custom date range)
 │
 ├── Models/
 │   ├── Expense.swift              # Expense struct + Currency enum + Category enum
 │   ├── Subscription.swift         # Subscription struct + Frequency enum
 │   ├── CustomCategory.swift       # CustomCategory struct + available icons/colors
+│   ├── Budget.swift               # Pro: Budget struct, Period (weekly / monthly / custom), CategoryFilter
+│   ├── PaymentMethod.swift        # 7 payment methods + tolerant CSV parsing
+│   ├── PaymentMethodBreakdown.swift # Pro donut aggregate
+│   ├── ExpenseTemplate.swift      # Saved Add-Expense presets
 │   ├── CurrencyData.swift         # Static currency code → symbol/name mapping
 │   ├── CurrencyRegion.swift       # Currency grouped by world region for picker
 │   ├── DonationManager.swift      # StoreKit 2 tip jar (3 consumable products)
-│   ├── ProManager.swift           # StoreKit 2 Pro subscription/lifetime entitlements
-│   ├── AppTheme.swift             # Pro: 6 accent themes (light/dark hex pairs per theme)
-│   ├── AppIconOption.swift        # Pro: 8 alternate-icon options (primary + 7 alternates)
-│   ├── ExpenseEntity+Extensions.swift      # Core Data ↔ Expense bridge
-│   ├── SubscriptionEntity+Extensions.swift # Core Data ↔ Subscription bridge
-│   └── CustomCategoryEntity+Extensions.swift # Core Data ↔ CustomCategory bridge
+│   ├── ProManager.swift           # StoreKit 2 Pro entitlements, donor grandfathering, win-back, intro-offer
+│   │                              #   eligibility, PurchaseIntent listener (promoted IAPs)
+│   ├── AppTheme.swift             # Pro: accent themes (Classics + Pastels), light/dark hex pairs, matchingIconId
+│   ├── AppIconOption.swift        # Pro: 8 icon options (primary + 7 alternates)
+│   ├── ExpenseEntity+Extensions.swift        # Core Data ↔ Expense bridge
+│   ├── SubscriptionEntity+Extensions.swift   # Core Data ↔ Subscription bridge
+│   ├── CustomCategoryEntity+Extensions.swift # Core Data ↔ CustomCategory bridge
+│   └── BudgetEntity+Extensions.swift         # Core Data ↔ Budget bridge
 │
-├── Backup/                                 # Backup / restore pipeline (see §14)
-│   ├── BackupBundle.swift                  # Canonical Codable schema (v2) — entities + preferences
-│   ├── BackupExporter.swift                # Snapshots store + UserDefaults, writes JSON / CSV
-│   ├── BackupImporter.swift                # Format detection, parsing, merge/replace apply
-│   └── GenericCSVAdapter.swift             # Auto-maps Mint / YNAB / bank CSV columns (Pro)
+├── Backup/                        # Backup / restore pipeline (see §14)
+│   ├── BackupBundle.swift         # Canonical Codable schema (v2) — entities + preferences
+│   ├── BackupExporter.swift       # Snapshots store + UserDefaults, writes JSON / CSV / .cashlens-archive
+│   ├── BackupImporter.swift       # Format detection, parsing, merge/replace apply, receipt restore
+│   └── GenericCSVAdapter.swift    # Auto-maps Mint / YNAB / bank CSV columns (Pro)
 │
 ├── ViewModels/
-│   ├── ExpenseViewModel.swift              # Main VM: state, filtering, preferences
-│   ├── ExpenseViewModel+CoreData.swift     # Load/save expenses from Core Data
-│   ├── ExpenseViewModel+CRUD.swift         # Add/update/delete + amount formatting
-│   ├── ExpenseViewModel+Categories.swift   # Custom categories, deleted defaults
-│   ├── ExpenseViewModel+Currency.swift     # Global currency sync across all data
+│   ├── ExpenseViewModel.swift             # Main VM: state, filtering, preferences, tagStats, phased hydration
+│   ├── ExpenseViewModel+CoreData.swift    # loadExpenses / loadExpensesAsync / applyIncremental* helpers
+│   ├── ExpenseViewModel+CRUD.swift        # Add/update/delete, bulk ops, receipt file cleanup, amount formatting
+│   ├── ExpenseViewModel+Categories.swift  # Custom categories, deleted defaults
+│   ├── ExpenseViewModel+Currency.swift    # Global currency sync across all data
 │   ├── ExpenseViewModel+ImportExport.swift # Compatibility shim → delegates to Backup/
-│   ├── ExpenseViewModel+Maintenance.swift  # Refresh, health check, clear all data
-│   ├── ExpenseViewModel+Preferences.swift  # Summary card customization tokens
-│   ├── ExpenseViewModel+Preview.swift      # SwiftUI preview helper
-│   ├── SubscriptionViewModel.swift         # Subscription CRUD, due processing, notifications
-│   └── CategoryViewModel.swift             # Custom category CRUD via NSFetchedResultsController
+│   ├── ExpenseViewModel+Maintenance.swift # Refresh, health check, clear all data
+│   ├── ExpenseViewModel+Preferences.swift # Summary card customization tokens
+│   ├── ExpenseViewModel+Preview.swift     # SwiftUI preview helper
+│   ├── SubscriptionViewModel.swift        # Recurring bills: CRUD, Mark paid, reminders, overdue reconcile
+│   ├── CategoryViewModel.swift            # Custom category CRUD via NSFetchedResultsController
+│   └── BudgetViewModel.swift              # Pro: budgets, progress, 80/100% crossing alerts
 │
 ├── Views/
-│   ├── MainTabView.swift           # Root tab bar (Home, Subscriptions, Statistics)
-│   ├── HomeView.swift              # Dashboard: hero spending card, pinned categories, recent expenses
-│   ├── SubscriptionsView.swift     # Subscription list with filters and monthly total
-│   ├── StatisticsView.swift        # Analytics: hero overview, insights, where-it-goes (donut+rows), heatmap, trend
-│   ├── AddExpenseView.swift        # Expense create/edit form
+│   ├── MainTabView.swift           # Root: 4 tabs (Today / Activity / Insights / You). iOS 26 native TabView path
+│   │                               #   + iOS 18–25 custom tab bar path; FAB; auto-paywall, win-back, donor-thanks sheets;
+│   │                               #   save-error banner + save-confirmation toast hosts; requestReview
+│   ├── TodayView.swift             # Today tab: verdict hero, budgets, upcoming subs, 7-day strip, recent, insight, recap card
+│   ├── TodayCustomizeView.swift    # Reorder / hide Today sections (TodaySectionID)
+│   ├── AllExpensesView.swift       # Activity tab root (isRootTab) — ledger, filters, calendar toggle, bulk select
+│   ├── StatisticsView.swift        # Insights tab — free stats + Pro Insights / Forecast / Payment Methods / PDF; Monthly Recap row
+│   ├── ProfileView.swift           # You tab root — settings hub
+│   ├── SubscriptionsView.swift     # Recurring bills list; sheet from You → Subscriptions (no longer a tab)
+│   ├── AddExpenseView.swift        # Expense create/edit; templates, tags, payment method, refund, receipt capture + OCR
 │   ├── AddSubscriptionView.swift   # Subscription create/edit form
-│   ├── AllExpensesView.swift       # Library: full list with sort, date range, category/tag filters, pagination — toolbar magnifying glass routes to QuickSearchView
-│   ├── QuickSearchView.swift       # Modal search with custom header, persisted recents, quick tips, category/tag browse, grouped results with match highlighting
-│   ├── ProfileView.swift           # Settings hub: header, pro, backup banner, preferences, reminders, data, about
-│   ├── CurrencyPickerView.swift    # Currency selection with region chips + search
-│   ├── ManageCategoriesView.swift  # Default + custom category management
-│   ├── CustomCategoryForm.swift    # Create/edit custom category (+ icon/color pickers)
-│   ├── SummaryCustomizationView.swift # Choose 3 summary card categories for Home
-│   ├── ExportDataView.swift        # Picks Complete Backup vs Spreadsheet, calls BackupExporter
-│   ├── ImportDataView.swift        # File picker → preview sheet (counts, mode, errors) → apply via BackupImporter
-│   ├── DonationView.swift          # StoreKit tip jar UI
-│   ├── AboutView.swift             # App info, features, contact, privacy
-│   ├── OnboardingView.swift        # 6-page first-launch carousel
-│   ├── PaywallView.swift           # CashLens Pro upgrade screen with pricing
-│   ├── AppearanceStudioView.swift  # Unified appearance studio: mode + 12 themes + matching icon pairing
-│   ├── AppIconPickerView.swift     # Pro: 8-option alternate-icon picker w/ hero preview + paywall on Pro tap
+│   ├── BudgetSetupView.swift       # Pro: create/edit budget (weekly / monthly / custom range, alerts)
+│   ├── BudgetListView.swift        # Pro: manage budgets (sheet from You and Today)
+│   ├── QuickSearchView.swift       # Modal search (single search surface)
+│   ├── ExpenseCalendarView.swift   # Month grid browse (embedded in Activity or modal)
+│   ├── MonthlyRecapView.swift      # MonthlyRecapView + MonthlyRecapSheet (compute + ShareLink card)
+│   ├── ReceiptViewerView.swift     # Full-screen receipt viewer (zoom, share, delete)
+│   ├── PaywallView.swift           # CashLens Pro upgrade screen; PaywallContext for per-feature copy
+│   ├── WinBackView.swift           # One-time sheet after a Pro → free lapse
+│   ├── DonorThanksView.swift       # One-time thank-you when a donor grant is applied
+│   ├── AppearanceStudioView.swift  # Mode selector (free) + theme grids + "Complete the look" (Pro)
+│   ├── AppIconPickerView.swift     # Pro: alternate-icon picker
+│   ├── NotificationsSettingsView.swift # Reminders & Smart Insights hub (sheet from You)
+│   ├── PrivacyDashboardView.swift  # You → Privacy: storage facts + App Lock entry
+│   ├── SiriShortcutsTipsView.swift # You → Siri & Shortcuts: lists the App Shortcut phrases
+│   ├── AppLockView.swift           # Root overlay: lock screen / privacy cover
+│   ├── StoreRecoveryView.swift     # Root fallback when the Core Data store fails to load
 │   ├── ProInsightsSection.swift    # Pro Insights section (Daily Pace / Velocity / YoY) + free teaser
-│   ├── ForecastSection.swift       # Forecast section (horizon switcher, projection card, sub-cards) + free teaser
-│   ├── SplashScreenView.swift      # Branded splash (~2s auto-dismiss)
-│   └── DiagnosticsView.swift       # Debug-only data health tools
+│   ├── ForecastSection.swift       # Forecast section + free teaser
+│   ├── CurrencyPickerView.swift    # Currency selection with region chips + search + Recently Used
+│   ├── ManageCategoriesView.swift  # Default + custom category management
+│   ├── CustomCategoryForm.swift    # Create/edit custom category
+│   ├── SummaryCustomizationView.swift # Pick pinned categories
+│   ├── ExportDataView.swift        # Complete Backup / Spreadsheet / Full Archive
+│   ├── ImportDataView.swift        # Pick → preview → apply
+│   ├── DonationView.swift          # StoreKit tip jar UI
+│   ├── AboutView.swift             # App info, contact (email@rushiraj.me), privacy/terms links
+│   ├── OnboardingView.swift        # First-launch carousel
+│   └── DiagnosticsView.swift       # #if DEBUG data health tools (currently unreferenced — no entry point)
 │
 ├── Components/
-│   ├── ColorExtension.swift        # Design system colors (pastel palette, category mapping)
-│   ├── PinnedCategoryCard.swift    # Rich pinned-category tile on Home (amount + trend + count + budget bar + selected state)
-│   ├── ForecastChart.swift         # SwiftUI Charts renderer for ForecastEngine.Forecast (history line + dashed projection + ±1σ band + subscription dots)
-│   ├── ExpenseCard.swift           # Optimized expense row (Equatable)
-│   ├── ExpenseRow.swift            # Simple expense row (environment-based)
-│   ├── CategoryItem.swift          # Horizontal category chip (default categories)
-│   ├── CustomCategoryItem.swift    # Horizontal category chip (custom categories)
-│   ├── CategoryDonutChart.swift    # Interactive donut chart + legend
+│   ├── ColorExtension.swift        # Design system colors; dynamic appPrimary / appSecondary from ThemeStore
+│   ├── ExpenseCard.swift           # Optimized expense row (Equatable), tags row, paperclip badge, refund badge
+│   ├── PinnedCategoryCard.swift    # Pinned-category tile
+│   ├── BudgetProgressCard.swift    # BudgetProgressCard + BudgetMiniCard
+│   ├── CategoryItem.swift / CustomCategoryItem.swift  # Category chips
+│   ├── CategoryDonutChart.swift    # Interactive donut + legend
 │   ├── ExpenseTrendChart.swift     # Custom Path line/area chart
-│   ├── SpendingHeatmap.swift       # GitHub-style calendar heatmap
-│   ├── SubscriptionRow.swift       # Subscription cell with mark-as-paid
-│   ├── FloatingAddButton.swift     # FAB on Home tab
-│   └── AddButton.swift             # Gradient add button variant
+│   ├── TrendChartPager.swift       # Over time / By weekday / Top days pager
+│   ├── YearOverYearChart.swift     # Pro: grouped bars (SwiftUI Charts)
+│   ├── ForecastChart.swift         # Pro: projection chart (SwiftUI Charts)
+│   ├── SpendingHeatmap.swift       # Calendar heatmap
+│   ├── SubscriptionRow.swift       # Subscription cell with inline Mark paid
+│   ├── TagChip.swift / TagInputField.swift  # Smart Tags UI
+│   ├── InsightInfoButton.swift     # info button + explanation sheet for every Insights section
+│   ├── DocumentScannerView.swift   # VNDocumentCameraViewController wrapper (page 1 only)
+│   ├── SheetHeader.swift           # Canonical sheet header (title / subtitle / close)
+│   ├── SaveErrorBanner.swift       # SaveErrorBanner + SaveErrorBannerHost modifier
+│   ├── SaveConfirmationToast.swift # SaveConfirmationToast + host modifier
+│   └── FloatingAddButton.swift     # FAB (all tabs except You)
 │
-├── Design/                         # Cross-cutting design system (tokens + shared UI)
-│   ├── Theme.swift                 # Spacing, Radius, Stroke, Typography, Shadow, Motion, Icon, LinearGradient extensions
-│   ├── ViewModifiers.swift         # .cardSurface(), .sectionContainer(), .softShadow(), .primaryGlow()
+├── Design/                         # Cross-cutting design system (§11)
+│   ├── Theme.swift                 # Spacing, Radius, Stroke, Typography, Shadow, Motion, Icon, LinearGradient.appDuotone
+│   ├── ViewModifiers.swift         # .cardSurface(), .sectionContainer(), .softShadow(), .primaryGlow(), .fieldCard()
 │   └── Components/
-│       ├── SectionHeader.swift         # SectionHeader + SectionHeaderLink (trailing "See All")
-│       ├── PillChip.swift              # Canonical filter / selection chip (capsule or rounded)
-│       ├── PrimaryGradientButton.swift # Gradient CTA + SecondaryOutlineButton
-│       ├── EmptyStatePanel.swift       # Full empty state + InlineEmptyState
-│       └── SettingsRow.swift           # SettingsRow + SettingsRowValue + SettingsRowDestructive
+│       ├── SectionHeader.swift, PillChip.swift, PrimaryGradientButton.swift,
+│       ├── EmptyStatePanel.swift, SettingsRow.swift, HeroGlyph.swift
 │
 ├── Extensions/
 │   ├── ButtonStyles.swift          # ScaleButtonStyle, OpacityButtonStyle, CustomAddButtonStyle
-│   ├── NotificationExtension.swift # Notification.Name constants
+│   ├── NotificationExtension.swift # Notification.Name constants (§16)
 │   └── ViewExtensions.swift        # Conditional modifier, per-corner rounding
 │
-├── Utilities/
-│   ├── HapticManager.swift         # Centralized haptic feedback (cached generators)
-│   ├── DeepLinkRouter.swift        # Notification → route parsing for sheets
-│   ├── ExpenseFilter.swift         # Pure function: filter/sort by category, time, date range
-│   ├── NotificationScheduler.swift # Weekly/monthly digest + backup reminder scheduling
-│   ├── StatisticsCalculator.swift  # Previous-period, insights, category breakdown
-│   ├── AdvancedStatsCalculator.swift # Pro: daily pace, velocity, year-over-year aggregation
-│   ├── ForecastEngine.swift        # Pro: pure forecast compute (weekday seasonality, recency weighting, outlier capping, subscription overlay, ±1σ confidence band)
-│   ├── ImportUtilities.swift       # CSV/JSON parse pipeline, ImportResult, ImportError
-│   ├── UserDefaultsKeys.swift      # Centralized preference key registry
-│   ├── ThemeStore.swift            # Pro: @MainActor singleton for active accent theme; nonisolated read for dynamic Color.appPrimary
-│   ├── AppIconStore.swift          # Pro: @MainActor singleton wrapping UIApplication.setAlternateIconName
-│   └── ExpenseDraft.swift          # Codable snapshot of in-progress expense form
+├── Intents/                        # App Intents (run in the app process, headless) — §20
+│   ├── CashLensShortcuts.swift     # AppShortcutsProvider: zero-setup Siri phrases
+│   ├── LogExpenseIntent.swift      # "Log ₹450 for coffee" (IntentCurrencyAmount, required title, category inference)
+│   └── GetSpendingIntent.swift     # "How much did I spend today?"
 │
-├── Assets.xcassets/                # App icon, accent color, logo
-├── CashLens.xcdatamodeld/         # Core Data model (3 entities)
-├── Donations.storekit             # StoreKit configuration file
-└── Preview Content/               # Preview assets
+├── Utilities/
+│   ├── HapticManager.swift, DeepLinkRouter.swift, ExpenseFilter.swift, UserDefaultsKeys.swift
+│   ├── NotificationScheduler.swift # Digests, backup reminder, Smart Insight (Pro), fingerprint skip
+│   ├── SmartInsightsEngine.swift   # Pro weekly insight selection (also feeds Today's insight card)
+│   ├── StatisticsCalculator.swift, AdvancedStatsCalculator.swift (Pro), ForecastEngine.swift (Pro)
+│   ├── PDFReportGenerator.swift    # Pro PDF report
+│   ├── MonthlyRecapEngine.swift    # MonthlyRecap value + compute
+│   ├── CategorySuggester.swift, StreakCalculator.swift, Tag.swift, TagSuggestionProvider.swift
+│   ├── ExpenseDraft.swift, ExpenseTemplateStore.swift, RecentCurrenciesStore.swift
+│   ├── ImportUtilities.swift       # Legacy CSV/JSON parse helpers
+│   ├── ReceiptStorage.swift        # Documents/Receipts/<uuid>.jpg, orphan cleanup
+│   ├── ReceiptOCRService.swift     # Pro: Vision VNRecognizeTextRequest → total + merchant
+│   ├── QuickLogService.swift       # Headless expense writes (Siri intents, widget queue drain), spendingSummary
+│   ├── AppLockManager.swift        # LocalAuthentication state machine (§21)
+│   ├── PaywallTrigger.swift        # Pure rule: auto-paywall once on the 10th-expense crossing
+│   ├── FeedbackManager.swift       # Rating-ask timing (no UI)
+│   ├── SaveErrorReporter.swift     # SaveErrorReporter + SaveConfirmationReporter
+│   ├── BudgetAlertState.swift      # Per-budget-per-period alert flags
+│   ├── ThemeStore.swift, AppIconStore.swift      # Personalization singletons
+│   ├── WidgetSnapshotBuilder.swift, WidgetSnapshotCoordinator.swift  # §19
+│   └── Zip/                        # Pure-Swift STORE-only zip
+│       ├── CRC32.swift, ZipWriter.swift, ZipReader.swift
+│
+├── Assets.xcassets/                # AppIcon + 7 alternate appiconsets + IconPreview imagesets, accent color, logo
+└── Preview Content/                # Preview assets
 ```
+
+Files that existed in v1 and are **gone** on this branch: `HomeView.swift` (replaced by `TodayView`), `SplashScreenView.swift`, `ThemePickerView.swift` (replaced by `AppearanceStudioView`), `ExpenseRow.swift`, `AddButton.swift`.
 
 ---
 
@@ -218,7 +322,7 @@ CashLens/
 
 ### Core Data Schema
 
-**3 Entities** defined in `CashLens.xcdatamodeld`:
+**4 Entities** defined in `CashLens.xcdatamodeld`. Two model versions exist: `CashLens.xcdatamodel` and the current `CashLens 2.xcdatamodel` (per `.xccurrentversion`), which adds `customStartDate` / `customEndDate` to `BudgetEntity` for custom-range budgets. All changes have been additive optional attributes plus fetch indexes, so migrations are lightweight.
 
 #### ExpenseEntity
 | Attribute | Type | Optional | Default | Notes |
@@ -236,6 +340,9 @@ CashLens/
 | `tags` | Transformable (`NSArray`) | Yes | — | Smart Tags — `NSSecureUnarchiveFromDataTransformerName` |
 | `isRefund` | Boolean | Yes | NO | Marks the entry as money returned; `signedAmount` returns `-amount`. Lightweight migration. |
 | `paymentMethod` | String | Yes | — | Raw value of `PaymentMethod` enum (`cash` / `credit` / `debit` / `upi` / `bank` / `wallet` / `other`). Captured free for everyone; powers the **Pro** Payment Methods donut on Statistics. Lightweight migration. |
+| `receiptImagePath` | String | Yes | — | **Filename only** (never an absolute path) of the JPEG in `Documents/Receipts/`. Capture is Pro; viewing is free. |
+
+Fetch indexes: `byDate` (descending), `byId`, `byCategory`, `byCustomCategoryId`, `bySubscriptionId`.
 
 #### SubscriptionEntity
 | Attribute | Type | Optional | Default | Notes |
@@ -254,6 +361,8 @@ CashLens/
 | `reminderEnabled` | Boolean | No | YES | Push notification reminder |
 | `reminderDaysBefore` | Int16 | No | 1 | Days before due date to remind |
 
+Fetch indexes: `byNextDueDate`, `byId`, `byIsActive`.
+
 #### CustomCategoryEntity
 | Attribute | Type | Optional | Default | Notes |
 |-----------|------|----------|---------|-------|
@@ -262,6 +371,26 @@ CashLens/
 | `icon` | String | No | — | SF Symbol name |
 | `colorName` | String | No | — | Named color from palette |
 
+Fetch index: `byId`.
+
+#### BudgetEntity (Pro)
+| Attribute | Type | Optional | Default | Notes |
+|-----------|------|----------|---------|-------|
+| `id` | UUID | No | — | Primary identifier |
+| `name` | String | No | — | Budget label |
+| `amount` | Double | No | 0.0 | Cap for the period |
+| `period` | String | No | `Monthly` | `Budget.Period` raw value: `Weekly` / `Monthly` / `Custom` |
+| `customStartDate` | Date | Yes | — | Custom period start (model v2) |
+| `customEndDate` | Date | Yes | — | Custom period end, **inclusive** (model v2) |
+| `categoryFilterType` | String | No | `overall` | `overall` / default category / custom category |
+| `categoryFilterDefaultRaw` | String | Yes | — | `Expense.Category` raw value when filtering to a default category |
+| `categoryFilterCustomId` | UUID | Yes | — | `CustomCategoryEntity.id` when filtering to a custom category |
+| `alertAtPercentages` | Transformable | Yes | — | Alert thresholds |
+| `isActive` | Boolean | No | YES | Paused budgets are excluded |
+| `createdAt` | Date | No | — | Fallback anchor for custom periods |
+
+Fetch index: `byId`. Bridged by `BudgetEntity+Extensions.swift` to `Models/Budget.swift`.
+
 ### Persistence Controller (`Persistence.swift`)
 
 - **Singleton**: `PersistenceController.shared`
@@ -269,6 +398,7 @@ CashLens/
 - **Merge policy**: `NSMergeByPropertyObjectTrumpMergePolicy`
 - **Performance**: Undo manager disabled, auto-merges from parent context
 - **Preview support**: In-memory store for SwiftUI previews
+- **Load-failure recovery**: the store load is synchronous in `init`; a failure is captured in `storeLoadError` (never crashes, never deletes the store). `CashLensApp` then wires every view model to a throwaway in-memory container and renders `StoreRecoveryView`, which offers the on-disk `.sqlite` / `-wal` / `-shm` files (`storeFileURLs`) through a share sheet so the data is always recoverable.
 
 ### UserDefaults Keys (`UserDefaultsKeys.swift`)
 
@@ -277,15 +407,24 @@ All preference keys are centralized in a caseless enum:
 | Group | Keys |
 |-------|------|
 | **Onboarding** | `hasCompletedOnboarding`, `hasLaunchedBefore`, `hasShownCurrencyPicker` |
-| **Preferences** | `selectedCurrency`, `selectedTimeFrame`, `defaultHomeTimeFrame`, `appearanceMode`, `userName` |
+| **Preferences** | `selectedCurrency`, `recentCurrencies` (`recent_currencies_v1`, cap 3), `selectedTimeFrame`, `defaultHomeTimeFrame`, `appearanceMode`, `userName` |
 | **Summary** | `preferredSummaryCategories` |
 | **Categories** | `deletedDefaultCategories` |
 | **Drafts** | `expenseDraft` |
+| **Quick Search** | `quickSearchRecents` (last 5) |
 | **Feedback** | `successfulActionsCount`, `lastFeedbackAttempt`, `feedbackPromptCount`, `feedbackUsageDayCount`, `feedbackLastUsageDay`, `feedbackLegacyMigrated` (+ legacy `hasRequestedFeedback`, read once for migration) |
-| **Notifications** | Weekly/monthly/backup: `*Enabled`, `*Weekday`/`*DayOfMonth`, `*Hour`, `*Minute` |
+| **Notifications** | Weekly/monthly/backup: `*Enabled`, `*Weekday`/`*DayOfMonth`, `*Hour`, `*Minute`; `scheduledNotificationsFingerprint` (skips a reschedule when nothing changed) |
 | **Smart Insights (Pro)** | `smartInsightsEnabled`, `smartInsightsHistory`, `smartInsightsLastFireDate` |
+| **Today** | `verdictWarningLastDate` (once-per-day warning haptic), `todaySectionOrder`, `todayHiddenSections` |
+| **Monthly Recap** | `monthlyRecapLastSeenMonth` (`yyyy-MM`) |
 | **Backup** | `lastBackupDate`, `lastBackupFormat`, `totalBackupCount` |
+| **Pro / paywall** | `hasSeenPaywall`, `paywallImpressionCount`, `hasAutoShownPaywall`, `lastAutoPaywallDate` |
+| **Donor grandfathering** | `donorGrantType` (`founder` / `year`), `donorGrantDate`, `donorGrantThanksShown` |
+| **Pro lapse / win-back** | `lastKnownIsPro`, `winBackPending`, `winBackDeclined` |
+| **App Lock (free)** | `appLockEnabled`, `appLockGraceSeconds`, `appLockLastBackgroundedAt` |
 | **Personalization (Pro)** | `activeThemeId` (`AppTheme.id` — defaults to `mauve` so existing users see no change), `activeAppIconId` (matches `AppIconOption.id`; `nil` ⇒ primary icon) |
+
+Not in `UserDefaultsKeys` but also `UserDefaults`-backed: `expense_templates_v1` (private to `ExpenseTemplateStore`) and `BudgetAlertState` keys.
 
 ---
 
@@ -310,6 +449,7 @@ struct Expense: Identifiable, Codable {
     var tags: [String]?
     var isRefund: Bool          // false for normal expenses, true for money returned
     var paymentMethod: PaymentMethod?  // optional; powers Pro donut on Statistics
+    var receiptImagePath: String?      // filename in Documents/Receipts/, never an absolute path
 
     var signedAmount: Double { isRefund ? -amount : amount }
 }
@@ -324,9 +464,9 @@ extension Sequence where Element == Expense {
 - **`Currency`** — 170+ ISO 4217 codes as enum cases. `symbol` and `name` resolved via `CurrencyData`. `allCases` derived from `CurrencyData.allCurrencies`.
 - **`Category`** — 11 built-in categories: Groceries, Food, Transportation, Entertainment, Shopping, Utilities, Health, Education, Travel, Custom, Other. Each has an `icon` (SF Symbol), `color` (named color key), and `displayName`.
 
-**Import Support:** `init(from json:)` for JSON, `init(fromCSV:)` for CSV with multi-format date parsing. Custom `init(from decoder:)` uses `decodeIfPresent` for `isRefund` and `paymentMethod` so older backups (pre-refund / pre-payment-method) decode unchanged with `isRefund = false` and `paymentMethod = nil`. CSV imports also accept a "Payment Method" column with tolerant parsing via `PaymentMethod.tolerant(from:)`.
+**Import Support:** `init(from json:)` for JSON, `init(fromCSV:)` for CSV with multi-format date parsing. Custom `init(from decoder:)` uses `decodeIfPresent` for `isRefund`, `paymentMethod` and `receiptImagePath` so older backups decode unchanged with `isRefund = false` and the optionals `nil`. CSV imports also accept a "Payment Method" column with tolerant parsing via `PaymentMethod.tolerant(from:)`.
 
-**Refund-aware aggregation:** All totals across the app go through `signedAmount` / `netTotal()` so refunds subtract from spending while sorting/displaying continues to use absolute `amount`. Touched aggregators include `ExpenseViewModel.computeTotals`, `StatisticsCalculator`, `AdvancedStatsCalculator`, `ForecastEngine`, `BudgetViewModel`, `NotificationScheduler.DigestStatsCalculator`, `ExpenseTrendChart`, `SpendingHeatmap`, `AllExpensesView` day headers, `QuickSearchView`, and `HomeView`.
+**Refund-aware aggregation:** All totals across the app go through `signedAmount` / `netTotal()` so refunds subtract from spending while sorting/displaying continues to use absolute `amount`. Touched aggregators include `ExpenseViewModel.computeTotals`, `StatisticsCalculator`, `AdvancedStatsCalculator`, `ForecastEngine`, `BudgetViewModel`, `NotificationScheduler.DigestStatsCalculator`, `ExpenseTrendChart`, `SpendingHeatmap`, `AllExpensesView` day headers, `QuickSearchView`, `TodayView`, `MonthlyRecapEngine`, and `WidgetSnapshotBuilder`.
 
 ### Subscription (`Models/Subscription.swift`)
 
@@ -444,7 +584,7 @@ The donut deliberately excludes the unspecified bucket — instead, a footer sur
 
 ### AppTheme (`Models/AppTheme.swift`) — Phase 4 (Pro)
 
-User-selectable accent theme. Six options ship: Mauve (default — preserves the historical CashLens brand), Ocean, Forest, Sunset, Berry, Graphite. Each carries hand-tuned light + dark hex pairs for both `primary` and `secondary` so contrast stays AA-safe in either appearance mode.
+User-selectable accent theme. Twelve options ship in two families: **Classics** (Mauve — default, preserves the historical CashLens brand — Ocean, Forest, Sunset, Berry, Graphite) and **Pastels** (six more). Each carries hand-tuned light + dark hex pairs for both `primary` and `secondary` so contrast stays AA-safe in either appearance mode. The six Classics carry a `matchingIconId` so `AppearanceStudioView` can offer the theme-matched app icon; Pastels have none.
 
 ```swift
 struct AppTheme: Identifiable, Hashable, Sendable {
@@ -452,12 +592,13 @@ struct AppTheme: Identifiable, Hashable, Sendable {
     let displayName: String
     let primaryLightHex, primaryDarkHex: String
     let secondaryLightHex, secondaryDarkHex: String
+    let matchingIconId: String?   // AppIconOption.id, Classics only
 
     var primaryColor: Color    // Color(UIColor { trait in ... }) — light/dark adaptive
     var secondaryColor: Color
 
-    static let mauve, ocean, forest, sunset, berry, graphite: AppTheme
-    static let all: [AppTheme]
+    static let classics, pastels: [AppTheme]
+    static let all: [AppTheme] = classics + pastels
     static let `default`: AppTheme = .mauve
     static func resolve(id: String?) -> AppTheme
 }
@@ -494,15 +635,24 @@ Static lookup table: currency code → `(symbol, name)`. Backs `Expense.Currency
 
 Groups currencies by world region for the currency picker: Americas, Europe, Asia Pacific, Middle East, Africa, Caribbean, etc.
 
+### Budget (`Models/Budget.swift`) — Phase 2 (Pro)
+
+Value type behind `BudgetEntity`. `Period` is `weekly` / `monthly` / `custom`; custom periods use `customStartDate` … `customEndDate` (inclusive), falling back to `createdAt`. `CategoryFilter` is `overall`, `defaultCategory(String)` or `customCategory(UUID)`. Progress and alert logic live in `BudgetViewModel` (§6).
+
 ### DonationManager (`Models/DonationManager.swift`)
 
-StoreKit 2 wrapper for tip jar. See [Monetization](#12-monetization).
+StoreKit 2 wrapper for the tip jar consumables. Does **not** run its own `Transaction.updates` loop — `ProManager` owns the single listener and routes donation transactions to `DonationManager.recordPurchasedProductID(_:)` before finishing them. See [Monetization](#12-monetization).
+
+### ProManager (`Models/ProManager.swift`)
+
+StoreKit 2 Pro entitlements, donor grandfathering, win-back, intro-offer eligibility and the promoted-IAP `PurchaseIntent` listener. See [Monetization](#12-monetization).
 
 ### Entity Bridge Extensions
 
 - **`ExpenseEntity+Extensions.swift`** — `fromExpense(_:context:)` and `toExpense()` conversions
 - **`SubscriptionEntity+Extensions.swift`** — Same pattern + `updateFromSubscription(_:)` for in-place updates
 - **`CustomCategoryEntity+Extensions.swift`** — Same pattern with defaults for missing icon/color
+- **`BudgetEntity+Extensions.swift`** — Same pattern for `Budget`, flattening `CategoryFilter` into the three `categoryFilter*` attributes
 
 ---
 
@@ -584,7 +734,7 @@ StoreKit 2 wrapper for tip jar. See [Monetization](#12-monetization).
 
 **Utilities:** `Utilities/BudgetAlertState.swift` — UserDefaults keys for `lastPct` and fired flags keyed by period start
 
-**Views:** `BudgetSetupView`, `BudgetListView`, `Components/BudgetProgressCard` + `BudgetMiniCard`; Home shows budgets below the header; Profile includes “Manage Budgets”
+**Views:** `BudgetSetupView`, `BudgetListView`, `Components/BudgetProgressCard` + `BudgetMiniCard`; Today's verdict hero is driven by the budget, and a stacked budgets card appears with 2+ budgets; You → Manage Budgets opens `BudgetListView` (or the paywall). `Budget.Period.custom` with `customStartDate` / inclusive `customEndDate` was added in the pre-submission wave (Core Data model v2).
 
 ### Smart Tags (Phase 3 Pro) — `ExpenseViewModel.tagStats` + `Utilities/Tag*.swift`
 
@@ -672,24 +822,30 @@ Forecasting is a Pro-only section that sits directly under **Pro Insights** on t
 
 | View | File | Description |
 |------|------|-------------|
-| `CashLensApp` | `CashLensApp.swift` | `@main` entry. Core Data injection, ViewModel creation, onboarding/splash gates, deep link sheets, scene phase refresh. |
-| `MainTabView` | `MainTabView.swift` | Custom 3-tab bar (Home, Subscriptions, Statistics). Hidden `UITabBar`, FloatingAddButton on Home. Sheets: add expense, currency picker, feedback overlay. |
-| `SplashScreenView` | `SplashScreenView.swift` | ~2s branded splash with logo, gradient, spring animation. |
-| `OnboardingView` | `OnboardingView.swift` | 6-page marketing carousel with Skip/Next/Get Started. Sets `hasCompletedOnboarding`. |
+| `CashLensApp` | `CashLensApp.swift` | `@main` entry. Wires `ExpenseViewModel`, `BudgetViewModel`, `SubscriptionViewModel`, `CategoryViewModel` in `init` (so `markSubscriptionAsPaid` can never run with a nil expense VM), injects `ProManager`, `ThemeStore`, `AppIconStore`, `AppLockManager`, `DeepLinkRouter`. Body: `StoreRecoveryView` if the store failed to load, else `MainTabView` + onboarding overlay; `AppLockView` overlay at `zIndex(10)` above everything. Deep-link sheets (`.allExpenses`, `.export`, `.addExpense`), `onOpenURL` for `cashlens://`. On `.active`: refresh data + budget progress, widget snapshot `refreshNow()`, drain the Quick Log widget queue, re-check Pro entitlements + win-back, reconcile overdue subscriptions, refresh notifications, sweep orphan receipts. There is **no splash screen** on this branch. |
+| `MainTabView` | `MainTabView.swift` | Root shell with **4 tabs — Today / Activity / Insights / You** (`enum Tab`). Two code paths: iOS 26+ `modernTabView` uses native `TabView` + `SwiftUI.Tab` (system floating tab bar, `.tint(.appPrimary)`); iOS 18–25 `legacyTabView` draws a custom 60 pt tab bar with `UITabBar.appearance().isHidden = true`. `FloatingAddButton` overlay on every tab except You and while Activity is in bulk-select mode. The You tab root is unmounted when hidden (`youTabRoot`) to stop Profile's environment fan-out from stuttering later tab switches. Hosts: `.saveErrorBannerHost()`, `.saveConfirmationToastHost()`, post-value auto-paywall (`PaywallTrigger`, `PaywallView(context: .insights)`), `DonorThanksView` and `WinBackView` sheets (flags consumed on `onAppear`), native `requestReview` driven by `FeedbackManager`, add-expense and currency-picker sheets. |
+| `AppLockView` | `AppLockView.swift` | Root overlay driven by `AppLockManager.isCoverVisible`: lock screen with unlock button, or plain privacy cover while the scene is inactive. |
+| `StoreRecoveryView` | `StoreRecoveryView.swift` | Full-screen fallback when Core Data fails to load. Never deletes or resets; explains the data is safe, offers a share sheet with the raw store files and a `mailto:email@rushiraj.me` support link. |
+| `OnboardingView` | `OnboardingView.swift` | First-launch marketing carousel with Skip/Next/Get Started. Sets `hasCompletedOnboarding`; `CashLensApp` then shows `CurrencyPickerView(isInitialSetup: true)` once. |
 
 ### Primary Tabs
 
 | View | File | Description |
 |------|------|-------------|
-| `HomeView` | `HomeView.swift` | Redesigned landing dashboard. **Top-to-bottom order:** compact header (time-of-day greeting + emoji + page title with the user's name + subtitle showing the active period's date range; circular Search and Profile gradient-icon buttons), **period selector pills moved above content** (TimeFrame filter now precedes everything it filters), **Hero Spending Card** (uppercase caption, **optional no-spend streak leaf chip** rendered to the right of the period caption when `StreakCalculator.summary(...).isMeaningful` — current streak ≥ 2 or month progress ≥ 3 no-spend days, huge total with `.numericText()` content transition, color-tinted delta pill comparing this period vs the previous comparable period with matched-elapsed cutoff so partial months compare apples-to-apples, divider, three inline mini-stats: Expense count / Per-day average / Top category — whole card is a button that opens All Expenses), **budget strip** (Pro budgets or upgrade teaser), **Pinned Categories** grid (rich `PinnedCategoryCard` tiles — amount + trend pill vs previous period + expense count + optional budget progress bar + strong selected state when acting as the Recent Expenses filter), **Recent Expenses** with a **matched-geometry segmented filter pill** (All / Subscriptions). The old "Filter by Category" horizontal strip has been removed: its behaviour is now owned by Pinned Categories (tap-to-filter with obvious selected state) and `QuickSearchView`'s Browse-by-Category strip handles non-pinned categories, so Home has exactly one category-filter control. All sections share one `SectionEntrance` cascading spring entrance (0.06s stagger) matching Statistics and Subscriptions. Previous-period totals — both app-wide (for the hero pill) and per-category (for each pinned tile's trend) — are computed off-main in debounced `Task.detached` runs (80 ms debounce, `nonisolated` static pure compute) so large datasets never block the UI. iPhone and iPad layouts share the same structure. Sheets: profile, all expenses, add expense, summary customization, quick search, budgets, paywall. |
-| `SubscriptionsView` | `SubscriptionsView.swift` | Redesigned subscriptions tab. One **hero card** owns the summary: small "Per month" label, huge total, a **"Next up"** row previewing the earliest upcoming active sub (category chip + "Netflix · tomorrow · $15.99"), divider, then three inline mini-stats (Yearly / Due 7d / Average). Below: **segmented filter pills** (`All` / `Active` / `Due Soon`) with `matchedGeometryEffect` on the selection. List is grouped into Due Soon / Later / Paused subsections when "All" is active. Empty-filter state is a single compact card with a "Show All" pill. Entrance motion mirrors Statistics via `SubEntrance`. Sheets: add/edit subscription, monthly breakdown. |
-| `StatisticsView` | `StatisticsView.swift` | Redesigned premium statistics dashboard. Filter bar (time-frame pills → **Apple-Fitness-style period chevrons** `< December 2024 >` with smart labels for Today / Yesterday / This week / Last week / named months / years + forward chevron disabled when at current period → optional category row). Hero Overview card: huge total + delta pill + three inline mini-stats (Expenses / Average / Highest) replacing the old three-card grid. Pro Insights (daily pace / velocity / YoY). **Forecast** (horizon switcher `30d / 60d / 90d`, projected total + confidence range, line-chart with dashed projection + ±1σ band + subscription dots, Subscriptions and Top Driver mini-cards). Highlights (auto insights). **Where It Goes** merges the donut chart + category rows into one card with tap-linked selection — tap a slice or a row and the other half highlights via shared `donutSelectedId`. **Payment Methods** (Pro): same donut + breakdown shape, but slices are payment methods; selection state is `paymentDonutSelectedId`. Untagged expenses surface as a "tag x more (N% covered)" footer instead of as a wedge. Free users see a focused upgrade teaser instead of a live donut so the Pro reveal feels meaningful. Section is hidden entirely when no expense in view has any payment method *and* the user is free. Spending Pattern (heatmap). **Trend is a three-page swipeable pager** (Over time / By weekday / Top days) with a segmented tab bar, page dots, and matched-geometry selection. Every section header (plus the hero label) has an `InsightInfoButton` that opens a plain-English explanation sheet. Unified `SectionEntrance` modifier gives every section a spring-based cascade that settles in ~0.4 s. Debounced background recomputation computes weekday averages + top-day aggregates + the forecast + the payment-method breakdown alongside the existing totals so swipes stay at 60 fps. Free users see teasers for Pro Insights, Forecast, and Payment Methods + lock-badged PDF export; all of them route to `PaywallView`. |
+| `TodayView` | `TodayView.swift` (Today tab) | Replaces v1 `HomeView`. One job: answer "am I OK right now?" **Pinned at top:** verdict hero (`TodayVerdict` — spend vs budget, days left, projected month-end, On Track / Tight / Over pill; degrades to pace-vs-typical-month when there is no budget; ring animates on first appear; over-budget pulse runs three times then settles). **Customizable sections** (`TodaySectionID`, order + hidden set persisted; edited in `TodayCustomizeView`): `summary`, `upcoming` (bills due in the next two weeks from `SubscriptionViewModel`), `weekStrip` (7-day bar strip tinted by dominant category, tappable days, no-spend streak flame chip from `StreakCalculator`), `recent` (three most recent expenses, "See all activity" → Activity tab), `insight` (single `TodayInsight` picked via `SmartInsightsEngine`). Also: stacked budgets card when 2+ budgets (`BudgetSnapshot`, opens `BudgetListView`), and a "Your <Month> recap is ready" card during the first days of a new month (`monthlyRecapLastSeenMonth`). Deliberately **no** timeframe selector, pinned categories or Pro teaser. All aggregates recompute off-main on one debounced task; once-per-day warning haptic when the verdict worsens (`verdictWarningLastDate`). Header arrows can jump to Insights with a preselected window via `.insightsRequestTimeFrame`. |
+| `AllExpensesView` | `AllExpensesView.swift` (Activity tab) | Mounted with `isRootTab: true`; skips its `NavigationView` wrapper in that mode. Full description under *Lists & Search* below. |
+| `StatisticsView` | `StatisticsView.swift` (Insights tab) | Full description below; also hosts the permanent **Monthly Recap** row that presents `MonthlyRecapSheet`. |
+| `ProfileView` | `ProfileView.swift` (You tab) | Settings hub; full description under *Settings & Data* below. |
+| `SubscriptionsView` | `SubscriptionsView.swift` (sheet from You → Subscriptions; **not a tab** in v2) | One **hero card** owns the summary: small "Per month" label, huge total, a **"Next up"** row previewing the earliest upcoming active sub, divider, then three inline mini-stats (Yearly / Due 7d / Average). Below: **segmented filter pills** (`All` / `Active` / `Due Soon`) with `matchedGeometryEffect` on the selection. List is grouped into Due Soon / Later / Paused subsections when "All" is active. Wrapped in `NavigationStack`. Includes a hint explaining when "Mark paid" appears (2.0.1). Sheets: add/edit subscription. |
+| `StatisticsView` (detail) | `StatisticsView.swift` | Redesigned premium statistics dashboard. Filter bar (time-frame pills → **Apple-Fitness-style period chevrons** `< December 2024 >` with smart labels for Today / Yesterday / This week / Last week / named months / years + forward chevron disabled when at current period → optional category row). Hero Overview card: huge total + delta pill + three inline mini-stats (Expenses / Average / Highest) replacing the old three-card grid. Pro Insights (daily pace / velocity / YoY). **Forecast** (horizon switcher `30d / 60d / 90d`, projected total + confidence range, line-chart with dashed projection + ±1σ band + subscription dots, Subscriptions and Top Driver mini-cards). Highlights (auto insights). **Where It Goes** merges the donut chart + category rows into one card with tap-linked selection — tap a slice or a row and the other half highlights via shared `donutSelectedId`. **Payment Methods** (Pro): same donut + breakdown shape, but slices are payment methods; selection state is `paymentDonutSelectedId`. Untagged expenses surface as a "tag x more (N% covered)" footer instead of as a wedge. Free users see a focused upgrade teaser instead of a live donut so the Pro reveal feels meaningful. Section is hidden entirely when no expense in view has any payment method *and* the user is free. Spending Pattern (heatmap). **Trend is a three-page swipeable pager** (Over time / By weekday / Top days) with a segmented tab bar, page dots, and matched-geometry selection. Every section header (plus the hero label) has an `InsightInfoButton` that opens a plain-English explanation sheet. Unified `SectionEntrance` modifier gives every section a spring-based cascade that settles in ~0.4 s. Debounced background recomputation computes weekday averages + top-day aggregates + the forecast + the payment-method breakdown alongside the existing totals so swipes stay at 60 fps. Free users see teasers for Pro Insights, Forecast, and Payment Methods + lock-badged PDF export; all of them route to `PaywallView`. |
 
 ### Forms
 
 | View | File | Description |
 |------|------|-------------|
-| `AddExpenseView` | `AddExpenseView.swift` | Expense create/edit. **Templates chip strip** at the top of the form when the user has saved presets — taps fill the form with safe-merge semantics (never overwrites typed title/amount; tags/notes/refund flag are *additive*); long-press / context-menu offers Use or Delete. **"Save as template"** bookmark in the header (right of close, only when the form is valid and not editing) opens a quick rename alert. Amount, **refund toggle row** (above title; flips the entry to subtract from totals), title, **smart "Suggested" category pill** (driven by `CategorySuggester`, surfaces once title ≥ 2 chars and confidence ≥ 0.45 — single tap sets the category with a haptic), category picker (horizontal), date, **tags (chip field with live autocomplete / recent / popular suggestions, Pro-free for adding)**, notes. Draft save/restore (includes tags + `isRefund`), duplicate detection, quick date chips, title suggestions. |
+| `AddExpenseView` | `AddExpenseView.swift` | Expense create/edit. **Templates chip strip** at the top of the form when the user has saved presets — taps fill the form with safe-merge semantics (never overwrites typed title/amount; tags/notes/refund flag are *additive*); long-press / context-menu offers Use or Delete. **"Save as template"** bookmark in the header (right of close, only when the form is valid and not editing) opens a quick rename alert. Amount, **refund toggle row** (above title; flips the entry to subtract from totals), title, **smart "Suggested" category pill** (driven by `CategorySuggester`, surfaces once title ≥ 2 chars and confidence ≥ 0.45 — single tap sets the category with a haptic), category picker (horizontal), date, **tags (chip field with live autocomplete / recent / popular suggestions, Pro-free for adding)**, notes. Draft save/restore (includes tags + `isRefund`), duplicate detection, quick date chips, title suggestions. **Receipt field** (Pro capture, free viewing): Scan (`DocumentScannerView`, page 1 only) or Library (`PhotosPicker`); after a capture `ReceiptStorage.save` runs off-main and then `runReceiptOCR(on:)` (Pro, `ReceiptOCRService`) fills only *empty* amount/title fields; `handleScanTapped` / `handleLibraryTapped` route free users to `PaywallView(context: .receipts)`; `cleanupUnsavedReceipt()` deletes a session-attached file on close. Payment method pill scroller under Category. |
+| `BudgetSetupView` | `BudgetSetupView.swift` | Pro: create/edit a budget — amount hero, name, period (Weekly / Monthly / Custom range with start + inclusive end date), category filter picker, alert thresholds. Dismisses if not Pro. |
+| `BudgetListView` | `BudgetListView.swift` | Pro: manage budgets; the single canonical budget-management sheet, reused by You → Manage Budgets and by Today's budgets section. |
 | `AddSubscriptionView` | `AddSubscriptionView.swift` | Subscription create/edit — **structural twin of `AddExpenseView` / `BudgetSetupView`** (same custom header with X + optional trash, `@FocusState`-driven `.fieldCard(isFocused:)` inputs, fixed bottom save button with gradient fade). Fields: amount (hero), service name, billing frequency (horizontal pill row), start date (compact row → `.graphical` date picker sheet) with live "Next: Mar 20, 2026 · Every month" preview, category picker (circle style identical to Budget), reminder card (toggle + 1d/2d/3d/7d pill chips replacing the old stepper), notes. Delete section shown when editing. |
 | `CustomCategoryForm` | `CustomCategoryForm.swift` | Category name, icon picker (grid sheet), color picker (grid sheet). Validation. |
 
@@ -705,18 +861,26 @@ Forecasting is a Pro-only section that sits directly under **Pro Insights** on t
 
 | View | File | Description |
 |------|------|-------------|
-| `ProfileView` | `ProfileView.swift` | Settings hub, restructured for clean information architecture. **Top → bottom:** compact profile header (72 pt avatar, tap-to-edit name with pencil chip + `@FocusState`), Pro card (active or upgrade), **contextual Backup Warning Banner** (only visible when backup health is not `.good`, tap → opens export sheet directly so the most critical signal can't be buried), **Preferences** (currency, default time frame, Siri — Default Time Frame uses a SwiftUI `Menu`; the old standalone Appearance menu row was folded into the Appearance studio), **Personalization** (Theme & Appearance row → `AppearanceStudioView` for everyone — trailing slot shows the active theme name + duotone swatch dot, no lock chip since the mode selector inside is free and theme gating happens on Apply; App Icon row → `AppIconPickerView`, trailing slot shows the active icon name + tiny rounded preview tile for Pro users or `proLockChip` for free users — tap is the same UX in both states so users discover the upsell *inside* the picker, not at the row), **Manage** (Budgets / Categories / Subscriptions rows, each with a live count badge — "N active" / "N custom"), **Notifications** (single nav row → `NotificationsSettingsView`, trailing "N active" badge driven by `@AppStorage` mirrors of the sub-page's toggles), **Data** (Backup Health card + export / import / clear-all + footnote — backup metadata refreshes via the targeted `.backupMetadataDidChange` notification, not sheet-lifecycle hooks), **About** (**Rate CashLens** → App Store write-review deep link, Support the App, **Restore Purchases** — free users only, runs `ProManager.restorePurchases()` with a result alert so past purchasers never have to open the paywall to restore, About CashLens, compact 3-up community icon row), and a tiny **version footer** (static `versionString`). Only ever mounted as the You tab root — the legacy sheet presentation (X close button, `presentationMode`) was removed. Fully built on the design system — every row is `SettingsRow`/`SettingsRowValue`/`SettingsRowDestructive`, sections use `SettingsGroup`. |
+| `ProfileView` | `ProfileView.swift` (You tab root) | Settings hub. **Top → bottom:** compact profile header (tap-to-edit name), Pro card (active or upgrade → `PaywallView`), **contextual Backup Warning Banner** (only when backup health is not `.good`, tap → export sheet), **General** (Default Currency → `CurrencyPickerView`, Default Time Frame `Menu`, Siri & Shortcuts → `SiriShortcutsTipsView`), **Personalization** (Theme & Appearance → `AppearanceStudioView` for everyone; App Icon → `AppIconPickerView`, `proLockChip` for free users), **Manage** (Manage Budgets → `BudgetListView` or paywall, Categories → `ManageCategoriesView`, Subscriptions → `SubscriptionsView`, each with a live count badge), **Reminders & Insights** (single row → `NotificationsSettingsView`, "N active" badge from `@AppStorage` mirrors), **Privacy & Security** (Privacy → `PrivacyDashboardView`; App Lock toggle + "Require After" grace-period picker backed by `AppLockManager`), **Data** (Last Backup / Total Backups, Export Data, Import Data, Clear All Data — metadata refreshes via `.backupMetadataDidChange`), **About** (Rate CashLens → App Store write-review link, Support the App → `DonationView`, Restore Purchases — free users only, runs `ProManager.restorePurchases()` with a result alert — About CashLens, community row: Instagram / X / Reddit), version footer. Every destination is a **sheet, not a navigation push** — the You tab never hosts a root `UINavigationController` because that caused permanent tab-switch stutter. Built on `SettingsRow` / `SettingsRowValue` / `SettingsRowDestructive` + `SettingsGroup`. |
+| `NotificationsSettingsView` | `NotificationsSettingsView.swift` | Sheet from You → Reminders & Insights. One card per reminder (weekly digest, monthly digest, backup reminder) with a schedule sub-row when enabled, plus a Smart Insights group (Pro toggle; free users see a lock pill that opens the paywall). Writes through the same `@AppStorage` keys `ProfileView` reads and triggers `NotificationScheduler` refresh on save. |
+| `PrivacyDashboardView` | `PrivacyDashboardView.swift` | Sheet from You → Privacy. Renders the privacy story as facts: what is stored on this iPhone/iPad, database + receipts size (file IO off-main), the "three zeros" (servers, trackers, accounts), App Lock status, export shortcut. |
+| `SiriShortcutsTipsView` | `SiriShortcutsTipsView.swift` | Sheet listing the zero-setup phrases registered by `CashLensShortcuts` ("Log an expense in CashLens", "How much did I spend today in CashLens", …). No configuration — App Shortcuts need none. |
+| `TodayCustomizeView` | `TodayCustomizeView.swift` | Reorder and hide Today sections (`TodaySectionID.defaultOrder` = summary, upcoming, weekStrip, recent, insight). The verdict hero is not customizable. Persists `todaySectionOrder` / `todayHiddenSections`. |
+| `MonthlyRecapView` / `MonthlyRecapSheet` | `MonthlyRecapView.swift` | Free month-in-review sheet: single scrolling sequence of design-system cards (total vs previous month, top category, biggest expense, no-spend days and best streak, busiest day, subscription total, an `Award`) ending with a `ShareLink` of an `ImageRenderer`-rendered summary card. `MonthlyRecapSheet` waits for full hydration, computes `MonthlyRecapEngine` off-main, and writes `monthlyRecapLastSeenMonth` on appear. Entry points: Today card (first days of a new month) and the permanent Insights row. |
+| `ReceiptViewerView` | `ReceiptViewerView.swift` | Full-screen receipt viewer — pinch-to-zoom (1×–5×), double-tap toggle, pan, share, destructive delete with confirmation. Free for everyone (viewing existing receipts is never gated). |
+| `WinBackView` | `WinBackView.swift` | One-time sheet on the first foreground after a Pro → free lapse. Calm copy (nothing was taken away), CTA opens `PaywallView`, "No thanks" calls `ProManager.declineWinBack()` and silences it forever. Never shown to active donor-grant holders or while App Lock is up. |
+| `DonorThanksView` | `DonorThanksView.swift` | One-time thank-you when a donor grandfather grant is first applied (Founder = permanent Pro; Coffee = 1 year). No plan cards, no CTA other than dismiss. |
 | `AppearanceStudioView` | `AppearanceStudioView.swift` | Unified "make it yours" studio (replaced `ThemePickerView`). **Top → bottom:** `SheetHeader` ("Appearance" / eyebrow "Make it yours"), **live preview card** — a miniature Today screen (spent hero, status pill, duotone progress bar, week strip, mock FAB) rendered entirely in the *previewed* theme so every accent surface recolors on a swatch tap; **Mode selector** — System/Light/Dark as three mini-mock cards (free, applies instantly via `viewModel.appearanceMode`); **two theme grids** — Classics + Pastels, 3-up, swatches are duotone circles filled with each theme's `heroGradient` so the grid communicates the color *pair*, checkmark on saved, accent ring on preview, lock badge on Pro options for free users; **"Complete the look"** card — appears when the previewed theme has a `matchingIconId` that isn't the applied icon, one-tap applies the theme-matched app icon via `AppIconStore` (Pro-gated). **Sticky bottom Apply bar** (duotone fill in the previewed theme) is the only commit path — Pro lock / Apply / "is active" states. `HapticManager.shared.success()` on apply, `.warning()` on a paywall hit. |
 | `AppIconPickerView` | `AppIconPickerView.swift` | Pro-gated alternate-app-icon picker. Same UX shape as `AppearanceStudioView` so users build muscle memory: **132 pt rounded-square hero preview** at the top (with shadow + soft scale animation on apply), **4-column grid** of 60 pt rounded icon tiles (8 options — Mauve primary + 7 alternates), and a **conditional Pro CTA** for previewed-but-locked picks. Active selection gets a `checkmark.circle.fill` badge; Pro-locked picks get a tiny lock badge. Wraps `appIconStore.apply(_:)` in a `Task`, surfacing `ApplyError` via an in-picker alert and reverting the preview on failure so the UI never lies. Hides itself entirely on devices where `UIApplication.shared.supportsAlternateIcons` is false (vanishingly rare but the official guard). |
-| `CurrencyPickerView` | `CurrencyPickerView.swift` | Currency selection: region chips, search bar, checkmark list. `interactiveDismissDisabled` in setup mode. |
+| `CurrencyPickerView` | `CurrencyPickerView.swift` | Currency selection: "Recently Used" shortcut (`RecentCurrenciesStore`, cap 3, recorded only on active picks), region chips, search bar, checkmark list. `interactiveDismissDisabled` in setup mode. |
 | `ManageCategoriesView` | `ManageCategoriesView.swift` | Default categories (context-menu Hide → moves expenses & subscriptions to Other, deletes budgets filtered to that category), deleted defaults (restore), custom categories (edit/delete/add via context menu + edit-form trash button). No swipe actions — rows live in a ScrollView, where `.swipeActions` is silently dead. |
-| `SummaryCustomizationView` | `SummaryCustomizationView.swift` | Pick up to 4 categories to pin on Home. Rebuilt around one idea: **the selected cards are the preview**. The large miniature-tile preview was retired (it competed with the real selection cards and shrank everything to fit). Replaced with a compact horizontal "Home line-up" chip strip at the top that confirms the picks in pinned order (empty slots render as dashed chips, horizontally scrollable for small screens). Below that, the selection grid uses beefed-up `CategorySelectionCard`s at a fixed 144 pt (iPhone) / 158 pt (iPad) height, mirroring the `PinnedCategoryCard` idiom — icon medallion tinted on selection, title (14 pt semibold), **20 pt rounded-bold amount in primary** for real decision data, expense count (12 pt medium secondary), checkmark badge, gradient tint + color border when selected. Unselected-and-disabled (when the lineup is full) eases from harsh 0.45 opacity to 0.62 so ghosted cards stay legible. Reset link surfaces only when selection differs from defaults; single floating Save bar. `maxSelections` is a single source of truth paired with `ExpenseViewModel.getSummaryCardsData`'s matching `prefix(4)` clamp. |
-| `ExportDataView` | `ExportDataView.swift` | Choose CSV/JSON format, export, share via `UIActivityViewController`. Records backup metadata. |
-| `ImportDataView` | `ImportDataView.swift` | File picker (`.fileImporter`), progress overlay with fake progress, success/error alerts. |
+| `SummaryCustomizationView` | `SummaryCustomizationView.swift` | **Orphaned on this branch** — it was the pinned-categories picker for the v1 Home screen and nothing presents it since `TodayView` replaced `HomeView` (`preferredSummaryCategoryTokens` is still loaded by `ExpenseViewModel+Preferences`). Historical description: pick up to 4 categories to pin on Home. Rebuilt around one idea: **the selected cards are the preview**. The large miniature-tile preview was retired (it competed with the real selection cards and shrank everything to fit). Replaced with a compact horizontal "Home line-up" chip strip at the top that confirms the picks in pinned order (empty slots render as dashed chips, horizontally scrollable for small screens). Below that, the selection grid uses beefed-up `CategorySelectionCard`s at a fixed 144 pt (iPhone) / 158 pt (iPad) height, mirroring the `PinnedCategoryCard` idiom — icon medallion tinted on selection, title (14 pt semibold), **20 pt rounded-bold amount in primary** for real decision data, expense count (12 pt medium secondary), checkmark badge, gradient tint + color border when selected. Unselected-and-disabled (when the lineup is full) eases from harsh 0.45 opacity to 0.62 so ghosted cards stay legible. Reset link surfaces only when selection differs from defaults; single floating Save bar. `maxSelections` is a single source of truth paired with `ExpenseViewModel.getSummaryCardsData`'s matching `prefix(4)` clamp. |
+| `ExportDataView` | `ExportDataView.swift` | Choose **Complete Backup** (`.cashlens.json`), **Spreadsheet** (`.csv`) or **Full Archive** (`.cashlens-archive` — "Everything above + receipt photos"), export via `BackupExporter`, share via `UIActivityViewController`. Records backup metadata and posts `.backupMetadataDidChange`. |
+| `ImportDataView` | `ImportDataView.swift` | `.fileImporter` (JSON, CSV, `.cashlens-archive` / `.zip`) → preview sheet (detected format, per-entity counts, receipt-photo count, column mapping + issues for foreign CSVs, Merge/Replace) → apply via `BackupImporter`. Foreign CSV import is Pro-gated at `startParse(url:)`. Post-import summary shows receipts restored / failed. |
 | `DonationView` | `DonationView.swift` | StoreKit tip jar: gradient cards per product, processing overlay. |
-| `AboutView` | `AboutView.swift` | Static info: features, what's new, contact email, website, privacy. |
+| `AboutView` | `AboutView.swift` | Static info: features, contact (`email@rushiraj.me`), website, Privacy and Terms links (added for 2.0.0). |
 | `FeedbackManager` | `Utilities/FeedbackManager.swift` | Rating ask logic (no UI — `MainTabView` calls the native `requestReview` star sheet directly for a one-tap rating). Asks after 12 actions across 3+ distinct days, or 5 actions right after a successful export; 30-day cooldown, max 3 asks lifetime, Apple's 3/year throttle as backstop. Replaced the old `FeedbackRequestView` custom modal in 2.0.1. |
-| `DiagnosticsView` | `DiagnosticsView.swift` | `#if DEBUG` only. Data refresh, currency checks, smoke tests, feedback reset. |
+| `DiagnosticsView` | `DiagnosticsView.swift` | `#if DEBUG` only. Data refresh, currency checks, smoke tests, feedback reset. Not wired to any entry point on this branch. |
 
 ---
 
@@ -724,17 +888,25 @@ Forecasting is a Pro-only section that sits directly under **Pro Insights** on t
 
 | Component | File | Description |
 |-----------|------|-------------|
-| `PinnedCategoryCard` | `PinnedCategoryCard.swift` | Premium Home pinned-category tile. Icon medallion + rounded amount (with `contentTransition(.numericText())`) + category title + expense-count line + optional thin budget progress bar when a budget exists for that category. Top-right **trend pill** (↑/↓ %, Flat, or New/sparkle) driven by the previous comparable period. Strong **selected** treatment (gradient border + soft color-tinted shadow) when the card is the active Recent-Expenses filter on Home. `ScaleButtonStyle`. |
-| `ExpenseCard` | `ExpenseCard.swift` | Primary expense row. `Equatable` + precomputed fields for perf. Icon, title, category, notes, amount, date. |
-| `ExpenseRow` | `ExpenseRow.swift` | Simpler expense row using `@EnvironmentObject`. Less optimized, compact style. |
+| `PinnedCategoryCard` | `PinnedCategoryCard.swift` | **Orphaned on this branch** (no call sites since `HomeView` was removed; `BudgetProgressCard` still mirrors its layout constants). Historical: premium Home pinned-category tile. Icon medallion + rounded amount (with `contentTransition(.numericText())`) + category title + expense-count line + optional thin budget progress bar when a budget exists for that category. Top-right **trend pill** (↑/↓ %, Flat, or New/sparkle) driven by the previous comparable period. Strong **selected** treatment (gradient border + soft color-tinted shadow) when the card is the active Recent-Expenses filter on Home. `ScaleButtonStyle`. |
+| `ExpenseCard` | `ExpenseCard.swift` | Primary expense row. `Equatable` + precomputed fields for perf. Icon, title, category, notes, amount, date, inline tags (up to 3 + `+N`), paperclip badge when a receipt is attached, green Refund badge + negative amount for refunds. |
+| `BudgetProgressCard` / `BudgetMiniCard` | `BudgetProgressCard.swift` | Pro budget progress tiles (ring / bar, over-budget state). iPad-aware heights. |
 | `CategoryItem` | `CategoryItem.swift` | Horizontal default category chip with selection ring. `Equatable`, `drawingGroup`. |
 | `CustomCategoryItem` | `CustomCategoryItem.swift` | Horizontal custom category chip. Same pattern as CategoryItem. |
 | `CategoryDonutChart` | `CategoryDonutChart.swift` | Interactive donut + legend. Tap center clears selection, legend toggles slices. `drawingGroup` on ring. |
 | `ExpenseTrendChart` | `ExpenseTrendChart.swift` | Custom `Path` line/area chart by time frame. Grid, tooltips, adaptive labels. iPad-aware height. |
 | `SpendingHeatmap` | `SpendingHeatmap.swift` | GitHub-style calendar heatmap (horizontal scroll). Tap day for total. Caps at 365 days. |
 | `SubscriptionRow` | `SubscriptionRow.swift` | Redesigned subscription cell. Category icon, **single status line** (colored dot + one of `Paused` / `Overdue by N days` / `Due today` / `Due in N days` / `Renews Mar 20, 2026`) — all previous redundancy (inline PAUSED badge + bottom Paused label + separate due line + "Soon"/"Active"/"Overdue" status label) consolidated. Monthly equivalent is shown **only when frequency ≠ monthly** (removed pointless self-repeat for monthly subs). Trailing column shows the amount and, when due/overdue, a compact inline **Mark paid** pill (no full-row CTA). Row tap = edit via `onTapGesture` on the card (not an enclosing `Button` — the inline Mark-paid `Button` would nest unreliably inside one); long-press context menu = Edit / Pause–Resume / Mark as Paid / Delete. No swipe actions — rows render in a `LazyVStack`, where `.swipeActions` never functions. |
-| `FloatingAddButton` | `FloatingAddButton.swift` | Circular FAB for Home tab. Medium haptic on tap. |
-| `AddButton` | `AddButton.swift` | Gradient add button variant with preview sizes. |
+| `TrendChartPager` | `TrendChartPager.swift` | Three-page swipeable Trend pager (Over time / By weekday / Top days) with segmented tab bar + page dots. |
+| `YearOverYearChart` | `YearOverYearChart.swift` | Pro: SwiftUI Charts grouped bars, this year vs last year. |
+| `ForecastChart` | `ForecastChart.swift` | Pro: SwiftUI Charts renderer for `ForecastEngine.Forecast` (history line, dashed projection, ±1σ band, subscription dots). |
+| `InsightInfoButton` | `InsightInfoButton.swift` | `info.circle` button + explanation sheet ("What it means / How it's calculated / Why it matters") used by every Insights section; copy lives in `InsightInfo`. |
+| `TagChip` / `TagInputField` | `TagChip.swift`, `TagInputField.swift` | Smart Tags chip (4 styles) and chip-flow input with live autocomplete. |
+| `DocumentScannerView` | `DocumentScannerView.swift` | `UIViewControllerRepresentable` over `VNDocumentCameraViewController`; `isSupported` guard; takes page 1 of a multi-page scan. |
+| `SheetHeader` | `SheetHeader.swift` | Canonical sheet chrome (title, subtitle, close, optional trailing) used by every You-tab sheet and the appearance studio. |
+| `SaveErrorBanner` / `SaveErrorBannerHost` | `SaveErrorBanner.swift` | Non-blocking, auto-dismissing banner rendered over the tab bar whenever `SaveErrorReporter.report(...)` posts `.saveErrorOccurred`. |
+| `SaveConfirmationToast` / host | `SaveConfirmationToast.swift` | Short-lived floating capsule ("Added ₹450 to Food", "Added N expenses from your widget") posted via `SaveConfirmationReporter`. |
+| `FloatingAddButton` | `FloatingAddButton.swift` | Circular FAB shown on Today / Activity / Insights (hidden on You and in bulk-select mode). Medium haptic on tap. iPad size variant. |
 
 ---
 
@@ -743,7 +915,19 @@ Forecasting is a Pro-only section that sits directly under **Pro Insights** on t
 | Utility | File | Description |
 |---------|------|-------------|
 | `HapticManager` | `HapticManager.swift` | Singleton with cached `UIImpactFeedbackGenerator`s. Methods: `lightTap`, `mediumTap`, `heavyTap`, `success`, `warning`, `error`, `selectionChanged`. Pre-prepares generators. |
-| `DeepLinkRouter` | `DeepLinkRouter.swift` | `ObservableObject` singleton. Parses notification `userInfo` into `DeepLinkRoute` (.allExpenses with filter, .export). Drives `.sheet(item:)` in `CashLensApp`. |
+| `DeepLinkRouter` | `DeepLinkRouter.swift` | `ObservableObject` singleton. Parses notification `userInfo` and `cashlens://` URLs (`DeepLinkURLs`, scheme registered in `CashLens-Info.plist`) into `DeepLinkRoute` (`.allExpenses(filter)`, `.export`, `.addExpense` — the Quick Log widget's "+" button). Drives `.sheet(item:)` in `CashLensApp`. Routes that arrive while App Lock is up are parked and released by `flushPendingRoute()` on `.appDidUnlock`. |
+| `AppLockManager` | `AppLockManager.swift` | `@MainActor` singleton for the free Face ID / Touch ID / passcode lock — see §21. |
+| `QuickLogService` | `QuickLogService.swift` | Headless expense writes on a fresh background context for Siri intents and the widget queue drain; `spendingSummary()` for `GetSpendingIntent`; rebuilds the widget snapshot directly from the store; posts `.expensesChangedExternally`. Diagnostic trail is redacted in Release — see §20. |
+| `ReceiptStorage` | `ReceiptStorage.swift` | Pure file IO for receipts: `Documents/Receipts/<uuid>.jpg`, JPEG 0.7, 2400 px max edge, filename-only references, `cleanupOrphans(keep:)`, `totalBytesUsed`. |
+| `ReceiptOCRService` | `ReceiptOCRService.swift` | Pro: on-device `VNRecognizeTextRequest` (accurate, language correction, no network) → `ReceiptOCRResult` (total amount ranked by proximity to TOTAL / AMOUNT DUE keywords, merchant from the top of the receipt). `parse(lines:)` is a pure function over `[OCRLine]`. Always best-effort and silent. |
+| `MonthlyRecapEngine` | `MonthlyRecapEngine.swift` | `MonthlyRecap` value + `compute(...)`: total vs previous month, top category, biggest expense, no-spend days + best streak, busiest day, subscription total, derived `Award`. `Sendable`, no IO; callers gate on full hydration. |
+| `PaywallTrigger` | `PaywallTrigger.swift` | Pure rule for the post-value auto-paywall: only when a single save crosses `expenseThreshold = 10`, user is free, never auto-shown before, and outside a 7-day cooldown. Persistence stays at the call site (`MainTabView`). |
+| `FeedbackManager` | `FeedbackManager.swift` | Rating-ask timing only (no UI). Asks after 12 successful actions across 3+ distinct days, or 5 actions right after a successful export; 30-day cooldown; max 3 asks lifetime; migrates users silenced by the legacy `hasRequestedFeedback` flag. Threshold is 12, not 10, so it can never collide with the auto-paywall's 10th-expense trigger. `MainTabView` calls the native `requestReview` action. |
+| `SaveErrorReporter` / `SaveConfirmationReporter` | `SaveErrorReporter.swift` | Every `context.save()` catch site posts `SaveErrorReporter.report(operation:error:)`; the banner host in `MainTabView` renders it. Success sibling posts the confirmation toast. |
+| `BudgetAlertState` | `BudgetAlertState.swift` | UserDefaults-backed last-utilization + fired flags per budget per period so 80% / 100% alerts fire only on an upward crossing. |
+| `RecentCurrenciesStore` | `RecentCurrenciesStore.swift` | Most-recent-first list of actively picked currencies (cap 3) for the picker's "Recently Used" row. |
+| `WidgetSnapshotBuilder` / `WidgetSnapshotCoordinator` | `WidgetSnapshot*.swift` | Widget data pipeline — see §19. |
+| `Zip/` | `CRC32.swift`, `ZipWriter.swift`, `ZipReader.swift` | Pure-Swift STORE-only zip used by `.cashlens-archive`; reader verifies CRC-32 on every extraction and rejects ZIP64. |
 | `ExpenseFilter` | `ExpenseFilter.swift` | Pure function `apply(expenses:category:customCategoryId:timeFrame:referenceDate:)`. Also supports explicit date range `[start, end)`. |
 | `NotificationScheduler` | `NotificationScheduler.swift` | Schedules one-shot weekly/monthly digest, backup reminder, and the **Pro Smart Insights** weekly push via `UNUserNotificationCenter`. `DigestStatsCalculator` powers digest bodies; `scheduleNextSmartInsight(viewModel:)` evaluates `SmartInsightsEngine` on every foreground refresh and only schedules when an insight clears the firing bar. `refreshScheduledNotificationsIfNeeded(viewModel:isPro:)` is the single entry point — `isPro` gates Smart Insights without leaking ProManager into the scheduler. |
 | `SmartInsightsEngine` | `SmartInsightsEngine.swift` | Pure, `Sendable`-safe value-type engine that selects the highest-priority weekly insight (or `nil`) for the Pro Smart Insights notification. Six kinds in priority order: `streakRecord`, `refundWindfall`, `categorySpike` (≥ 2.4× over 4-week baseline + ≥ $50 absolute delta), `categoryAllTime`, `subscriptionsDue` (≥ 3 in next 7 days), `weekTotalNew`. Each candidate carries a fingerprint persisted in `HistoryRecord` (UserDefaults key `smartInsightsHistory`) so the same headline can't refire within `cooldownDays = 14`. History auto-prunes at 60 days. |
@@ -766,7 +950,7 @@ Forecasting is a Pro-only section that sits directly under **Pro Insights** on t
 | File | Contents |
 |------|----------|
 | `ButtonStyles.swift` | `ScaleButtonStyle` (scale 0.9 + spring + medium haptic), `OpacityButtonStyle` (opacity 0.7 + light haptic), `CustomAddButtonStyle` (scale 0.95 + heavy haptic) |
-| `NotificationExtension.swift` | `Notification.Name` constants: `.appearanceDidChange`, `.dataDidClear`, `.subscriptionCurrencyUpdated` |
+| `NotificationExtension.swift` | `Notification.Name` constants: `.appearanceDidChange`, `.dataDidClear`, `.subscriptionCurrencyUpdated`, `.currencyDidChange`, `.backupMetadataDidChange`, `.expensesChangedExternally`, `.appDidUnlock`, `.insightsRequestTimeFrame` (others such as `.themeDidChange`, `.saveErrorOccurred`, `.backupImportDidComplete` are declared next to their owners) |
 | `ViewExtensions.swift` | `.if(_:transform:)` conditional modifier, `cornerRadius(_:corners:)` per-corner rounding via `RoundedCorner` shape |
 
 ---
@@ -781,7 +965,7 @@ One namespace, `Theme`, with nested token families. Pick the **role**, not a raw
 
 | Family | Members | Purpose |
 |--------|---------|---------|
-| `Theme.Spacing` | `xxs(2)`, `xs(4)`, `sm(8)`, `md(12)`, `lg(16)`, `xl(20)`, `xxl(24)`, `xxxl(32)`, `tabBarInset(120)` | Rhythm for padding and `VStack` / `HStack` spacing |
+| `Theme.Spacing` | `xxs(2)`, `xs(4)`, `sm(8)`, `md(12)`, `lg(16)`, `xl(20)`, `xxl(24)`, `xxxl(32)`, `tabBarInset(100)` | Rhythm for padding and `VStack` / `HStack` spacing. `tabBarInset` is the global scroll-bottom pad for the tab bar + FAB |
 | `Theme.Radius` | `chip(12)`, `row(14)`, `card(16)`, `container(18)`, `hero(22)` | Corner radii — never use naked `cornerRadius(14)` style numbers in views |
 | `Theme.Stroke` | `hairline(0.5)`, `thin(1)`, `medium(1.5)` | Border widths |
 | `Theme.Typography` | `pageTitle`, `sectionTitle`, `subsectionTitle`, `rowTitle`, `caption`, `numeric`, `numericSmall` | Semantic type styles |
@@ -855,9 +1039,11 @@ Heavy use of `HapticManager` throughout:
 
 ### Adoption status
 
+The adoption log below was written during the v1 → Pro migration (Phases B–F) and is kept as history. Note that `HomeView` no longer exists — it was replaced by `TodayView` in the v2 redesign (commit `777ee11`, 2026-05), which was built on the design system from the start. All v2 screens (`TodayView`, `TodayCustomizeView`, `AppLockView`, `StoreRecoveryView`, `PrivacyDashboardView`, `NotificationsSettingsView`, `SiriShortcutsTipsView`, `MonthlyRecapView`, `WinBackView`, `DonorThanksView`, `AppearanceStudioView`) use `SheetHeader` / `HeroGlyph` / `.cardSurface()` / `Theme.*` tokens.
+
 | Screen | Status |
 |--------|--------|
-| `HomeView` | Fully migrated (Phase B) + redesigned landing — hero spending card with period-delta pill, period selector moved above content, pinned-categories grid, matched-geometry recent filter, unified `SectionEntrance` cascade; dropped the redundant dark-mode toggle (lives in Profile → Appearance) and the private `homeSectionTransition` helper (replaced by the app-wide entrance modifier) |
+| `HomeView` (removed in v2) | Was fully migrated (Phase B) + redesigned landing before being replaced by `TodayView` |
 | `ProfileView` | Fully migrated (Phase C) — every row uses `SettingsRow`/`SettingsRowValue`/`SettingsRowDestructive`, every section wrapped in `.sectionContainer()`, Pro card + Backup Health card tokenized. File is 1,699 → ~900 lines. |
 | `StatisticsView` | Redesigned around six unified sections — Hero Overview, Pro Insights, Highlights, Where It Goes, Spending Pattern, Trend. All section titles use `SectionHeader`; time-frame pills use `PillChip`; every card (including the merged donut+rows card) uses `.cardSurface()`; a single `SectionEntrance` modifier drives the entrance cascade across every section with a 60 ms spring offset. Empty state is `EmptyStatePanel` + `PrimaryGradientButton`. |
 | `SubscriptionsView` | Fully migrated (Phase D) — page title via `Theme.Typography.pageTitle`, compact header "Add" CTA uses `LinearGradient.appPrimary` + `.primaryGlow()`, stat mini cards tokenized via `.cardSurface()`, empty state uses `EmptyStatePanel` + `PrimaryGradientButton`, grouped subsections ("Due Soon" / "Later" / "Paused") use `SectionHeader(style: .subsection)`, filter status chip tokenized. |
@@ -873,6 +1059,8 @@ Heavy use of `HapticManager` throughout:
 | `DiagnosticsView` | Already clean — no straggler tokens detected. |
 
 ### Performance notes
+
+> Historical log from the v1 → Pro migration. References to `HomeView` describe the screen that `TodayView` replaced; the `StatisticsView`, `AllExpensesView`, `ProfileView` and view-model items still apply.
 
 - `HomeView`'s `AdaptiveGrid` no longer uses `GeometryReader` — it derives columns from the idiom (2 on iPhone, 3 on iPad). This removes a layout pass on every size change and eliminates the old fixed-height hack that capped summary cards at 160pt.
 - The Home landing cascade is now one unified `SectionEntrance` spring (0.06s stagger) matching Statistics and Subscriptions. The old hand-rolled per-section `.animation(..., value: animateCards)` calls and the private `homeSectionTransition` helper are gone — one modifier drives all seven sections, so SwiftUI only has one animation curve to diff.
@@ -926,7 +1114,7 @@ Phase G was scoped from a five-pronged audit (hot paths, view rebuild storms, pe
 - `cleanupReceiptOrphansInBackground()` now captures the expense snapshot by value (COW makes this free) and does the `compactMap` + `Set` build *inside* the detached task, not on main.
 - `NotificationScheduler` builds a `[UUID: String]` category-name map **once** per schedule call (in `makeCategoryNameLookup(viewModel:)`) and passes a closure that does O(1) dictionary reads to `DigestStatsCalculator` and `SmartInsightsEngine`. Previously `viewModel.categoryDisplayName(for:)` ran a **full Core Data fetch** inside the digest / insight loops — 1,500 expenses with even a handful of custom categories meant 1,500+ synchronous Core Data fetches on the MainActor every foreground.
 
-**Phase 2 — Stop O(N) work on main-thread hot paths (low–medium risk, high impact):**
+**Phase 2 — Stop O(N) work on main-thread hot paths (low–medium risk, high impact):** *(the `HomeView` items below predate the v2 `TodayView`, which recomputes its aggregates on a single debounced detached task)*
 - Added Core Data fetch indexes (`fetchIndex` elements in `CashLens.xcdatamodel/contents`) on `ExpenseEntity.date` (the sort key behind every `loadExpenses` call), `id` (every single-row CRUD lookup), `category`, `customCategoryId`, `subscriptionId`, plus `SubscriptionEntity.nextDueDate` / `id` / `isActive`. Indexes are storage-only changes — Core Data picks them up via lightweight migration on first launch, no version bump needed.
 - `HomeView.heroAveragePerActiveDay` no longer runs `filteredExpenses.map { $0.date }.min()` inside `body` for the `.all` timeframe. The earliest-expense date is cached in `@State cachedAllTimeStartDate`, populated by `recomputeNoSpendStreak()` in the same detached pass it already runs (it walks the snapshot anyway).
 - `HomeView.recentExpensesList` uses a lazy `.lazy.filter { $0.isFromSubscription }.prefix(5)` chain when the user toggles "subscriptions only" — short-circuits after 5 matches instead of filtering the whole array.
@@ -971,13 +1159,16 @@ Previously, every CRUD method ended with `loadExpenses()`, which did a full SQLi
 | `com.cashlens.donation.fuel` | Fuel | $9.99 |
 
 **Implementation:**
-- `DonationManager` — singleton, loads products, handles purchase, listens for `Transaction.updates`
+- `DonationManager` — singleton, loads products, handles purchase, records purchased IDs. It does **not** run its own `Transaction.updates` loop (see below).
 - `DonationView` — UI with gradient cards per product
-- Entry point: "Support the App" section in `ProfileView`
+- Entry point: "Support the App" row in `ProfileView` → About
+- `SKIncludeConsumableInAppPurchaseHistory = YES` in `CashLens-Info.plist` so finished consumables stay visible in `Transaction.all` for donor grandfathering.
 
 ### CashLens Pro (Subscriptions + Lifetime)
 
-**StoreKit 2 auto-renewable subscriptions** + one non-consumable lifetime purchase:
+**Decision (Rushiraj, 2026-09-19): subscriptions AND lifetime both stay.** Monthly, yearly and lifetime are all offered; none is being retired.
+
+**StoreKit 2 auto-renewable subscriptions** + one non-consumable lifetime purchase (`CashLens/Donations.storekit`):
 
 | Product ID | Type | Price (USD) | Trial |
 |------------|------|-------------|-------|
@@ -985,15 +1176,24 @@ Previously, every CRUD method ended with `loadExpenses()`, which did a full SQLi
 | `com.cashlens.pro.yearly` | Auto-Renewable | $19.99/yr | 7-day free |
 | `com.cashlens.pro.lifetime` | Non-Consumable | $39.99 | — |
 
-All three belong to subscription group `"CashLens Pro"` (group ID `D4E8F2A1`). Apple handles international currency conversion via price tiers — `Product.displayPrice` shows the user's local currency automatically.
+The two subscriptions belong to subscription group `"CashLens Pro"` (group ID `D4E8F2A1`); the lifetime product is a separate non-consumable. All three plus the three tips are listed on the live App Store page. Apple handles international pricing — `Product.displayPrice` shows the user's local currency.
 
-**Implementation:**
-- `ProManager` (`Models/ProManager.swift`) — singleton `ObservableObject`. Exposes `@Published isPro: Bool`. Checks `Transaction.currentEntitlements` on launch, listens to `Transaction.updates`, handles purchase and restore via `AppStore.sync()`. Completely separate from `DonationManager`.
-- `PaywallView` (`Views/PaywallView.swift`) — full-screen upgrade UI with feature list, monthly/yearly/lifetime plan cards, free trial badge, savings percentage, restore purchases, and Apple ToS text.
-- **ProfileView** — shows "Upgrade to Pro" CTA card (or "Active" badge if already Pro) below the profile header. Tapping opens `PaywallView` as a sheet.
-- **Feature gating** — use `ProManager.shared.isPro` anywhere in the app to check entitlement.
+**`ProManager` (`Models/ProManager.swift`)** — `@MainActor` singleton `ObservableObject`:
+- `@Published isPro` = live StoreKit entitlement **OR** active donor grant, recomputed in `recomputeIsPro()` on launch, every foreground (`CashLensApp`), every `Transaction.updates` delivery, purchase and restore. Entitlement is always re-derived from `Transaction.currentEntitlements` — an update is never treated as a grant, so refunds/revocations are honored.
+- **Single transaction listener** for the whole app: routes Pro IDs to `checkEntitlements()`, donation IDs to `DonationManager.recordPurchasedProductID(_:)` then `scanForDonorGrant()`, and finishes each transaction exactly once (unverified ones are finished without granting).
+- `isEligibleForIntroOffer` — defaults to `false`; refreshed after products load and when the paywall opens so "Start free trial" copy is only shown when StoreKit confirms eligibility (intro offers are once per Apple ID).
+- **Donor grandfathering** — `scanForDonorGrant()` walks `Transaction.all` on launch (after products load) and after restore: any verified Lunch/Fuel ($4.99+) tip → `DonorGrant.founder` (permanent local Pro); Coffee only → `DonorGrant.yearOfPro` (365 days from first detection, date written once, never re-granted). One-time `DonorThanksView`; consumed on the sheet's `onAppear`.
+- **Win-back** — `recomputeIsPro()` sets `winBackPending` on a Pro → free lapse (unless an active donor grant covers the user); `evaluateWinBackPrompt()` runs on foreground / after unlock and shows `WinBackView` at most once per lapse, never after "No thanks" (`winBackDeclined`), never while App Lock is up.
+- **Promoted In-App Purchases** — `listenForPurchaseIntents()` iterates `PurchaseIntent.intents` and completes purchases started on the App Store product page, scoped to Pro IDs only. Required for App Store Connect promotions to display. **Unshipped** relative to store 2.1 (commit `4f702fa`); promo images live in `Marketing/PromoImages/`.
+- `purchase(_:)`, `restorePurchases()` (`AppStore.sync()` + entitlement check + donor rescan), `yearlySavingsPercent`.
 
-**UserDefaultsKeys added:** `hasSeenPaywall`, `paywallImpressionCount`.
+**Surfaces:**
+- `PaywallView(context:)` — full-screen upgrade UI with feature list, monthly/yearly/lifetime plan cards, trial badge (eligibility-gated), savings percentage, restore, Apple standard EULA link. `PaywallContext` (`general`, `budgets`, `receipts`, `tags`, `themes`, `icons`, `insights`, `forecast`, `reports`, `importFormats`) tailors the headline to the feature that opened it.
+- **Post-value auto-paywall** — `MainTabView` evaluates `PaywallTrigger` when the add-expense sheet closes; shows once ever, 1.2 s after the save that crosses 10 expenses, never over App Lock.
+- **ProfileView** — Pro card (upgrade or Active), Restore Purchases row for free users.
+- **Feature gating** — check `proManager.isPro` (environment object) at the call site. Gated today: budgets, tag *filtering* + bulk-tag, themes + alternate icons, Pro Insights, Forecast, PDF report, Payment Methods donut, receipt *capture* + OCR, foreign CSV import, Smart Insights notification, Budget / Subscriptions / Streak widgets, extra Quick Log templates. Everything else — including App Lock, Monthly Recap, Siri intents, widgets' Spending Snapshot — is free.
+
+**UserDefaultsKeys:** `hasSeenPaywall`, `paywallImpressionCount`, `hasAutoShownPaywall`, `lastAutoPaywallDate`, `donorGrantType`, `donorGrantDate`, `donorGrantThanksShown`, `lastKnownIsPro`, `winBackPending`, `winBackDeclined`.
 
 ---
 
@@ -1004,19 +1204,25 @@ All three belong to subscription group `"CashLens Pro"` (group ID `D4E8F2A1`). A
 1. **Weekly Spending Digest** — Scheduled on configurable weekday/time. Body includes total spent, category breakdown, comparison to previous week.
 2. **Monthly Spending Digest** — Scheduled on configurable day of month/time. Similar body with monthly stats.
 3. **Backup Reminder** — Scheduled reminder to export data. Shows days since last backup.
-4. **Subscription Due Reminders** — Per-subscription, X days before due date. Calendar-based trigger.
+4. **Subscription Due Reminders** — Per-subscription, X days before due date. Calendar-based trigger. `SubscriptionViewModel.reconcileOverdueSubscriptions()` rolls past-due subs forward on foreground so reminders re-arm instead of dying after one cycle.
+5. **Budget Alerts (Pro)** — 80% / 100% upward crossings, per budget per period (`BudgetAlertState`); opens Activity filtered to the budget's period + category.
+6. **Smart Insight (Pro)** — one weekly push (default Sunday 10 AM) only when `SmartInsightsEngine` finds something notable; opt-in via `NotificationsSettingsView`.
+
+`NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel:isPro:)` runs on every foreground after `waitUntilFullyHydrated()`; a `scheduledNotificationsFingerprint` skips the full reschedule when settings, fire dates and data shape are unchanged. `AppDelegate` is the `UNUserNotificationCenterDelegate` (banner + list + sound + badge in foreground).
 
 ### Deep Links
 
-Notification taps route through `DeepLinkRouter`:
-- Weekly/monthly digest → Opens `AllExpensesView` with appropriate time filter
-- Backup reminder → Opens `ExportDataView`
+Notification taps and `cashlens://` URLs route through `DeepLinkRouter`:
+- Weekly/monthly digest, budget alert, smart insight → `AllExpensesView` with a filter
+- Backup reminder → `ExportDataView`
+- `cashlens://add-expense` (Quick Log widget "+" button) → `AddExpenseView`
+- While App Lock is up the route is parked and presented after `.appDidUnlock`
 
 ### Permission Flow
 
 - Not requested on launch
 - Requested contextually when user enables reminders or notification-dependent features
-- Settings screen shows current permission status
+- `NotificationsSettingsView` owns every schedule toggle; `ProfileView` shows an "N active" badge
 
 ---
 
@@ -1027,9 +1233,10 @@ The backup/restore pipeline lives in `CashLens/Backup/` and is intentionally spl
 ```
 CashLens/Backup/
 ├── BackupBundle.swift        # Codable schema (v2)
-├── BackupExporter.swift      # Snapshot store + write JSON / CSV
-├── BackupImporter.swift      # Detect format, parse, apply with mode
+├── BackupExporter.swift      # Snapshot store + write JSON / CSV / .cashlens-archive
+├── BackupImporter.swift      # Detect format, parse, apply with mode, restore receipts
 └── GenericCSVAdapter.swift   # Mint / YNAB / bank-statement CSV ingest
+CashLens/Utilities/Zip/       # Pure-Swift STORE-only zip used by the archive format
 ```
 
 ### 14.1 Canonical Backup Bundle (`BackupBundle`)
@@ -1078,12 +1285,13 @@ A single `BackupBundle` JSON file is sufficient to fully restore an install — 
 
 ### 14.2 Export Formats (`BackupExporter`)
 
-Two formats are exposed in `ExportDataView`:
+Three formats are exposed in `ExportDataView` (`BackupExporter.Format`):
 
 | Format | Extension | Contents | Use for |
 |---|---|---|---|
 | **Complete Backup** | `.cashlens.json` | Entire `BackupBundle` (all entities + preferences) | Full restore on a new device |
-| **Spreadsheet** | `.csv` | Flat, RFC 4180 CSV of expenses only | Analysis in Numbers / Excel / Sheets |
+| **Spreadsheet** | `.csv` | Flat, RFC 4180 CSV of expenses only (includes `Is Refund`, `Tags`, `Payment Method` columns) | Analysis in Numbers / Excel / Sheets |
+| **Full Archive** | `.cashlens-archive` | STORE-only zip: `data.json` (byte-identical to the Complete Backup) + `receipts/<filename>.jpg` for every referenced receipt | Moving receipts to a new device; the only way receipt photos leave the phone |
 
 Implementation details:
 
@@ -1098,7 +1306,7 @@ Implementation details:
 
 #### Step 1 — Pick
 
-`fileImporter` accepts `.json`, `.commaSeparatedText`, and a custom `UTType` for `.cashlens.json`. The selected URL is forwarded to `BackupImporter.preview(url:fallbackCurrency:)` on a `Task.detached` so the UI never stalls.
+`fileImporter` accepts `.json`, `.commaSeparatedText`, a custom `UTType` for `.cashlens.json`, `UTType(filenameExtension: "cashlens-archive")` and `.zip` (share extensions sometimes re-stamp the archive). The selected URL is forwarded to `BackupImporter.preview(url:fallbackCurrency:)` on a `Task.detached` so the UI never stalls. The archive type is **not** registered system-wide (no `UTExportedTypeDeclarations`), so tapping a `.cashlens-archive` in Files does not open CashLens — the user imports it from inside the app.
 
 #### Step 2 — Detect & Parse
 
@@ -1109,6 +1317,7 @@ Implementation details:
 | `.cashlensJSONv2` | JSON with `schema.version >= 2.0` | No |
 | `.cashlensJSONv1` | JSON with `exportVersion: "1.0"` (legacy) | No |
 | `.cashlensCSVv1` | Text starting with `=== EXPENSES ===` | No |
+| `.cashlensArchive` | File name ends in `.cashlens-archive` / `.cashlens-archive.zip`; opened with `ZipReader`, `data.json` parsed for the preview | No |
 | `.foreignCSV(vendor:)` | Any other CSV that `GenericCSVAdapter` can map | **Yes** |
 | `.unknown` | Otherwise → `ImportError.unrecognizedFormat` | — |
 
@@ -1143,6 +1352,7 @@ Before any change is committed, the user sees:
 
 `BackupImporter.apply(_:mode:context:completion:)` runs entirely on a private NSManagedObjectContext (`.privateQueueConcurrencyType`) with `mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy`. Order is fixed:
 
+0. (`.cashlensArchive` only) Restore every `receipts/*` entry to `Documents/Receipts/` (path-traversal sanitised) **before** Core Data is touched; counts land in `ImportSummary.receiptsRestored` / `receiptsFailed`.
 1. (`.replace` only) Wipe `ExpenseEntity` / `SubscriptionEntity` / `CustomCategoryEntity` / `BudgetEntity`.
 2. Custom categories first (so expenses can reference them).
 3. Expenses with dual dedup (by ID, then by content hash). Invalid rows fail `isValidExpense` and are skipped.
@@ -1158,14 +1368,15 @@ Result is an `ImportSummary` with imported / skipped / failed counts per entity 
 |---|---|---|
 | Export Complete Backup (`.cashlens.json`) | ✅ | ✅ |
 | Export Spreadsheet (`.csv`) | ✅ | ✅ |
-| Import CashLens backup (any version) | ✅ | ✅ |
+| Export Full Archive (`.cashlens-archive`) | ✅ | ✅ |
+| Import CashLens backup / archive (any version) | ✅ | ✅ |
 | **Import foreign CSV** (Mint, YNAB, bank statement) | 🔒 → `PaywallView` | ✅ |
 
 Gating is enforced in `ImportDataView.startParse(url:)`: if `preview.format.requiresPro && !proManager.isPro`, the paywall is presented instead of the preview sheet.
 
 ### 14.5 Backup Health
 
-`ProfileView` shows a live backup health card backed by `UserDefaults` keys (`lastBackupDate`, `lastBackupFormat`, `totalBackupCount`). It listens to `UserDefaults.didChangeNotification` so the card updates **instantly** after a successful export without needing the user to navigate away and back.
+`ProfileView` shows backup health (warning banner when not `.good`, plus Last Backup / Total Backups rows) backed by `UserDefaults` keys (`lastBackupDate`, `lastBackupFormat`, `totalBackupCount`). It listens to the targeted `.backupMetadataDidChange` notification (posted by `ExportDataView.recordBackup` and on clear-all) — not the global `UserDefaults.didChangeNotification`, which used to fire on every unrelated preference write (Phase G).
 
 ### 14.6 Backward Compatibility Guarantee
 
@@ -1198,42 +1409,54 @@ When you add a new piece of state that must survive a reinstall:
 ## 15. Navigation Flow
 
 ```
-App Launch
-  └─ SplashScreenView (z-index 2, auto-dismiss ~2s)
-  └─ OnboardingView (z-index 1, first launch only)
-      └─ CurrencyPickerView (sheet, after onboarding)
-  └─ MainTabView
-      ├─ Tab 1: HomeView
-      │   ├─ → ProfileView (sheet)
-      │   │   ├─ → CurrencyPickerView (sheet)
-      │   │   ├─ → AboutView (sheet)
-      │   │   ├─ → ExportDataView (sheet)
-      │   │   ├─ → ImportDataView (sheet)
-      │   │   └─ → DonationView (sheet)
-      │   ├─ → AllExpensesView (sheet)
-      │   │   ├─ → AddExpenseView (sheet, edit mode)
-      │   │   ├─ → QuickSearchView (sheet, from toolbar magnifying glass)
-      │   │   │   └─ → AddExpenseView (sheet, edit mode)
-      │   │   └─ → ExpenseCalendarView (sheet, from toolbar calendar icon)
-      │   │       └─ → AddExpenseView (sheet, edit mode)
-      │   ├─ → AddExpenseView (sheet, add mode)
-      │   │   └─ → ManageCategoriesView (sheet)
-      │   ├─ → SummaryCustomizationView (sheet)
-      │   ├─ → ManageCategoriesView (sheet)
-      │   │   └─ → CustomCategoryForm (sheet)
-      │   └─ → QuickSearchView (sheet, from header magnifying glass)
-      │       └─ → AddExpenseView (sheet, edit mode)
+App Launch (CashLensApp)
+  ├─ StoreRecoveryView                     # only if PersistenceController.storeLoadFailed
+  ├─ AppLockView (zIndex 10)               # overlay whenever AppLockManager.isCoverVisible
+  ├─ OnboardingView (zIndex 1, first launch only)
+  │   └─ CurrencyPickerView (sheet, isInitialSetup, once)
+  └─ MainTabView  (+ FloatingAddButton on Today / Activity / Insights → AddExpenseView)
+      ├─ Tab: Today — TodayView
+      │   ├─ → AddExpenseView (edit, from recent rows)
+      │   ├─ → BudgetListView (sheet, budgets section)
+      │   ├─ → MonthlyRecapSheet (sheet, recap card)
+      │   ├─ → TodayCustomizeView (sheet)
+      │   ├─ "See all activity" → Activity tab
+      │   └─ header arrows → Insights tab (.insightsRequestTimeFrame)
       │
-      ├─ Tab 2: SubscriptionsView
-      │   └─ → AddSubscriptionView (sheet, add/edit)
-      │       └─ → ManageCategoriesView (sheet)
+      ├─ Tab: Activity — AllExpensesView(isRootTab: true)
+      │   ├─ → QuickSearchView (sheet, search field)      └─ → AddExpenseView (edit)
+      │   ├─ ExpenseCalendarView (embedded, List/Calendar toggle)  └─ → AddExpenseView (edit)
+      │   ├─ → AddExpenseView (edit, row / context menu)
+      │   ├─ → date-range sheet, bulk Category / Tag (Pro) sheets
+      │   └─ Tags filter chip → PaywallView (free users)
       │
-      └─ Tab 3: StatisticsView
-          └─ → AddExpenseView (sheet, from empty state)
+      ├─ Tab: Insights — StatisticsView
+      │   ├─ → PaywallView (Pro Insights / Forecast / Payment Methods teasers, PDF lock badge)
+      │   ├─ → ShareSheet (PDF report, Pro)
+      │   ├─ → MonthlyRecapSheet (Monthly Recap row)
+      │   ├─ → InsightExplanationSheet (every InsightInfoButton)
+      │   └─ → AddExpenseView (empty state)
+      │
+      └─ Tab: You — ProfileView (all destinations are sheets)
+          ├─ → PaywallView                       ├─ → CurrencyPickerView
+          ├─ → SiriShortcutsTipsView             ├─ → AppearanceStudioView
+          ├─ → AppIconPickerView                 ├─ → BudgetListView → BudgetSetupView
+          ├─ → ManageCategoriesView → CustomCategoryForm
+          ├─ → SubscriptionsView → AddSubscriptionView
+          ├─ → NotificationsSettingsView         ├─ → PrivacyDashboardView
+          ├─ → ExportDataView                    ├─ → ImportDataView (→ ImportPreviewSheet → ImportSummarySheet)
+          ├─ → DonationView                      └─ → AboutView
 
-Deep Links (from notifications):
-  └─ AllExpensesView with filter (sheet from root)
-  └─ ExportDataView (sheet from root)
+Root-level sheets (MainTabView): AddExpenseView (FAB / widget), CurrencyPickerView,
+  PaywallView(context: .insights) (auto-paywall), DonorThanksView, WinBackView, native requestReview
+
+AddExpenseView children: DocumentScannerView (fullScreenCover), PhotosPicker, ReceiptViewerView,
+  ManageCategoriesView, PaywallView(context: .receipts / .tags)
+
+Deep Links (notifications + cashlens://, via DeepLinkRouter, parked while locked):
+  ├─ .allExpenses(filter) → AllExpensesView (sheet from root)
+  ├─ .export → ExportDataView (sheet from root)
+  └─ .addExpense (cashlens://add-expense, Quick Log widget "+") → AddExpenseView (sheet from root)
 ```
 
 ---
@@ -1261,8 +1484,13 @@ Deep Links (from notifications):
 - Draft auto-save for unfinished expense forms
 - `scenePhase` monitoring for data refresh
 
+### Out-of-process boundaries
+- **Widget extension** never opens Core Data; it reads `WidgetSnapshot` JSON and writes `PendingExpenseRecord` files in the App Group
+- **App Intents** are declared in the app target so they run in the app process (headless, no scene) and write through `QuickLogService` on a background context
+- The Core Data store lives in the app container, **not** the App Group — moving it was judged too risky for live installs
+
 ### Naming Conventions
-- Views: `*View.swift` (e.g., `HomeView.swift`)
+- Views: `*View.swift` (e.g., `TodayView.swift`)
 - ViewModels: `*ViewModel.swift` or `*ViewModel+*.swift` for extensions
 - Models: Named after domain concept (`Expense.swift`, `Subscription.swift`)
 - Components: Named after what they render (`SummaryCard.swift`, `ExpenseCard.swift`)
@@ -1272,6 +1500,12 @@ Deep Links (from notifications):
 - `.appearanceDidChange` — Posted when appearance mode changes
 - `.dataDidClear` — Posted after `clearAllData()`
 - `.subscriptionCurrencyUpdated` — Posted after bulk currency sync on subscriptions
+- `.currencyDidChange` — Posted when the user picks a new currency; flushes formatted-string caches
+- `.backupMetadataDidChange` — Posted by export / clear-all; refreshes Profile's backup rows
+- `.expensesChangedExternally` — Posted after a headless write (Siri intent, widget queue drain)
+- `.appDidUnlock` — Posted by `AppLockManager` after a successful unlock
+- `.insightsRequestTimeFrame` — Today → Insights tab handoff with a preselected `TimeFrame`
+- `.themeDidChange` (`ThemeStore`), `.saveErrorOccurred` (`SaveErrorReporter`), `.saveConfirmationOccurred` (`SaveConfirmationToast`), `.backupImportDidComplete` (`BackupImporter`)
 
 ---
 
@@ -1284,33 +1518,50 @@ Deep Links (from notifications):
 | SwiftUI | All UI |
 | CoreData | Persistence |
 | Combine | Reactive filtering/state |
-| StoreKit | Tip jar IAP |
-| UserNotifications | Push notifications |
-| UIKit | Haptics, share sheet, app delegate |
+| StoreKit 2 | Tip jar consumables, Pro subscriptions + lifetime, `PurchaseIntent`, `requestReview` |
+| UserNotifications | Local notifications (digests, reminders, alerts) |
+| WidgetKit | 7 Home / Lock Screen widgets (`CashLensWidgets` target) |
+| AppIntents | Siri / Shortcuts intents, App Shortcuts, widget configuration + interactive widget buttons |
+| VisionKit | `VNDocumentCameraViewController` receipt scanner |
+| Vision | `VNRecognizeTextRequest` on-device receipt OCR |
+| PhotosUI | `PhotosPicker` for receipt library attach |
+| LocalAuthentication | App Lock (`LAContext`) |
+| Charts | Year-over-year, forecast, weekday bars |
+| UIKit | Haptics, share sheet, app delegate, PDF rendering (`UIGraphicsPDFRenderer`), alternate icons |
+| os | `Logger` for the redacted Quick Log diagnostic trail |
 
-No SPM packages, no CocoaPods, no Carthage.
+No SPM packages, no CocoaPods, no Carthage. No analytics or crash-reporting SDK. No network calls from the app (the only network activity is StoreKit's own).
 
 ---
 
 ## 18. Build & Run
 
-1. Open `CashLens.xcodeproj` in Xcode 16+
+1. Open `CashLens.xcodeproj` in Xcode 26 (the project's `LastSwiftUpdateCheck` is 2600; the iOS 26 tab path needs the iOS 26 SDK). The 2.2 plan targets Xcode 27 / iOS 27 SDK.
 2. Select a simulator or device running iOS 18.0+
 3. Build and run (⌘R)
-4. On first launch: splash → onboarding → currency picker → home
+4. On first launch: onboarding → currency picker → Today tab (there is no splash screen)
 
 **Team ID:** `6C72999Z38`  
-**Supported devices:** iPhone and iPad (`TARGETED_DEVICE_FAMILY = 1,2`)
+**Targets:** `CashLens` (app), `CashLensWidgetsExtension`, `CashLensTests`, `CashLensUITests`  
+**Supported devices:** iPhone and iPad (`TARGETED_DEVICE_FAMILY = 1,2`); iPhone portrait + landscape, iPad all orientations; `UIRequiresFullScreen` not set  
+**StoreKit testing:** `CashLens/Donations.storekit` (also referenced by `RuntimeSmoke.xctestplan`)  
+**Build constraint:** the code can only be compiled, run and screenshotted on a Mac with Xcode. Cloud/Linux agents can edit and review but cannot build.
+
+### Tests
+- `CashLensTests/CashLensTests.swift` — Swift Testing stub only
+- `CashLensUITests/` — Xcode template launch tests + `RuntimeSmokeUITest.swift` (long manual walkthrough with screenshot attachments; its header marks it throwaway / not for release gating), run via `RuntimeSmoke.xctestplan`
+- No CI is configured on any branch; no snapshot or per-device test suite exists
 
 ### Debug Tools
-- `DiagnosticsView` available in `#if DEBUG` builds from ProfileView
-- Data health checks, currency consistency, feedback state reset
+- `DiagnosticsView` (`#if DEBUG`) still exists in `Views/` but is **not presented from any view** on this branch — the ProfileView entry point was removed in the v2 IA rework. Attach it manually if needed.
+- `QuickLogService.diagTrail` writes `Documents/quicklog-diagnostics.log` in Debug only (Release logs are redacted and the file is removed)
+- `Scripts/generate_stress_test_export.swift` → `stress-test-exports/CashLens_StressTest_5000.json` for import/perf testing; `Marketing/ScreenshotSampleData/` for App Store screenshot data
 
 ---
 
-## 19. Widgets (Pro)
+## 19. Widgets
 
-CashLens ships **six widgets** across two surfaces — Home Screen and Lock Screen — built on a single shared data contract that keeps the widget extension narrow, fast, and crash-proof.
+CashLens ships **seven widgets** across two surfaces — Home Screen and Lock Screen — built on a single shared data contract that keeps the widget extension narrow, fast, and crash-proof. Three are free (Spending Snapshot, Quick Log with one template, Spending lock widget); the rest are Pro. No widget supports `systemExtraLarge` (iPad) yet — that is on the 2.2 plan.
 
 ### 19.1 Architecture
 
@@ -1350,8 +1601,9 @@ The widget extension cannot reach the main app's Core Data store directly, so th
 | File | Description |
 |------|-------------|
 | `Shared/SharedAppGroup.swift` | App Group identifier `group.com.rushi.CashLens.shared` + `snapshotFileURL` helper. Single source of truth — must match both `.entitlements` files. |
-| `Shared/WidgetSnapshot.swift` | `Codable, Hashable, Sendable` data contract. Versioned via `schemaVersion: Int` (currently 1). Carries `generatedAt`, `currencyCode`, `isPro`, `activeThemeId`, `userName`, plus pre-aggregated `spending.byTimeframe`, `budgets[]`, `upcomingSubscriptions[]`, `streak`. All collections capped (≤ 6 categories per timeframe, ≤ 8 budgets, ≤ 6 upcoming subs) so the snapshot file stays ≤ 5 KB even for power users. Includes `.placeholder` static for fallback. |
+| `Shared/WidgetSnapshot.swift` | `Codable, Hashable, Sendable` data contract. Versioned via `schemaVersion: Int` (currently 1). Carries `generatedAt`, `currencyCode`, `isPro`, `activeThemeId`, `userName`, plus pre-aggregated `spending.byTimeframe`, `budgets[]`, `upcomingSubscriptions[]`, `streak`, and optional `quickLogTemplates[]` (`QuickLogTemplate` — name, amount, category raw value, custom category id) for the Quick Log widget. All collections capped so the snapshot file stays small even for power users. Includes `.placeholder` static for fallback. |
 | `Shared/WidgetSnapshotIO.swift` | Atomic read/write helpers. Encoder uses ISO-8601 dates + sorted keys (stable diffs). Read returns `WidgetSnapshot.placeholder` on every failure mode (no file, bad JSON, no App Group container, future schema). Write uses `.atomic` flag so a partially-written file is never observable by the widget process. |
+| `Shared/PendingExpenseQueue.swift` | Cross-process handoff for the interactive Quick Log widget: one JSON file per `PendingExpenseRecord` under `<AppGroup>/PendingExpenses-v1/<uuid>.json`. The widget only ever creates files (atomic writes); the app drains by inserting into Core Data and deleting each file only after the insert commits. Replays dedup on the record's stable `id`. Ordering comes from `createdAt` inside the record. |
 
 ### 19.3 Main-app coordinator
 
@@ -1369,6 +1621,7 @@ Synchronized folder, member of `CashLensWidgetsExtension` target. Bundle entry p
 | File | Widget kind | Sizes | Tier | Configurable |
 |------|-------------|-------|------|---------------|
 | `SpendingWidget.swift` | `SpendingSnapshot` | Small / Medium / Large | **Free** | ✅ App Intent (timeframe: today/week/month/year) |
+| `QuickLogWidget.swift` | `QuickLog` | Small / Medium | **Free with 1 template**; additional template buttons render locked until `isPro` | — (`Button(intent: QuickLogTemplateIntent)` per template; "+" button is a `Link` to `cashlens://add-expense`) |
 | `BudgetWidget.swift` | `BudgetProgress` | Small / Medium | Pro | — (Small auto-picks most-relevant budget) |
 | `SubscriptionsWidget.swift` | `SubscriptionsDue` | Medium | Pro | — |
 | `StreakWidget.swift` | `NoSpendStreak` | Small / Medium | Pro | — |
@@ -1384,11 +1637,16 @@ Supporting infrastructure:
 | `CashLensWidgets/WidgetProUpsellView.swift` | Shared "Unlock with CashLens Pro" tile shown on Pro-gated home widgets when `snapshot.isPro == false`. Quiet design — lock medallion + widget name + one-line CTA. |
 | `CashLensWidgets/SpendingWidget.swift` (also defines) | `SpendingBackground` — the subtle theme-tinted gradient used as `containerBackground` for every home widget. Light/dark adaptive via `\.colorScheme`. |
 
+### 19.4a Quick Log widget (interactive)
+
+`Button(intent:)` runs `QuickLogTemplateIntent` **in the widget extension process**, which cannot open the app-container Core Data store. The intent therefore appends a `PendingExpenseRecord` to `PendingExpenseQueue` and reloads the widget timeline; `QuickLogTimelineProvider` adds queued-today records to the snapshot total so the displayed number bumps optimistically. On the app's next launch/foreground, `CashLensApp.drainWidgetQueueInBackground()` → `QuickLogService.drainWidgetQueue()` inserts the records, republishes the snapshot, and shows a "Added N expenses from your widget" toast. `QuickLogTemplateIntent` is `isDiscoverable = false` — it is plumbing, not a Shortcuts action (the app target vends `LogExpenseIntent` for that).
+
 ### 19.5 Pro gating
 
 The snapshot includes `isPro: Bool` (sampled at write time, in the main app, against `ProManager.shared.isPro`).
 
 - **Spending Snapshot** — intentionally free for everyone. It's the hero surface that drives Pro upgrades by demonstrating the visual quality bar.
+- **Quick Log** — free with the first template; templates at index ≥ 1 render locked for free users.
 - **Home Screen Pro widgets** (Budget / Subscriptions / Streak) — `XEntryView` checks `entry.snapshot.isPro` first. If false → `WidgetProUpsellView`. If true → render real data.
 - **Lock Screen Streak widget** — too cramped for a full upsell tile, so a tiny `lock.fill` glyph + "Pro" label is shown instead. Tap drops into the app for the upgrade flow.
 
@@ -1430,3 +1688,53 @@ Widgets resolve `snapshot.activeThemeId` against `WidgetTheme.resolve(id:)` on e
 ### 19.10 Schema migration
 
 If a backwards-incompatible change is needed (a renamed field, a removed enum case), bump `WidgetSnapshot.schemaVersion` and update `WidgetSnapshotIO.read()`'s tolerant version check. Because reads fall back to `placeholder` on schema mismatch, the user sees a momentary "no data" widget rather than a crash, and the next snapshot write (≤ 1 sec after launching the new app build) restores live data.
+
+---
+
+## 20. Siri / App Intents & Quick Log
+
+All App Intents live in the **app target** (`CashLens/Intents/`), not the widget extension, because the Core Data store is in the app container. App Intents in the app target run the app process in the background with no scene, so nothing may assume `ExpenseViewModel` or `WidgetSnapshotCoordinator` exists — every write goes through `QuickLogService`.
+
+| Piece | File | Notes |
+|-------|------|-------|
+| `CashLensShortcuts` | `Intents/CashLensShortcuts.swift` | `AppShortcutsProvider` with zero-setup phrases. Every phrase contains `\(.applicationName)` (hard requirement). "Log an expense in CashLens" / "Add an expense to CashLens" / … → `LogExpenseIntent`; "How much did I spend today in CashLens" / "Check my spending in CashLens" / … → `GetSpendingIntent`. Tile color `.purple`. |
+| `LogExpenseIntent` | `Intents/LogExpenseIntent.swift` | Free. `openAppWhenRun = false`. Parameters: `amount: IntentCurrencyAmount` (a bare `Double` mis-parsed "250 rupees" as 100 in device testing), **required** `title` ("What was it for?" — also feeds category inference), optional `category` via `ExpenseCategoryOptionsProvider`. The spoken currency code is ignored for storage; the app's selected currency is used. Returns a dialog + snippet view. |
+| `GetSpendingIntent` | `Intents/GetSpendingIntent.swift` | Free. Answers "`<today> today · <month> this month`" from `QuickLogService.spendingSummary()` (direct Core Data fetch). Throws `storeUnavailable` if the store failed to load. |
+| `QuickLogService` | `Utilities/QuickLogService.swift` | Headless write path shared by the intents and the widget queue drain. Fresh background context off `PersistenceController.shared`; posts `.expensesChangedExternally`; rebuilds the widget snapshot from the store. `diagTrail` logs with `privacy: .private` in Release and deletes any Debug-era plain-text log file. |
+| `SiriShortcutsTipsView` | `Views/SiriShortcutsTipsView.swift` | You → Siri & Shortcuts: lists the phrases so users discover hands-free logging. |
+
+Quick Log widget flow is described in §19.4a.
+
+---
+
+## 21. App Lock
+
+Free feature by design ("your money stays your business" — nothing in `AppLockManager` checks `ProManager`). `NSFaceIDUsageDescription` is declared in `CashLens-Info.plist`.
+
+- **`AppLockManager`** (`Utilities/AppLockManager.swift`) — `@MainActor` singleton. `isEnabled` (persisted; enabling requires one successful `LAContext` evaluation first so a user with neither biometrics nor passcode can never lock themselves out), `gracePeriod` (`immediately` / `oneMinute` / `fiveMinutes`, persisted as seconds), `isLocked` (re-auth required), `isCoverVisible` (overlay on screen — true whenever locked **and** while the scene is merely inactive so the app-switcher snapshot never shows amounts), `isAuthenticating`.
+- **Relock-loop guards** — only `.background` (never `.inactive`) records a backgrounding timestamp; `isAuthenticating` suppresses phase handling while the system prompt owns the screen; the auto-prompt fires at most once per lock (`hasAutoPromptedSinceLock`) and the overlay button re-triggers after a cancel.
+- **Cold launch** — locks unless the persisted `appLockLastBackgroundedAt` proves the app is still inside the grace window (covers iOS quietly terminating the app seconds earlier).
+- **Integration** — `CashLensApp` mounts `AppLockView` at `zIndex(10)` above onboarding and even `StoreRecoveryView`, and forwards `scenePhase` to `handleScenePhase(_:)`. On unlock, `.appDidUnlock` releases parked deep links (`DeepLinkRouter.flushPendingRoute()`) and re-runs the win-back evaluation. `MainTabView` skips the auto-paywall and the rating prompt while locked; `ProManager.evaluateWinBackPrompt()` bails while locked.
+- **Settings** — You → Privacy & Security: App Lock toggle + "Require After" picker; status also shown on `PrivacyDashboardView`.
+
+---
+
+## 22. Release History
+
+Reconstructed from `git log` on `redesign/v2` and the App Store listing (checked 2026-09-19). Dates are commit dates.
+
+| Date | Version / build | What |
+|------|-----------------|------|
+| 2025-03-10 | — | First commit (`76528de`) |
+| 2025-03-24 | — | First App Store release (date from the App Store listing; version not recorded in the repo) |
+| 2025 Mar–May | 1.x | Currency auto-select, donations, subscriptions with manual Mark paid, import/export, statistics + community links |
+| 2026-01 | 1.0.5 (5) | App Store release from `main` (`fbf8865`); transaction automation added then removed (`9e7485a` / `28b15ef`). `main` has not moved since 2026-01-21. |
+| 2026-05-16 | — | `cb26f47` Pro features wave + Phase G perf pass (branch `pro-features`, ancestor of `redesign/v2`) |
+| 2026-05 | — | `777ee11` … `9ed0450` v2 redesign: 4-tab IA, Today screen, card system, Monthly Recap, You-tab grouping |
+| 2026-07-15/16 | 2.0.0 (6) | `74f476a` pre-submission wave (Siri intents, Quick Log widget, App Lock, receipt OCR, Appearance Studio, custom budget ranges, privacy manifests, win-back + donor thanks, audit fixes); `60382e3` release blockers; marketing site commits |
+| 2026-08-29 | 2.0.1 (7) → **store 2.1** | `4029ae0` native one-tap rating prompt + Mark-paid hint. Released to the App Store as **2.1** on 2026-08-29 (release notes match this commit; the version string was edited in App Store Connect). |
+| 2026-09-02 | unshipped | `4f702fa` PurchaseIntent listener for promoted IAPs; `cfeeb2d` promo images + Cursor rule |
+| planned | **2.2 (8)** | Single build: version bump, adaptive layout (iPad / landscape / SE / iPhone Duo), promoted IAPs, review prompt, paywall truth-pass, unified support email, these docs. See `PRO_FEATURES.md` → Version Plan. |
+| planned | 2.2.1 | iOS 27.1-only iPhone Duo APIs behind `#available` |
+
+Whether 2.0.0 (6) was ever published, and which exact commit the store 2.1 binary was built from, cannot be verified from the repository — only from App Store Connect.
