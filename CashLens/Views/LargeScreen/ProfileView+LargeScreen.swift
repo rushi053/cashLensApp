@@ -75,7 +75,7 @@ extension ProfileView {
 
             versionFooter
         }
-        .padding(.horizontal, LargeScreenLayout.horizontalPadding)
+        .padding(.horizontal, LargeScreenLayout.horizontalPadding(for: largeScreenMeasuredWidth))
         .padding(.top, Theme.Spacing.lg)
         .padding(.bottom, Theme.Spacing.xl)
         .frame(maxWidth: Self.contentMaxWidth)

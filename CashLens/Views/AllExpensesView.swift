@@ -662,21 +662,9 @@ struct AllExpensesView: View {
             // overlapped the detail editor's Save button), so the
             // ledger header carries the add action instead.
             if showsEditorInDetailColumn, let onRequestAddExpense {
-                Button {
-                    HapticManager.shared.lightTap()
-                    onRequestAddExpense()
-                } label: {
-                    Label("Add expense", systemImage: "plus")
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 32, height: 32)
-                        .background(Circle().fill(Color.appPrimary))
-                }
-                .buttonStyle(.plain)
-                .hoverEffect(.lift)
-                .accessibilityLabel("Add expense")
-                .padding(.leading, Theme.Spacing.sm)
+                // Shared placed-action component (same disc as Insights).
+                LargeScreenAddButton(style: .disc, discDiameter: 32, action: onRequestAddExpense)
+                    .padding(.leading, Theme.Spacing.sm)
             }
         }
         .padding(.horizontal, Theme.Spacing.lg)

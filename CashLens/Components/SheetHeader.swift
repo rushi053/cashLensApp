@@ -37,18 +37,39 @@ struct SheetHeader<Trailing: View>: View {
     var onClose: () -> Void
     @ViewBuilder var trailing: () -> Trailing
 
-    /// Laid-out width of the trailing control. The title stack used to
-    /// reserve a fixed 44pt per side, which assumes both side controls
-    /// are the 36pt disc/spacer. A "Continue" / "Done" pill is ~90pt, so
-    /// on a narrow content width (iPhone Duo outer display with the
-    /// vertical system bar ≈ 340pt; also an SE with a long title) the
-    /// centred title ran underneath it. The title now yields to the
-    /// wider of the two sides. Starts at 36 so the first frame matches
-    /// the old geometry exactly for the common 36pt trailing slot.
+    /// Collision handling between the centred title stack and a wide
+    /// trailing control. The stack used to reserve a fixed 44pt per side,
+    /// which assumes both side controls are the 36pt disc/spacer. A
+    /// "Continue" / "Done" pill is ~90pt, so the subtitle of the first-run
+    /// currency picker already ran under the pill on iPhones, and on the
+    /// iPhone Duo outer display (content ≈ 340pt beside the vertical
+    /// system bar) the title itself did.
+    ///
+    /// Rule: measure the trailing control and the title stack's natural
+    /// width. If the stack fits centred with clearance on both sides,
+    /// keep the old symmetric 44pt geometry (rendering identical to
+    /// before). Only when it would collide does the title yield: it
+    /// keeps 44pt on the leading side and moves clear of the trailing
+    /// control, centring itself in what is left. Headers with the 36pt
+    /// trailing slot never change.
     @State private var trailingWidth: CGFloat = 36
+    @State private var naturalTitleWidth: CGFloat = 0
+    @State private var headerContentWidth: CGFloat = 0
 
-    private var titleSidePadding: CGFloat {
+    private var trailingClearance: CGFloat {
         max(44, trailingWidth + Theme.Spacing.sm)
+    }
+
+    /// True when the centred stack would run under the trailing control.
+    private var titleCollides: Bool {
+        guard trailingClearance > 44, headerContentWidth > 0, naturalTitleWidth > 0 else { return false }
+        return naturalTitleWidth > headerContentWidth - 2 * trailingClearance
+    }
+
+    private var titleLeadingPadding: CGFloat { 44 }
+
+    private var titleTrailingPadding: CGFloat {
+        titleCollides ? trailingClearance : 44
     }
 
     init(
@@ -71,32 +92,56 @@ struct SheetHeader<Trailing: View>: View {
         self.trailing = trailing
     }
 
-    var body: some View {
-        ZStack {
-            VStack(spacing: 2) {
-                if let eyebrow {
-                    Text(eyebrow.uppercased())
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .tracking(1.4)
-                }
-                Text(title)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.primary)
+    /// Eyebrow / title / subtitle stack, shared by the visible header and
+    /// the invisible natural-width probe.
+    private var titleStack: some View {
+        VStack(spacing: 2) {
+            if let eyebrow {
+                Text(eyebrow.uppercased())
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .tracking(1.4)
+            }
+            Text(title)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
             }
-            // Keep the title clear of the side controls even on
-            // narrow devices / large Dynamic Type. Symmetric so the
-            // title stays optically centred; sized by the wider side.
-            .padding(.horizontal, titleSidePadding)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            titleStack
+                // Keep the title clear of the side controls even on
+                // narrow devices / large Dynamic Type. 44pt both sides
+                // unless the stack would collide with a wide trailing
+                // control (see `titleCollides`).
+                .padding(.leading, titleLeadingPadding)
+                .padding(.trailing, titleTrailingPadding)
+                // Natural (unconstrained) width of the same stack, laid
+                // out invisibly so the collision test has a real number.
+                // `fixedSize` keeps it from being squeezed; `hidden`
+                // keeps it out of accessibility and hit testing.
+                .background(
+                    titleStack
+                        .fixedSize()
+                        .hidden()
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.width
+                        } action: { newWidth in
+                            if newWidth != naturalTitleWidth {
+                                naturalTitleWidth = newWidth
+                            }
+                        }
+                )
 
             HStack {
                 if showsCloseButton {
@@ -113,6 +158,13 @@ struct SheetHeader<Trailing: View>: View {
                             trailingWidth = newWidth
                         }
                     }
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { newWidth in
+            if newWidth != headerContentWidth {
+                headerContentWidth = newWidth
             }
         }
         .padding(.horizontal, Theme.Spacing.xl)

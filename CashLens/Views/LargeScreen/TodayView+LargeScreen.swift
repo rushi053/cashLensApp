@@ -113,7 +113,7 @@ extension TodayView {
                 }
             }
         }
-        .padding(.horizontal, LargeScreenLayout.horizontalPadding)
+        .padding(.horizontal, LargeScreenLayout.horizontalPadding(for: largeScreenMeasuredWidth))
         .padding(.top, Theme.Spacing.lg)
         .padding(.bottom, Theme.Spacing.scrollBottomClearance)
         .frame(maxWidth: LargeScreenLayout.dashboardMaxWidth)

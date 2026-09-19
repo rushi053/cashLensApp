@@ -40,7 +40,20 @@ enum LargeScreenLayout {
     static let editorMaxWidth: CGFloat = 640
 
     static let columnSpacing: CGFloat = Theme.Spacing.xl
-    static let horizontalPadding: CGFloat = Theme.Spacing.xxxl
+
+    /// Dashboard side padding. Generous on a full-size iPad; tighter
+    /// below `compactPaddingBelow` so two columns on an iPad mini in
+    /// portrait (744pt) or the Duo inner display in landscape (~830pt
+    /// usable) stay ≥ ~340pt — the iPhone card width the sections were
+    /// tuned for — instead of dropping to ~328pt.
+    static let compactPaddingBelow: CGFloat = 900
+
+    static func horizontalPadding(for measuredWidth: CGFloat) -> CGFloat {
+        if measuredWidth > 0 && measuredWidth < compactPaddingBelow {
+            return Theme.Spacing.xl
+        }
+        return Theme.Spacing.xxxl
+    }
 }
 
 // MARK: - Two equal columns
@@ -146,21 +159,35 @@ struct LargeScreenAddButton: View {
 
 // MARK: - Presentation sizing
 
-/// Form-sized card presentation on regular width; untouched otherwise.
-/// `enabled` must come from the *presenter's* size class — a sheet's own
-/// environment reports compact width on iPad, so reading it from inside
-/// the presented view would never fire.
+/// One `PresentationSizing` type that is form-sized on regular width and
+/// the system default otherwise. A single type matters: an `if/else`
+/// between `content.presentationSizing(.form)` and bare `content` would
+/// give the sheet root two identities, and folding a Duo (or dragging a
+/// Split View divider) with Add Expense open would flip the branch and
+/// reset the editor's `@State` mid-edit.
+struct LargeScreenSheetSizing: PresentationSizing {
+    let usesForm: Bool
+
+    func proposedSize(
+        for root: PresentationSizingRoot,
+        context: PresentationSizingContext
+    ) -> ProposedViewSize {
+        if usesForm {
+            return FormPresentationSizing().proposedSize(for: root, context: context)
+        }
+        return AutomaticPresentationSizing().proposedSize(for: root, context: context)
+    }
+}
+
+/// Form-sized card presentation on regular width; system default
+/// otherwise. `enabled` must come from the *presenter's* size class — a
+/// sheet's own environment reports compact width on iPad, so reading it
+/// from inside the presented view would never fire.
 struct LargeScreenFormSheetModifier: ViewModifier {
     let enabled: Bool
 
     func body(content: Content) -> some View {
-        Group {
-            if enabled {
-                content.presentationSizing(.form)
-            } else {
-                content
-            }
-        }
+        content.presentationSizing(LargeScreenSheetSizing(usesForm: enabled))
     }
 }
 

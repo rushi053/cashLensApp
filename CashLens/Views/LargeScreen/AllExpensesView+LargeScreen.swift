@@ -51,11 +51,15 @@ extension AllExpensesView {
     /// layout, where the editor is a sheet. Rounded so the highlight
     /// reads as a selection pill inside the day card rather than a
     /// square band poking past the card's corners.
+    @ViewBuilder
     func largeScreenSelectionTint(for expense: Expense, cornerRadius: CGFloat = 10) -> some View {
-        let isSelected = showsEditorInDetailColumn && selectedExpense?.id == expense.id
-        return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(isSelected ? Color.appPrimary.opacity(0.08) : Color.clear)
-            .padding(.horizontal, Theme.Spacing.xs)
+        // Nothing at all on compact width, so iPhone rows gain no
+        // shape and no dependency on `selectedExpense`.
+        if showsEditorInDetailColumn {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(selectedExpense?.id == expense.id ? Color.appPrimary.opacity(0.08) : Color.clear)
+                .padding(.horizontal, Theme.Spacing.xs)
+        }
     }
 
     // MARK: Empty detail column
@@ -86,25 +90,8 @@ extension AllExpensesView {
             }
 
             if let onRequestAddExpense {
-                Button {
-                    HapticManager.shared.mediumTap()
-                    onRequestAddExpense()
-                } label: {
-                    HStack(spacing: Theme.Spacing.sm) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                        Text("Add expense")
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, Theme.Spacing.xl)
-                    .padding(.vertical, Theme.Spacing.md)
-                    .background(Capsule().fill(LinearGradient.appDuotone))
-                    .primaryGlow(strength: 0.22)
-                }
-                .buttonStyle(.plain)
-                .hoverEffect(.lift)
-                .accessibilityLabel("Add expense")
+                // Same placed action as the Today header.
+                LargeScreenAddButton(style: .pill, action: onRequestAddExpense)
             }
 
             Spacer(minLength: 0)

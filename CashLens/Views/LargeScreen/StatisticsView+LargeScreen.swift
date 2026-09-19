@@ -39,7 +39,7 @@ extension StatisticsView {
                 largeScreenStatistics
             }
         }
-        .padding(.horizontal, LargeScreenLayout.horizontalPadding)
+        .padding(.horizontal, LargeScreenLayout.horizontalPadding(for: measuredContentWidth))
         .padding(.bottom, Theme.Spacing.scrollBottomClearance)
         .frame(maxWidth: LargeScreenLayout.dashboardMaxWidth)
         .frame(maxWidth: .infinity)
@@ -106,25 +106,45 @@ extension StatisticsView {
                     .modifier(SectionEntrance(order: 2, animate: animateCards))
                     .sectionScrollTransition()
 
-                // Row 3: composition — two donuts side by side.
-                LargeScreenColumns(twoColumns: usesTwoColumns) {
-                    whereItGoesSection
-                        .modifier(SectionEntrance(order: 3, animate: animateCards))
-                        .sectionScrollTransition()
-                } trailing: {
-                    paymentMethodsSection
-                        .modifier(SectionEntrance(order: 4, animate: animateCards))
-                        .sectionScrollTransition()
-                }
+                if showsPaymentMethodsSection {
+                    // Row 3: composition — two donuts side by side.
+                    LargeScreenColumns(twoColumns: usesTwoColumns) {
+                        whereItGoesSection
+                            .modifier(SectionEntrance(order: 3, animate: animateCards))
+                            .sectionScrollTransition()
+                    } trailing: {
+                        paymentMethodsSection
+                            .modifier(SectionEntrance(order: 4, animate: animateCards))
+                            .sectionScrollTransition()
+                    }
 
-                // Row 4: pattern (past) beside forecast (future).
-                LargeScreenColumns(twoColumns: usesTwoColumns) {
-                    spendingPatternSection
-                        .modifier(SectionEntrance(order: 5, animate: animateCards))
-                        .sectionScrollTransition()
-                } trailing: {
+                    // Row 4: pattern (past) beside forecast (future).
+                    LargeScreenColumns(twoColumns: usesTwoColumns) {
+                        spendingPatternSection
+                            .modifier(SectionEntrance(order: 5, animate: animateCards))
+                            .sectionScrollTransition()
+                    } trailing: {
+                        forecastBlock
+                            .modifier(SectionEntrance(order: 6, animate: animateCards))
+                            .sectionScrollTransition()
+                    }
+                } else {
+                    // No payment-method data (free user, nothing tagged):
+                    // the section is empty, so pair the donut with the
+                    // heatmap instead of leaving it beside a blank half,
+                    // and give the forecast the full width.
+                    LargeScreenColumns(twoColumns: usesTwoColumns) {
+                        whereItGoesSection
+                            .modifier(SectionEntrance(order: 3, animate: animateCards))
+                            .sectionScrollTransition()
+                    } trailing: {
+                        spendingPatternSection
+                            .modifier(SectionEntrance(order: 4, animate: animateCards))
+                            .sectionScrollTransition()
+                    }
+
                     forecastBlock
-                        .modifier(SectionEntrance(order: 6, animate: animateCards))
+                        .modifier(SectionEntrance(order: 5, animate: animateCards))
                         .sectionScrollTransition()
                 }
             } else {

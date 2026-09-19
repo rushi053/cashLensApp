@@ -51,20 +51,14 @@ struct MainTabView: View {
 
     private var isRegularWidth: Bool { horizontalSizeClass == .regular }
 
-    /// Root safe-area insets, published by the tab container. Only read
-    /// to detect the iPhone Duo outer display's vertical system bar
-    /// (see `DuoLayoutSupport.hasVerticalSystemBar`), which moves the
-    /// bottom tab bar to the trailing edge and leaves the FAB's usual
-    /// 68pt bottom clearance hanging in mid-air.
-    @State private var rootSafeAreaInsets = EdgeInsets()
-
-    private var hasVerticalSystemBar: Bool {
-        DuoLayoutSupport.hasVerticalSystemBar(
-            safeAreaInsets: rootSafeAreaInsets,
-            horizontalSizeClass: horizontalSizeClass,
-            verticalSizeClass: verticalSizeClass
-        )
-    }
+    /// True when the iPhone Duo outer display has moved the system bars
+    /// to a vertical strip on the trailing edge (see
+    /// `DuoLayoutSupport.hasVerticalSystemBar`), which leaves the FAB's
+    /// usual 68pt bottom clearance hanging in mid-air. Derived inside the
+    /// geometry probe below and stored as a `Bool`, so keyboard
+    /// show/hide (which changes the bottom safe-area inset on every
+    /// frame of the animation) never re-evaluates this body.
+    @State private var hasVerticalSystemBar = false
 
     /// Native one-tap rating sheet. `ReviewPromptManager` decides *when*
     /// to ask; this action shows Apple's in-app star prompt directly —
@@ -433,11 +427,16 @@ struct MainTabView: View {
         }
         // Root safe-area probe for the Duo outer-display heuristic above.
         // Layout-neutral: reads the container's insets, changes nothing.
-        .onGeometryChange(for: EdgeInsets.self) { proxy in
-            proxy.safeAreaInsets
-        } action: { newInsets in
-            if newInsets != rootSafeAreaInsets {
-                rootSafeAreaInsets = newInsets
+        // Only the derived Bool is published, and only when it flips.
+        .onGeometryChange(for: Bool.self) { proxy in
+            DuoLayoutSupport.hasVerticalSystemBar(
+                safeAreaInsets: proxy.safeAreaInsets,
+                horizontalSizeClass: horizontalSizeClass,
+                verticalSizeClass: verticalSizeClass
+            )
+        } action: { detected in
+            if detected != hasVerticalSystemBar {
+                hasVerticalSystemBar = detected
             }
         }
         .sheet(isPresented: $showingAddExpense) {

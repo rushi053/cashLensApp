@@ -133,7 +133,7 @@ struct StatisticsView: View {
     /// is not enough for two columns: an 11" iPad at 50/50 (~597pt) or
     /// the Duo inner display (~626pt) are regular yet would give ~260pt
     /// columns — narrower than an iPhone SE. Two columns need ≥ 700pt.
-    @State private var measuredContentWidth: CGFloat = 0
+    @State var measuredContentWidth: CGFloat = 0
 
     /// Shared with the other regular-width dashboards (see
     /// `LargeScreenLayout.twoColumnMinimumWidth`, 700pt). Regular-width
@@ -1600,6 +1600,14 @@ struct StatisticsView: View {
     // We hide the section entirely if **no** expense in the current view
     // has a payment method *and* the user is free — there's literally
     // nothing to show, and an empty Pro card would feel like dead space.
+    /// Whether `paymentMethodsSection` renders anything (it is an
+    /// `EmptyView` with no tagged or untagged payment data). The
+    /// regular-width dashboard uses this to avoid pairing a card with a
+    /// missing partner.
+    var showsPaymentMethodsSection: Bool {
+        cachedPaymentMethodBreakdown.hasData || cachedPaymentMethodBreakdown.unspecifiedCount > 0
+    }
+
     var paymentMethodsSection: some View {
         let breakdown = cachedPaymentMethodBreakdown
         let hasAnyData = breakdown.hasData || breakdown.unspecifiedCount > 0

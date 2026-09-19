@@ -20,7 +20,7 @@ Scope: every screen a paying customer sees on an iPad or on the iPhone Duo inner
 | regular, ≥ 700pt | two-column dashboards (Today, Insights, You): iPad mini portrait, 11"/13" portrait and landscape, Duo inner landscape. |
 | regular, ≥ 1000pt | Activity gains the filter rail (three regions). iPad 13" portrait and every iPad landscape. |
 
-Accessibility Dynamic Type sizes collapse every two-column pair to one column.
+Accessibility Dynamic Type sizes collapse every two-column pair to one column. Dashboard side padding drops from 32pt to 20pt below 900pt measured width so iPad mini portrait and Duo inner landscape keep columns of ≥ ~340pt.
 
 ## Root shell
 
@@ -102,7 +102,7 @@ Regular, ≥ 1000pt (three regions):
 │ DATE RANGE   │   │                              │   │                         │
 │ Last 30 days │   │                              │   │                         │
 └──────────────┴───┴──────────────────────────────┴───┴─────────────────────────┘
-  240pt               340…480pt                        rest
+  240pt               300…480pt                        rest
 ```
 
 - More: the whole filter set is visible at once as a vertical list (categories, tags, sort, range) instead of a horizontal chip scroller; the ledger header keeps only the count and total. Rows hover-highlight; the selected row is tinted.
@@ -142,7 +142,7 @@ Regular (≥ 700pt):
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- More: hero and Pro cards share the first row; donut, payment methods, heatmap and forecast tile in even pairs; the trend chart gets the full width.
+- More: hero and Pro cards share the first row; donut, payment methods, heatmap and forecast tile in even pairs; the trend chart gets the full width. When the Payment Methods section has nothing to show (free user, nothing tagged) the donut pairs with the heatmap and the forecast takes the full width, so no card sits beside a blank half.
 - Primary action: "+" disc beside Export in the header (the FAB is gone on regular width).
 - The trend section is wrapped in `DuoArrangement` (its pager tab bar as primary, chart as secondary) — an `ArrangementView(.split)` candidate on iOS 27.1 so the range picker and the chart land on opposite halves in book/table pose.
 - Narrow regular (< 700pt): single column, existing order.
@@ -184,7 +184,7 @@ Regular (≥ 700pt):
 
 ## Currency picker
 
-- Header collision fix (shared, geometry-only): `SheetHeader` measures its trailing control and pads the centred title by that width instead of a fixed 44pt, so "Choose Your Currency" and the "Continue" pill never overlap at ~340pt content width. iPhone rendering is identical wherever the title already fit.
+- Header collision fix (shared, geometry-only): `SheetHeader` measures its trailing control and the title stack's natural width. When the centred stack would run under a wide trailing pill it keeps 44pt on the leading side and moves clear of the pill, centring in the remaining space; otherwise the old symmetric 44pt geometry is kept. Headers with the standard 36pt trailing slot render exactly as before. The only iPhone change is the first-run currency picker, whose subtitle already ran under the "Continue" pill on 393pt phones — it now sits clear of it.
 - Regular width: presented as a form-sized card (540pt) from the first-run flow and from You.
 
 ## Paywall
