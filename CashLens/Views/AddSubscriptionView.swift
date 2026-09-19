@@ -523,10 +523,12 @@ struct AddSubscriptionView: View {
     private var categoryPickerSheet: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                let columns = Array(
-                    repeating: GridItem(.flexible(), spacing: Theme.Spacing.sm + 2, alignment: .top),
-                    count: 4
-                )
+                // Adaptive columns: 74pt minimum keeps 4 columns on every
+                // iPhone (SE included, 343pt content width) and grows to
+                // 6 in an iPad form sheet, instead of stretching 4 tiles.
+                let columns = [
+                    GridItem(.adaptive(minimum: 74, maximum: 110), spacing: Theme.Spacing.sm + 2, alignment: .top)
+                ]
 
                 LazyVGrid(columns: columns, alignment: .center, spacing: Theme.Spacing.lg) {
                     ForEach(expenseViewModel.getAvailableDefaultCategories(), id: \.self) { category in

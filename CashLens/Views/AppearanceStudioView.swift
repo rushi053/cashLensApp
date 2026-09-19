@@ -298,10 +298,10 @@ struct AppearanceStudioView: View {
     // MARK: - Theme grids
 
     private func themeGroup(title: String, themes: [AppTheme]) -> some View {
+        // Adaptive: 84pt minimum keeps 3 swatches per row on every
+        // iPhone (64pt circle + label) and reflows to 4+ on iPad.
         let columns = [
-            GridItem(.flexible(), spacing: Theme.Spacing.lg),
-            GridItem(.flexible(), spacing: Theme.Spacing.lg),
-            GridItem(.flexible(), spacing: Theme.Spacing.lg)
+            GridItem(.adaptive(minimum: 84, maximum: 120), spacing: Theme.Spacing.lg)
         ]
 
         return VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
