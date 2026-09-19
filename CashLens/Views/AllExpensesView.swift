@@ -973,16 +973,15 @@ struct AllExpensesView: View {
             .toolbar {
                 if !isRootTab {
                     ToolbarItem(placement: .navigationBarLeading) {
+                        // Title + symbol as one `Label` so the system can
+                        // use the title in overflow / a Duo vertical bar.
                         Button(action: {
                             dismiss()
                         }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Back")
-                                    .fontWeight(.medium)
-                            }
-                            .foregroundColor(.appPrimary)
+                            Label("Back", systemImage: "chevron.left")
+                                .labelStyle(.titleAndIcon)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.appPrimary)
                         }
                     }
 

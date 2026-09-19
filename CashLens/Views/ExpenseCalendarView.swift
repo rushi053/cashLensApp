@@ -83,13 +83,13 @@ struct ExpenseCalendarView: View {
                                         HapticManager.shared.lightTap()
                                         withAnimation(Theme.Motion.snappy) { selectedDay = nil }
                                     } label: {
-                                        HStack(spacing: 2) {
-                                            Image(systemName: "chevron.left")
-                                                .font(.system(size: 12, weight: .semibold))
-                                            Text("Month")
-                                                .font(.system(size: 14, weight: .semibold))
-                                        }
-                                        .foregroundColor(.appPrimary)
+                                        // Title + symbol as one `Label` so
+                                        // the system can use the title in
+                                        // overflow / a Duo vertical bar.
+                                        Label("Month", systemImage: "chevron.left")
+                                            .labelStyle(.titleAndIcon)
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(.appPrimary)
                                     }
                                 }
                             }

@@ -53,6 +53,7 @@ struct AppIconPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .fontWeight(.semibold)
                 }
             }

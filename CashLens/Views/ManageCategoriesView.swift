@@ -65,6 +65,7 @@ struct ManageCategoriesView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
                         .fontWeight(.semibold)
                 }
             }
