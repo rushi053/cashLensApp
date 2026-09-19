@@ -233,23 +233,36 @@ class ProManager: ObservableObject {
     /// promoted-IAP requirements), so this is what makes the App Store
     /// Connect "Promote" configuration actually take effect.
     ///
-    /// Scoped to Pro products only: `purchase()` grants the store
-    /// entitlement on success, which would be wrong for a tip-jar
-    /// product — and donations are never promoted anyway.
+    /// Routes by product ID so each of the six products is completed
+    /// by its owning manager: Pro products go through `purchase()`
+    /// (which grants the store entitlement), tip-jar products go
+    /// through `DonationManager.purchase()` (which records the tip and
+    /// applies the donor grandfather policy). Only Pro is promoted in
+    /// App Store Connect today, but a promoted tip must never be
+    /// silently dropped.
     private func listenForPurchaseIntents() {
         Task { [weak self] in
             for await intent in PurchaseIntent.intents {
                 guard let self else { break }
                 let product = intent.product
-                guard Self.allProIDs.contains(product.id) else { continue }
-                do {
-                    try await self.purchase(product)
-                } catch ProPurchaseError.userCancelled {
-                    // User backed out of the sheet — not an error.
-                } catch {
-                    // Surfaced by the same UI that shows in-app purchase
-                    // failures; the user lands in the app either way.
-                    self.purchaseError = error.localizedDescription
+                if Self.allProIDs.contains(product.id) {
+                    do {
+                        try await self.purchase(product)
+                    } catch ProPurchaseError.userCancelled {
+                        // User backed out of the sheet — not an error.
+                    } catch {
+                        // Surfaced by the same UI that shows in-app purchase
+                        // failures; the user lands in the app either way.
+                        self.purchaseError = error.localizedDescription
+                    }
+                } else if DonationManager.allDonationIDs.contains(product.id) {
+                    do {
+                        try await DonationManager.shared.purchase(product)
+                    } catch StoreError.userCancelled {
+                        // User backed out of the sheet — not an error.
+                    } catch {
+                        self.purchaseError = error.localizedDescription
+                    }
                 }
             }
         }
