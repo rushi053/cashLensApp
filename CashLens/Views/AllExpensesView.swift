@@ -286,14 +286,24 @@ struct AllExpensesView: View {
             let calendar = Calendar.current
             var groups: [(Date, [Expense])] = []
             if sort == .dateAsc || sort == .dateDesc {
-                var currentDay: Date? = nil
+                // PERF: the array is date-sorted, so consecutive rows
+                // almost always share a day. Compute the day's
+                // `[start, end)` bounds once per group and only call
+                // `startOfDay` when a row falls outside them — same
+                // groups as calling it per row (a row is in the current
+                // day iff its date lies in that half-open range under
+                // the same calendar), ~N fewer Calendar calls per pass.
+                var currentDayStart: Date? = nil
+                var currentDayEnd: Date? = nil
                 for e in sorted {
-                    let day = calendar.startOfDay(for: e.date)
-                    if currentDay != day {
-                        groups.append((day, [e]))
-                        currentDay = day
-                    } else {
+                    if let start = currentDayStart, let end = currentDayEnd,
+                       e.date >= start, e.date < end {
                         groups[groups.count - 1].1.append(e)
+                    } else {
+                        let day = calendar.startOfDay(for: e.date)
+                        groups.append((day, [e]))
+                        currentDayStart = day
+                        currentDayEnd = calendar.date(byAdding: .day, value: 1, to: day)
                     }
                 }
             }
