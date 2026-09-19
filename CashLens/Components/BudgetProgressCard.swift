@@ -300,6 +300,8 @@ struct BudgetMiniCard: View {
             )
         }
         .buttonStyle(ScaleButtonStyle())
+        // Pointer hover lifts the tile (iPad trackpad); no-op on touch.
+        .hoverEffect(.lift)
         .accessibilityLabel(accessibilityLabel)
     }
 

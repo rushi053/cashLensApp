@@ -541,6 +541,7 @@ struct AddSubscriptionView: View {
                             categoryGridCell(category).allowsHitTesting(false)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                     }
 
                     ForEach(categoryViewModel.customCategories, id: \.id) { category in
@@ -553,6 +554,7 @@ struct AddSubscriptionView: View {
                             customCategoryGridCell(category).allowsHitTesting(false)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                     }
                 }
                 .padding(Theme.Spacing.lg)

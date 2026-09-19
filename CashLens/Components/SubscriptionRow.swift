@@ -133,6 +133,8 @@ struct SubscriptionRow: View {
         )
         .opacity(subscription.isActive ? 1 : 0.72)
         .contentShape(Rectangle())
+        // Pointer feedback (iPad trackpad); no-op on touch.
+        .hoverEffect(.highlight)
         .onTapGesture {
             HapticManager.shared.lightTap()
             onEdit()

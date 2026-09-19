@@ -50,6 +50,8 @@ struct FloatingAddButton: View {
         // costs nothing while idle — unlike the old constant-keyed
         // animation this one only fires on actual presses.
         .buttonStyle(FABPressStyle())
+        // Pointer hover lifts the disc (iPad trackpad); no-op on touch.
+        .hoverEffect(.lift)
         // Icon-only button on the app's single most important action —
         // VoiceOver must not read this as just "plus".
         .accessibilityLabel("Add expense")

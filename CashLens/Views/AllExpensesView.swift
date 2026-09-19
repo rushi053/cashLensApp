@@ -1048,6 +1048,14 @@ struct AllExpensesView: View {
             .onChange(of: sortOption) {
                 recomputeResults(resetPagination: true)
             }
+            // Cmd-F (see `AppCommands`): only the visible tab root
+            // answers, so a sheet-presented copy of this screen never
+            // opens a second Quick Search.
+            .onReceive(AppCommandCenter.shared.commands) { command in
+                guard command == .presentActivitySearch, isRootTab, isTabVisible,
+                      !showingQuickSearch else { return }
+                showingQuickSearch = true
+            }
             .onChange(of: useDateRangeFilter) {
                 recomputeResults(resetPagination: true)
             }

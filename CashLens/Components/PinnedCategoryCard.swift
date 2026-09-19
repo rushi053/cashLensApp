@@ -107,6 +107,8 @@ struct PinnedCategoryCard: View {
             .animation(Theme.Motion.snappy, value: isSelected)
         }
         .buttonStyle(ScaleButtonStyle())
+        // Pointer hover lifts the tile (iPad trackpad); no-op on touch.
+        .hoverEffect(.lift)
         .accessibilityLabel(accessibilityLabel)
     }
 

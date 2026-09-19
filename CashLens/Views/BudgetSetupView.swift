@@ -672,6 +672,7 @@ struct BudgetSetupView: View {
                         allSpendingTile.allowsHitTesting(false)
                     }
                     .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
 
                     ForEach(expenseViewModel.getAvailableDefaultCategories(), id: \.self) { category in
                         Button {
@@ -688,6 +689,7 @@ struct BudgetSetupView: View {
                             categoryTile(category).allowsHitTesting(false)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                     }
 
                     ForEach(categoryViewModel.customCategories, id: \.id) { category in
@@ -705,6 +707,7 @@ struct BudgetSetupView: View {
                             customCategoryTile(category).allowsHitTesting(false)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                     }
                 }
                 .padding(Theme.Spacing.lg)

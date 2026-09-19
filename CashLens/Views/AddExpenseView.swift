@@ -1191,6 +1191,7 @@ struct AddExpenseView: View {
                             categoryGridCell(category).allowsHitTesting(false)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                     }
 
                     ForEach(categoryViewModel.customCategories, id: \.id) { category in
@@ -1203,6 +1204,7 @@ struct AddExpenseView: View {
                             customCategoryGridCell(category).allowsHitTesting(false)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                     }
                 }
                 .padding(Theme.Spacing.lg)
