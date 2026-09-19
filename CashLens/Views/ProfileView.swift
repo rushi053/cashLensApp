@@ -434,7 +434,7 @@ struct ProfileView: View {
                     Text("Upgrade to Pro")
                         .font(Theme.Typography.rowTitle)
                         .foregroundColor(.primary)
-                    Text("Unlimited budgets, receipts, PDF reports & more")
+                    Text("Budgets, receipt scanning, forecasts, PDF reports & more")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

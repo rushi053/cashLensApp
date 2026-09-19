@@ -43,7 +43,7 @@ struct DonationView: View {
                         }
                     }
 
-                    Text("These are one-time tips. No subscription, no obligation. Thank you.")
+                    Text("These are one-time tips, separate from CashLens Pro. No obligation. Thank you.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)

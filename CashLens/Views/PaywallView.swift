@@ -766,7 +766,7 @@ struct PaywallView: View {
             .animation(Theme.Motion.snappy, value: selectedPlan)
 
             Text(selectedPlan == .lifetime
-                 ? "One payment. No subscription, no renewals."
+                 ? "One payment for the lifetime unlock. Never renews."
                  : "No commitment — cancel anytime in Settings.")
                 .font(Theme.Typography.caption)
                 .foregroundColor(.secondary)
