@@ -74,6 +74,25 @@ struct WidgetSnapshot: Codable, Hashable, Sendable {
     /// written by pre-Wave-5 app builds still decode — a missing key
     /// reads as `nil` and the widget renders its empty-templates hint.
     var quickLogTemplates: [QuickLogTemplate]? = nil
+
+    /// Net spend per calendar day for the trailing 7 days, oldest first
+    /// (last element == today). Powers the sparkline on the Extra Large
+    /// Spending widget (iPad). Optional so snapshot files written by
+    /// pre-2.2 app builds still decode — a missing key reads as `nil`
+    /// and the widget renders a quiet "refresh" placeholder instead.
+    var dailyNetLast7Days: [DailyTotal]? = nil
+}
+
+// MARK: - Daily totals (sparkline)
+
+extension WidgetSnapshot {
+
+    struct DailyTotal: Codable, Hashable, Sendable {
+        /// Start of the calendar day (local time at snapshot generation).
+        var date: Date
+        /// Net spend for that day (refunds subtracted). May be negative.
+        var net: Double
+    }
 }
 
 // MARK: - Spending block

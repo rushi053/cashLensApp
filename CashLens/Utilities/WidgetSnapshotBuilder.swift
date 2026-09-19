@@ -113,8 +113,33 @@ enum WidgetSnapshotBuilder {
             quickLogTemplates: buildQuickLogTemplates(
                 templates: inputs.templates,
                 customByID: customByID
+            ),
+            dailyNetLast7Days: buildDailyTotals(
+                expenses: inputs.expenses,
+                now: inputs.now,
+                calendar: cal
             )
         )
+    }
+
+    // MARK: - Daily totals block (Extra Large Spending sparkline)
+
+    /// Net spend per day for the trailing 7 days, oldest first, today last.
+    /// Days with no expenses are present with `net == 0` so the widget
+    /// always gets exactly seven bars.
+    private static func buildDailyTotals(expenses: [Expense], now: Date, calendar: Calendar) -> [WidgetSnapshot.DailyTotal] {
+        let today = calendar.startOfDay(for: now)
+        guard let windowStart = calendar.date(byAdding: .day, value: -6, to: today) else { return [] }
+        var byDay: [Date: Double] = [:]
+        for e in expenses where e.amount.isFinite && e.date >= windowStart {
+            let day = calendar.startOfDay(for: e.date)
+            guard day <= today else { continue }
+            byDay[day, default: 0] += e.signedAmount
+        }
+        return (0..<7).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: windowStart) else { return nil }
+            return WidgetSnapshot.DailyTotal(date: day, net: byDay[day] ?? 0)
+        }
     }
 
     // MARK: - Quick Log templates block
