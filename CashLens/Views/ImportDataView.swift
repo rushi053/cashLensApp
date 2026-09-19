@@ -53,7 +53,7 @@ struct ImportDataView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 backgroundLayer
 
@@ -541,7 +541,7 @@ private struct ImportPreviewSheet: View {
     @State private var animateIn = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 ZStack {
                     Color.systemBackground.ignoresSafeArea()
@@ -943,7 +943,7 @@ private struct ImportSummarySheet: View {
     @State private var animateIn = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 ZStack {
                     Color.systemBackground.ignoresSafeArea()

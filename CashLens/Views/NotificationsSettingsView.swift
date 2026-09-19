@@ -218,7 +218,7 @@ struct NotificationsSettingsView: View {
     }
 
     private var weeklyScheduleSheet: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Picker("Day", selection: $weeklyTempWeekday) {
                     ForEach(1...7, id: \.self) { weekday in
@@ -270,7 +270,7 @@ struct NotificationsSettingsView: View {
     }
 
     private var monthlyScheduleSheet: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Picker("Day of month", selection: $monthlyTempDayOfMonth) {
                     ForEach(1...28, id: \.self) { d in
@@ -322,7 +322,7 @@ struct NotificationsSettingsView: View {
     }
 
     private var backupScheduleSheet: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Picker("Day of month", selection: $backupTempDayOfMonth) {
                     ForEach(1...28, id: \.self) { d in
@@ -470,7 +470,7 @@ struct NotificationsSettingsView: View {
 
 struct NotificationsSettingsView_Previews: PreviewProvider {
     static var previews: some View {
-        NavigationView {
+        NavigationStack {
             NotificationsSettingsView()
                 .environmentObject(ExpenseViewModel())
                 .environmentObject(ProManager.shared)

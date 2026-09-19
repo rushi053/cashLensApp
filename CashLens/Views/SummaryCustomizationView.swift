@@ -47,7 +47,7 @@ struct SummaryCustomizationView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 Color(uiColor: .systemBackground).ignoresSafeArea()
 

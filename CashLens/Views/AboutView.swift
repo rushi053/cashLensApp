@@ -30,7 +30,7 @@ struct AboutView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: Theme.Spacing.xl) {
                     appHero

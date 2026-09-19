@@ -1165,7 +1165,7 @@ struct AddExpenseView: View {
     /// dismisses on selection, and links out to Manage Categories for
     /// edits.
     private var categoryPickerSheet: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 let columns = Array(
                     repeating: GridItem(.flexible(), spacing: Theme.Spacing.sm + 2, alignment: .top),
@@ -1844,7 +1844,7 @@ struct AddExpenseView: View {
     /// updated as the user typed.
     @ViewBuilder
     private func fieldEditorSheet(_ editor: FieldEditor) -> some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     switch editor {
@@ -2016,7 +2016,7 @@ struct AddExpenseView: View {
 
     @ViewBuilder
     private var templatesSheet: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     HStack(alignment: .firstTextBaseline) {

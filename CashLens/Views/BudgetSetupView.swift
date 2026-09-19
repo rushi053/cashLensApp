@@ -651,7 +651,7 @@ struct BudgetSetupView: View {
     }
 
     private var categoryPickerSheet: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 let columns = Array(
                     repeating: GridItem(.flexible(), spacing: Theme.Spacing.sm + 2, alignment: .top),

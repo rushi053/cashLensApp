@@ -1283,7 +1283,7 @@ struct AllExpensesView: View {
     // MARK: - Bulk Category Picker
 
     private var bulkCategoryPickerSheet: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
@@ -1370,7 +1370,7 @@ struct AllExpensesView: View {
     // MARK: - Bulk Tag Sheet
 
     private var bulkTagSheet: some View {
-        NavigationView {
+        NavigationStack {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                 Text("Add this tag to \(selectedIds.count) expense\(selectedIds.count == 1 ? "" : "s"). Existing tags are kept.")
                     .font(.subheadline)
@@ -1455,7 +1455,7 @@ struct AllExpensesView: View {
     }
 
     private var dateRangeSheet: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section {
                     ForEach(dateRangePresets, id: \.label) { preset in

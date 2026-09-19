@@ -10,7 +10,7 @@ struct DiagnosticsView: View {
     @State private var smokeCheckResults: [(title: String, status: String, details: String?)] = []
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section(header: Text("Data")) {
                     Text(dataSummary)

@@ -471,7 +471,7 @@ struct StatisticsView: View {
         .padding(.horizontal, Theme.Spacing.xs)
         .animation(Theme.Motion.snappy, value: rangeWasModifiedFromPreset)
         .sheet(isPresented: $showingDateRangePicker) {
-            NavigationView {
+            NavigationStack {
                 Form {
                     DatePicker("Start", selection: $tempRangeStartDate, displayedComponents: [.date])
                     DatePicker("End", selection: $tempRangeEndDate, displayedComponents: [.date])

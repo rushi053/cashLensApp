@@ -147,7 +147,7 @@ struct DonationCard: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         DonationView()
     }
 } 

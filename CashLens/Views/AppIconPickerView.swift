@@ -29,7 +29,7 @@ struct AppIconPickerView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.xxl) {
                     heroPreview

@@ -100,7 +100,7 @@ struct ExportDataView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 backgroundLayer
 
