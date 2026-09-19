@@ -63,6 +63,10 @@ struct TrendChartPager: View {
     @State private var selection: Int = 0
     @EnvironmentObject var viewModel: ExpenseViewModel
 
+    /// Rank badge on the "Top days" rows — follows Dynamic Type so the
+    /// digit never outgrows its box.
+    @ScaledMetric(relativeTo: .caption2) private var rankBadgeSize: CGFloat = 18
+
     private let pageTitles = ["Over time", "By weekday", "Top days"]
 
     var body: some View {
@@ -269,7 +273,7 @@ struct TrendChartPager: View {
             Text("\(rank)")
                 .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundColor(accent)
-                .frame(width: 18, height: 18)
+                .frame(width: rankBadgeSize, height: rankBadgeSize)
                 .background(Circle().fill(accent.opacity(0.15)))
 
             VStack(alignment: .leading, spacing: 4) {

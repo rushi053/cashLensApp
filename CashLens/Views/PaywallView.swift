@@ -53,6 +53,18 @@ struct PaywallView: View {
     /// on screen without scrolling past six feature rows.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @StateObject private var proManager = ProManager.shared
+
+    /// Icon medallions and the plan radio follow Dynamic Type so the
+    /// glyphs keep pace with the row text instead of shrinking
+    /// relative to it at accessibility sizes.
+    @ScaledMetric(relativeTo: .body) private var spotlightMedallion: CGFloat = 44
+    @ScaledMetric(relativeTo: .body) private var spotlightGlyph: CGFloat = 18
+    @ScaledMetric(relativeTo: .body) private var featureMedallion: CGFloat = 34
+    @ScaledMetric(relativeTo: .body) private var featureGlyph: CGFloat = 14
+    @ScaledMetric(relativeTo: .body) private var timelineMedallion: CGFloat = 30
+    @ScaledMetric(relativeTo: .body) private var timelineGlyph: CGFloat = 12
+    @ScaledMetric(relativeTo: .body) private var radioDiameter: CGFloat = 22
+    @ScaledMetric(relativeTo: .body) private var radioDot: CGFloat = 12
     @State private var selectedPlan: SelectedPlan = .yearly
     @State private var isProcessing = false
     @State private var showError = false
@@ -351,9 +363,9 @@ struct PaywallView: View {
                 ZStack {
                     Circle()
                         .fill(Color.appPrimary.opacity(0.16))
-                        .frame(width: 44, height: 44)
+                        .frame(width: spotlightMedallion, height: spotlightMedallion)
                     Image(systemName: spotlight.icon)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: spotlightGlyph, weight: .semibold))
                         .foregroundColor(.appPrimary)
                 }
 
@@ -433,9 +445,9 @@ struct PaywallView: View {
             ZStack {
                 Circle()
                     .fill(Color.appPrimary.opacity(0.12))
-                    .frame(width: 34, height: 34)
+                    .frame(width: featureMedallion, height: featureMedallion)
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: featureGlyph, weight: .semibold))
                     .foregroundColor(.appPrimary)
             }
 
@@ -567,11 +579,11 @@ struct PaywallView: View {
                 ZStack {
                     Circle()
                         .stroke(isSelected ? Color.appPrimary : Color.primary.opacity(0.2), lineWidth: 1.5)
-                        .frame(width: 22, height: 22)
+                        .frame(width: radioDiameter, height: radioDiameter)
                     if isSelected {
                         Circle()
                             .fill(Color.appPrimary)
-                            .frame(width: 12, height: 12)
+                            .frame(width: radioDot, height: radioDot)
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
@@ -701,9 +713,9 @@ struct PaywallView: View {
                 ZStack {
                     Circle()
                         .fill(Color.appPrimary.opacity(0.14))
-                        .frame(width: 30, height: 30)
+                        .frame(width: timelineMedallion, height: timelineMedallion)
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: timelineGlyph, weight: .semibold))
                         .foregroundColor(.appPrimary)
                 }
                 if !isLast {
@@ -713,7 +725,7 @@ struct PaywallView: View {
                         .frame(maxHeight: .infinity)
                 }
             }
-            .frame(width: 30)
+            .frame(width: timelineMedallion)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

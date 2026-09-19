@@ -254,8 +254,9 @@ struct OnboardingView: View {
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
+                // Wraps freely (vertical fixedSize) — no line cap or
+                // shrink-to-fit, so accessibility sizes reflow instead
+                // of compressing the headline.
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(pageDescription(for: step))
