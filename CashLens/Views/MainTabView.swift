@@ -233,8 +233,13 @@ struct MainTabView: View {
             guard !hasPresentation else { return }
             showingAddExpense = true
         case .openSettings:
+            // Switching tabs under an open sheet is disorienting and
+            // (for Cmd-F) leaves Quick Search's flag stuck `true` when
+            // UIKit refuses the second presentation.
+            guard !hasPresentation else { return }
             selectedTab = .you
         case .searchActivity:
+            guard !hasPresentation else { return }
             selectedTab = .activity
             // The Activity root may be mounting right now (first visit)
             // and can't hear this publish yet — give it a beat, then
