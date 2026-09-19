@@ -77,6 +77,9 @@ struct OnboardingView: View {
     /// original vertical page.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     private var isCompactHeight: Bool { verticalSizeClass == .compact }
+    /// Presenter-side size class for the first-run currency picker's
+    /// form-sized presentation on iPad / Duo inner display.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     // MARK: - First-expense form state
 
@@ -221,6 +224,11 @@ struct OnboardingView: View {
 
             Spacer(minLength: 0)
         }
+        // Regular width (iPad, Duo inner display): a centred form-width
+        // column so the first-expense form and the currency control
+        // don't stretch across the display. `readableColumn` is a
+        // no-op on compact width (see `ReadableColumnModifier`).
+        .readableColumn(maxWidth: LargeScreenLayout.formMaxWidth)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -434,6 +442,8 @@ struct OnboardingView: View {
             viewModel.hasShownCurrencyPicker = true
         }) {
             CurrencyPickerView(viewModel: viewModel, isInitialSetup: true)
+                // Regular width: centred form card (presenter's size class).
+                .largeScreenFormSheet(enabled: horizontalSizeClass == .regular)
         }
     }
 
