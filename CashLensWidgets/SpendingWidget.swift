@@ -866,10 +866,12 @@ extension WidgetSnapshot {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let dailyNets: [Double] = [12.40, 48.90, 0, 31.25, 96.10, 22.00, 14.50]
-        s.dailyNetLast7Days = dailyNets.enumerated().map { index, net in
+        var totals: [WidgetSnapshot.DailyTotal] = []
+        for (index, net) in dailyNets.enumerated() {
             let date = cal.date(byAdding: .day, value: index - 6, to: today) ?? today
-            return WidgetSnapshot.DailyTotal(date: date, net: net)
+            totals.append(WidgetSnapshot.DailyTotal(date: date, net: net))
         }
+        s.dailyNetLast7Days = totals
         return s
     }
 
