@@ -1905,10 +1905,14 @@ struct TodayView: View {
             // showing, the count must be the full history, and there
             // must be a logged expense in the last 30 days — otherwise
             // an empty or abandoned ledger reads as a "90-day streak".
-            // And never on the cold-launch recompute (`previousStreak`
-            // is nil then): the user must have done something in this
-            // session first, so the ask can't land on a first-run or
-            // deep-link sheet two seconds after launch.
+            // And never on the very first recompute of the session
+            // (`previousStreak` is nil then). Note this is only a
+            // partial guard: for users whose history predates the hot
+            // window, full hydration publishes a second recompute
+            // ~100 ms after launch with no user action. The real
+            // protection against asking over a first-run or deep-link
+            // sheet is `MainTabView.hasPresentation`, which defers the
+            // ask while anything is presented.
             if previousStreak != nil,
                viewModel.isFullyHydrated,
                result.streak.isMeaningful,

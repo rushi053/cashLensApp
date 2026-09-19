@@ -15,8 +15,8 @@ import Foundation
 /// recurring charge — that flag is what the app reads; the id is only
 /// used to look up a real subscription, which the sentinel never is).
 /// "Delete seeded data" removes exactly those rows plus the six custom
-/// categories whose names start with `seededCategoryPrefix`. Real data
-/// is never matched.
+/// categories named in `seededCategoryNames`. Real data is never
+/// matched.
 ///
 /// Rows are written with `NSBatchInsertRequest` on a background context
 /// (no per-row `NSManagedObject` churn on the view context), then the
@@ -38,6 +38,12 @@ enum DebugExpenseSeeder {
     static let sentinelSubscriptionID = UUID(uuidString: "0000C1EE-5EED-4000-8000-000000000000")!
     /// Seeded custom categories are named "Seed Coffee", "Seed Games", …
     static let seededCategoryPrefix = "Seed "
+    /// Exact names of the six seeded categories; the delete path matches
+    /// these (`name IN`), never the bare prefix, so a real "Seed Money"
+    /// category on a Debug device is left alone.
+    static let seededCategoryNames: [String] = [
+        "Coffee", "Games", "Pets", "Tech", "Self Care", "Events"
+    ].map { seededCategoryPrefix + $0 }
     /// `-CLSeedExpenses 20000` (argument-domain `UserDefaults` key).
     static let launchArgumentKey = "CLSeedExpenses"
 
@@ -105,7 +111,7 @@ enum DebugExpenseSeeder {
             deletedExpenses = batchDelete(expenseFetch, in: context, container: container)
 
             let categoryFetch: NSFetchRequest<NSFetchRequestResult> = CustomCategoryEntity.fetchRequest()
-            categoryFetch.predicate = NSPredicate(format: "name BEGINSWITH %@", seededCategoryPrefix)
+            categoryFetch.predicate = NSPredicate(format: "name IN %@", seededCategoryNames)
             deletedCategories = batchDelete(categoryFetch, in: context, container: container)
 
             DispatchQueue.main.async {
@@ -166,7 +172,7 @@ enum DebugExpenseSeeder {
         ]
 
         let request: NSFetchRequest<CustomCategoryEntity> = CustomCategoryEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "name BEGINSWITH %@", seededCategoryPrefix)
+        request.predicate = NSPredicate(format: "name IN %@", seededCategoryNames)
         let existing = (try? context.fetch(request)) ?? []
         var idsByName: [String: UUID] = [:]
         for entity in existing {

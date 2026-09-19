@@ -863,7 +863,7 @@ struct AllExpensesView: View {
 
                 editorDetailColumn
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(uiColor: .systemBackground))
+                    .background(Color.systemBackground)
             }
         } else if isRootTab {
             content()
