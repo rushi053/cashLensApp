@@ -47,8 +47,24 @@ struct MainTabView: View {
     /// outer display. Device idiom and window width are deliberately
     /// not consulted — both misfire in multitasking and on Duo.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     private var isRegularWidth: Bool { horizontalSizeClass == .regular }
+
+    /// Root safe-area insets, published by the tab container. Only read
+    /// to detect the iPhone Duo outer display's vertical system bar
+    /// (see `DuoLayoutSupport.hasVerticalSystemBar`), which moves the
+    /// bottom tab bar to the trailing edge and leaves the FAB's usual
+    /// 68pt bottom clearance hanging in mid-air.
+    @State private var rootSafeAreaInsets = EdgeInsets()
+
+    private var hasVerticalSystemBar: Bool {
+        DuoLayoutSupport.hasVerticalSystemBar(
+            safeAreaInsets: rootSafeAreaInsets,
+            horizontalSizeClass: horizontalSizeClass,
+            verticalSizeClass: verticalSizeClass
+        )
+    }
 
     /// Native one-tap rating sheet. `ReviewPromptManager` decides *when*
     /// to ask; this action shows Apple's in-app star prompt directly —
@@ -189,6 +205,9 @@ struct MainTabView: View {
                     defaults.set(true, forKey: UserDefaultsKeys.hasAutoShownPaywall)
                     defaults.set(Date(), forKey: UserDefaultsKeys.lastAutoPaywallDate)
                 }
+                // Regular width: centred form-sized card (the paywall
+                // already caps its column at 640pt).
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         // One-time thank-you when a past donor's grandfather grant is
         // first applied. Same consume-on-appear contract as the
@@ -303,13 +322,15 @@ struct MainTabView: View {
     /// inline action bar at the bottom there, and a floating "+"
     /// would overlap (and visually compete with) those actions.
     ///
-    /// And hidden on Activity at regular width: the detail column hosts
-    /// the expense editor, whose "Update Expense" button occupies the
-    /// same bottom-trailing corner. The ledger header carries "+" there
-    /// instead (`AllExpensesView.onRequestAddExpense`).
+    /// And hidden everywhere at regular width (iPad, Duo inner display):
+    /// each large-screen layout places its own primary action — Today's
+    /// header "Log expense" pill, Activity's ledger-header "+" and empty
+    /// detail column, Insights' header "+" — so nothing floats over
+    /// content or hovers beside the Duo vertical bar. Compact width
+    /// keeps the FAB exactly as before.
     private var shouldShowFAB: Bool {
         guard selectedTab != .you, !isBulkSelecting else { return false }
-        if selectedTab == .activity && isRegularWidth { return false }
+        if isRegularWidth { return false }
         return true
     }
 
@@ -400,18 +421,35 @@ struct MainTabView: View {
                     // tab bar with a small gap so the FAB feels grouped.
                     // Regular: `.sidebarAdaptable` moves the bar to the
                     // top / sidebar, so only a normal margin is needed.
-                    .padding(.bottom, isRegularWidth ? 28 : 68)
+                    // Duo outer display: the bar is a vertical strip on
+                    // the trailing edge, so there is nothing at the
+                    // bottom to clear — tuck into the corner instead.
+                    // (`hasVerticalSystemBar` is false on every iPhone.)
+                    .padding(.bottom, isRegularWidth ? 28 : (hasVerticalSystemBar ? 20 : 68))
                     .transition(.scale.combined(with: .opacity))
                 }
             }
             .animation(Theme.Motion.snappy, value: shouldShowFAB)
         }
+        // Root safe-area probe for the Duo outer-display heuristic above.
+        // Layout-neutral: reads the container's insets, changes nothing.
+        .onGeometryChange(for: EdgeInsets.self) { proxy in
+            proxy.safeAreaInsets
+        } action: { newInsets in
+            if newInsets != rootSafeAreaInsets {
+                rootSafeAreaInsets = newInsets
+            }
+        }
         .sheet(isPresented: $showingAddExpense) {
             AddExpenseView(viewModel: viewModel)
                 .environmentObject(categoryViewModel)
+                // Regular width: a form-sized card instead of a page
+                // sheet. `isRegularWidth` is the presenter's size class.
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .sheet(isPresented: $showingCurrencyPicker) {
             CurrencyPickerView(viewModel: viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .onAppear {
             checkAndShowCurrencyPicker()
@@ -585,9 +623,11 @@ struct MainTabView: View {
             .sheet(isPresented: $showingAddExpense) {
                 AddExpenseView(viewModel: viewModel)
                     .environmentObject(categoryViewModel)
+                    .largeScreenFormSheet(enabled: isRegularWidth)
             }
             .sheet(isPresented: $showingCurrencyPicker) {
                 CurrencyPickerView(viewModel: viewModel)
+                    .largeScreenFormSheet(enabled: isRegularWidth)
             }
             .onAppear {
                 checkAndShowCurrencyPicker()
