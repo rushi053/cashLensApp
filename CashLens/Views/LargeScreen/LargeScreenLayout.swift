@@ -217,7 +217,7 @@ struct LargeScreenRailRow<Trailing: View>: View {
         iconTint: Color? = nil,
         isSelected: Bool,
         action: @escaping () -> Void,
-        @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }
+        @ViewBuilder trailing: @escaping () -> Trailing
     ) {
         self.title = title
         self.icon = icon
@@ -254,5 +254,25 @@ struct LargeScreenRailRow<Trailing: View>: View {
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+extension LargeScreenRailRow where Trailing == EmptyView {
+    /// Row without a trailing accessory. Separate initializer (instead
+    /// of a defaulted `@ViewBuilder` parameter) so a trailing closure at
+    /// the call site always binds to `action`.
+    init(
+        title: String,
+        icon: String? = nil,
+        iconTint: Color? = nil,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.icon = icon
+        self.iconTint = iconTint
+        self.isSelected = isSelected
+        self.action = action
+        self.trailing = { EmptyView() }
     }
 }

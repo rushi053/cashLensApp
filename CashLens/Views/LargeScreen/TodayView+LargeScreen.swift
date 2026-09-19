@@ -61,6 +61,9 @@ extension TodayView {
         return (leading, trailing)
     }
 
+    private var leadingSections: [TodaySectionID] { dealtSections.leading }
+    private var trailingSections: [TodaySectionID] { dealtSections.trailing }
+
     /// Recent shows six rows here (three on iPhone) — the point of the
     /// extra height is fewer trips to Activity to check "did I log that?".
     private static let largeScreenRecentLimit = 6
@@ -87,14 +90,13 @@ extension TodayView {
                     .padding(.top, Theme.Spacing.xxxl)
                     .modifier(SectionEntrance(order: 1, animate: animateSections))
             } else {
-                let dealt = dealtSections
                 LargeScreenColumns(twoColumns: usesTwoColumns) {
                     VStack(spacing: Theme.Spacing.xxl) {
                         budgetsSection
                             .modifier(SectionEntrance(order: 1, animate: animateSections))
                             .sectionScrollTransition()
 
-                        ForEach(Array(dealt.leading.enumerated()), id: \.element) { index, section in
+                        ForEach(Array(leadingSections.enumerated()), id: \.element) { index, section in
                             largeScreenSection(for: section)
                                 .modifier(SectionEntrance(order: index + 2, animate: animateSections))
                                 .sectionScrollTransition()
@@ -102,7 +104,7 @@ extension TodayView {
                     }
                 } trailing: {
                     VStack(spacing: Theme.Spacing.xxl) {
-                        ForEach(Array(dealt.trailing.enumerated()), id: \.element) { index, section in
+                        ForEach(Array(trailingSections.enumerated()), id: \.element) { index, section in
                             largeScreenSection(for: section)
                                 .modifier(SectionEntrance(order: index + 2, animate: animateSections))
                                 .sectionScrollTransition()
