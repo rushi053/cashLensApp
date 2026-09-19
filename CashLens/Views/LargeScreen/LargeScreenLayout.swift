@@ -13,10 +13,13 @@ import SwiftUI
 
 enum LargeScreenLayout {
     /// A "regular" window can still be narrow: the Duo inner display in
-    /// portrait is ~626pt and an 11" iPad at 50/50 Split View ~597pt.
-    /// Below this measured content width the dashboards stay in one
-    /// column (with wider cards) instead of two ~280pt columns.
-    static let twoColumnMinimumWidth: CGFloat = 640
+    /// portrait is ~626pt, an 11" iPad at 50/50 Split View ~597pt, a 13"
+    /// at 50/50 ~683pt. Below this measured content width the dashboards
+    /// stay in one column (with wider cards) instead of two columns
+    /// narrower than an iPhone card. 700 keeps iPad mini portrait (744)
+    /// and the Duo inner display in landscape (~830 usable) on two
+    /// columns of ≥ 330pt.
+    static let twoColumnMinimumWidth: CGFloat = 700
 
     /// Activity shows its filter rail (three regions) from this measured
     /// width up: iPad 13" portrait (1024) and every iPad landscape.

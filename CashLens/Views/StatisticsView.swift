@@ -132,10 +132,13 @@ struct StatisticsView: View {
     /// Measured content width of the scroll view. Regular width alone
     /// is not enough for two columns: an 11" iPad at 50/50 (~597pt) or
     /// the Duo inner display (~626pt) are regular yet would give ~260pt
-    /// columns — narrower than an iPhone SE. Two columns need ≥ 640pt.
+    /// columns — narrower than an iPhone SE. Two columns need ≥ 700pt.
     @State private var measuredContentWidth: CGFloat = 0
 
-    private static let twoColumnMinimumWidth: CGFloat = 640
+    /// Shared with the other regular-width dashboards (see
+    /// `LargeScreenLayout.twoColumnMinimumWidth`, 700pt). Regular-width
+    /// logic only; compact never evaluates it.
+    private static let twoColumnMinimumWidth: CGFloat = LargeScreenLayout.twoColumnMinimumWidth
 
     var usesTwoColumns: Bool {
         // Before the first measurement, trust the size class so an iPad

@@ -48,11 +48,14 @@ extension AllExpensesView {
 
     /// Background for a ledger row whose editor is open in the detail
     /// column. `Color.clear` everywhere else — including every compact
-    /// layout, where the editor is a sheet.
-    func largeScreenSelectionTint(for expense: Expense, cornerRadius: CGFloat = 0) -> some View {
+    /// layout, where the editor is a sheet. Rounded so the highlight
+    /// reads as a selection pill inside the day card rather than a
+    /// square band poking past the card's corners.
+    func largeScreenSelectionTint(for expense: Expense, cornerRadius: CGFloat = 10) -> some View {
         let isSelected = showsEditorInDetailColumn && selectedExpense?.id == expense.id
         return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(isSelected ? Color.appPrimary.opacity(0.08) : Color.clear)
+            .padding(.horizontal, Theme.Spacing.xs)
     }
 
     // MARK: Empty detail column

@@ -16,8 +16,8 @@ Scope: every screen a paying customer sees on an iPad or on the iPhone Duo inner
 | Threshold | Meaning |
 |---|---|
 | compact | existing iPhone layout |
-| regular, < 640pt content | "narrow regular": Duo inner portrait (~626pt), iPad 11" at 50/50. Two-pane Activity, single-column dashboards with wider cards. |
-| regular, ≥ 640pt | two-column dashboards (Today, Insights, You). |
+| regular, < 700pt content | "narrow regular": Duo inner portrait (~626pt), iPad 11" and 13" at 50/50. Two-pane Activity, single-column dashboards with wider cards. |
+| regular, ≥ 700pt | two-column dashboards (Today, Insights, You): iPad mini portrait, 11"/13" portrait and landscape, Duo inner landscape. |
 | regular, ≥ 1000pt | Activity gains the filter rail (three regions). iPad 13" portrait and every iPad landscape. |
 
 Accessibility Dynamic Type sizes collapse every two-column pair to one column.
@@ -32,7 +32,7 @@ Accessibility Dynamic Type sizes collapse every two-column pair to one column.
 
 Compact (unchanged): header, recap card, verdict, then the user's ordered sections in one column.
 
-Regular (≥ 640pt):
+Regular (≥ 700pt):
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -59,7 +59,7 @@ Regular (≥ 640pt):
 - More: Recent shows 6 rows (3 on iPhone); Summary, week strip, upcoming and insight are all above the fold beside the verdict.
 - Alignment: verdict is the first pixel top-left (the screen's contract). The user's customised section order still applies: it is dealt alternately into the right column, then the left column under the verdict, so hiding or reordering in Customize Today keeps working.
 - Primary action: "Log expense" pill in the header, leading of the Customize disc. The first-run hero keeps its own CTA and is centred in a 560pt column.
-- Narrow regular (< 640pt): one column, same order as iPhone but Recent shows 6 rows.
+- Narrow regular (< 700pt): one column, same order as iPhone but Recent shows 6 rows.
 - Duo table pose: the top half holds header + verdict (glanceable); the bottom half holds Recent and the tappable rows. Book pose: the two columns sit on either side of the fold.
 
 ## Activity
@@ -115,7 +115,7 @@ Regular, ≥ 1000pt (three regions):
 
 Compact (unchanged): single column.
 
-Regular (≥ 640pt):
+Regular (≥ 700pt):
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -145,13 +145,13 @@ Regular (≥ 640pt):
 - More: hero and Pro cards share the first row; donut, payment methods, heatmap and forecast tile in even pairs; the trend chart gets the full width.
 - Primary action: "+" disc beside Export in the header (the FAB is gone on regular width).
 - The trend section is wrapped in `DuoArrangement` (its pager tab bar as primary, chart as secondary) — an `ArrangementView(.split)` candidate on iOS 27.1 so the range picker and the chart land on opposite halves in book/table pose.
-- Narrow regular (< 640pt): single column, existing order.
+- Narrow regular (< 700pt): single column, existing order.
 
 ## You
 
 Compact (unchanged): single column of grouped rows.
 
-Regular (≥ 640pt):
+Regular (≥ 700pt):
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
