@@ -372,7 +372,8 @@ struct StatisticsView: View {
     /// is hidden on regular width). Presents this view's own Add Expense
     /// sheet.
     var largeScreenAddAction: some View {
-        LargeScreenAddButton(style: .disc) {
+        // 40pt to match `exportReportButton`'s disc beside it.
+        LargeScreenAddButton(style: .disc, discDiameter: 40) {
             showingAddExpense = true
         }
     }

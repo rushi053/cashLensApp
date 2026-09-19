@@ -173,7 +173,7 @@ Regular (≥ 640pt):
 ```
 
 - Left column: identity and status (profile, Pro, backup banner, the data managers, About). Right column: preferences (General, Privacy, Personalization, Notifications, Data). Both columns are ≤ 520pt so rows keep a readable measure.
-- Sheets opened from You (Currency, Paywall, Budgets, Subscriptions, Categories, Export, Import, Appearance, App Icon, Privacy, Notifications, About) are form-sized cards on regular width.
+- Settings-like sheets opened from You (Currency, Paywall, Export, Import, Appearance, App Icon, Privacy, Notifications, About, Siri tips, Donation) are form-sized cards on regular width. The three data managers (Budgets, Subscriptions, Categories) keep the taller page sheet because they are lists.
 - A true sidebar + detail settings pane is deferred: each sub-screen owns its `SheetHeader` and `dismiss()`; hosting them inline needs the `onDismissRequest` treatment `AddExpenseView` already has.
 - DEBUG builds only: the Developer group shows the live size classes so the Duo inner display can be confirmed as regular/regular.
 
@@ -208,4 +208,6 @@ Regular (≥ 640pt):
 
 ## iOS 27.1 hooks (`Design/DuoLayoutSupport.swift`, behind `CASHLENS_DUO_27_1`)
 
-`DuoArrangement` (Insights trend), `duoHorizontalToolbar()` (Paywall, Add Expense), `duoTabBarCompression()` (tab shell), `DuoLayoutSupport.divisionGutter(in:)` (`EvenColumnGrid`). Everything compiles to a no-op with the flag undefined.
+`DuoArrangement(mode: .split | .overlay)` (Insights trend), `duoHorizontalToolbar()` (Paywall, Add Expense), `duoTabBarCompression()` (tab shell), `DuoLayoutSupport.divisionGutter(in:)` (`EvenColumnGrid`). Everything compiles to a no-op with the flag undefined. `DuoLayoutSupport.hasVerticalSystemBar` is plain geometry and needs no flag.
+
+To test on the 27.1 beta: Target → Build Settings → Swift Compiler – Custom Flags → Active Compilation Conditions (Debug) → add `CASHLENS_DUO_27_1`, build, and fix the lines marked `// Duo 27.1` against the real SDK names. Remove the flag before an App Store build from release Xcode.

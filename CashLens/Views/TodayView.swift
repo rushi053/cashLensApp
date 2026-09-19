@@ -304,87 +304,87 @@ struct TodayView: View {
 
     /// The iPhone (compact width) layout — unchanged single column.
     private var compactContent: some View {
-            VStack(spacing: Theme.Spacing.xxl) {
-                header
-                    .modifier(SectionEntrance(order: 0, animate: animateSections))
+        VStack(spacing: Theme.Spacing.xxl) {
+            header
+                .modifier(SectionEntrance(order: 0, animate: animateSections))
 
-                // Time-boxed recap invitation — "Your June recap is
-                // ready" — shown during the first few days of a new
-                // month until the user opens the recap (from here or
-                // from Insights). Sits directly under the header so
-                // the month-end moment gets prime placement while it
-                // lasts, then disappears for the rest of the month.
-                if let recapMonth {
-                    recapReadyCard(for: recapMonth)
-                        .modifier(SectionEntrance(order: 1, animate: animateSections))
-                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
-                }
-
-                // Cold-start centering: when the user has no expenses
-                // yet, the only thing below the header is the
-                // first-run hero card. A flexible spacer above and
-                // below pushes it to the visible vertical centre of
-                // the screen (paired with the `coldStartFillsScreen`
-                // modifier at the bottom of this VStack, which pins
-                // the VStack height to the scrollview's visible
-                // extent so the spacers actually have room to
-                // expand). Non-cold-start renders are completely
-                // unaffected.
-                if viewModel.expenses.isEmpty {
-                    Spacer(minLength: 0)
-                }
-
-                // ONE adaptive Budgets surface that scales from 0
-                // budgets (month-pace card) → 1 budget (full hero) →
-                // 2+ budgets (stacked list with per-budget rows).
-                // No more "hero + breakdown" duplication.
-                //
-                // Order: verdict FIRST, summary second. The design
-                // review flagged that v2 had quietly inverted the
-                // screen's own contract ("am I OK?" is the first
-                // pixel, per the doc comment above) by stacking the
-                // Summary tiles' 28pt totals above the 46pt verdict
-                // hero. The verdict is back on top.
-                budgetsSection
+            // Time-boxed recap invitation — "Your June recap is
+            // ready" — shown during the first few days of a new
+            // month until the user opens the recap (from here or
+            // from Insights). Sits directly under the header so
+            // the month-end moment gets prime placement while it
+            // lasts, then disappears for the rest of the month.
+            if let recapMonth {
+                recapReadyCard(for: recapMonth)
                     .modifier(SectionEntrance(order: 1, animate: animateSections))
-                    .sectionScrollTransition()
-
-                // Bottom-side spacer for the cold-start centring
-                // described above. Matches the top spacer 1:1 so the
-                // hero lands at the true vertical middle of the
-                // available space between header and tab bar.
-                if viewModel.expenses.isEmpty {
-                    Spacer(minLength: 0)
-                }
-
-                // Everything below the verdict renders in the user's
-                // chosen order (Customize Today sheet), with hidden
-                // sections dropped. `visibleSections` also applies
-                // the per-section content gates (cold start, empty
-                // upcoming window, nil insight) so a section with
-                // nothing to say never renders an empty shell.
-                ForEach(Array(visibleSections.enumerated()), id: \.element) { index, section in
-                    sectionView(for: section)
-                        .modifier(SectionEntrance(order: index + 2, animate: animateSections))
-                        .sectionScrollTransition()
-                }
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.top, Theme.Spacing.lg)
-            .padding(.bottom, Theme.Spacing.scrollBottomClearance)
-            // Regular width (iPad, Duo inner): centered readable column
-            // instead of a screen-wide status card.
-            .readableColumn()
-            // Animate live layout edits made from the Customize
-            // sheet — sections glide to their new slot / fade out
-            // behind the half-height sheet instead of snapping.
-            .animation(Theme.Motion.emphasized, value: sectionOrder)
-            .animation(Theme.Motion.emphasized, value: hiddenSections)
-            // Conditionally pin the VStack height to the scrollview's
-            // visible extent ONLY in cold-start. With a real expense
-            // list this stays inactive so the normal scroll behaviour,
-            // section heights, and overflow are completely unchanged.
-            .modifier(ColdStartFillsScreenModifier(active: viewModel.expenses.isEmpty))
+
+            // Cold-start centering: when the user has no expenses
+            // yet, the only thing below the header is the
+            // first-run hero card. A flexible spacer above and
+            // below pushes it to the visible vertical centre of
+            // the screen (paired with the `coldStartFillsScreen`
+            // modifier at the bottom of this VStack, which pins
+            // the VStack height to the scrollview's visible
+            // extent so the spacers actually have room to
+            // expand). Non-cold-start renders are completely
+            // unaffected.
+            if viewModel.expenses.isEmpty {
+                Spacer(minLength: 0)
+            }
+
+            // ONE adaptive Budgets surface that scales from 0
+            // budgets (month-pace card) → 1 budget (full hero) →
+            // 2+ budgets (stacked list with per-budget rows).
+            // No more "hero + breakdown" duplication.
+            //
+            // Order: verdict FIRST, summary second. The design
+            // review flagged that v2 had quietly inverted the
+            // screen's own contract ("am I OK?" is the first
+            // pixel, per the doc comment above) by stacking the
+            // Summary tiles' 28pt totals above the 46pt verdict
+            // hero. The verdict is back on top.
+            budgetsSection
+                .modifier(SectionEntrance(order: 1, animate: animateSections))
+                .sectionScrollTransition()
+
+            // Bottom-side spacer for the cold-start centring
+            // described above. Matches the top spacer 1:1 so the
+            // hero lands at the true vertical middle of the
+            // available space between header and tab bar.
+            if viewModel.expenses.isEmpty {
+                Spacer(minLength: 0)
+            }
+
+            // Everything below the verdict renders in the user's
+            // chosen order (Customize Today sheet), with hidden
+            // sections dropped. `visibleSections` also applies
+            // the per-section content gates (cold start, empty
+            // upcoming window, nil insight) so a section with
+            // nothing to say never renders an empty shell.
+            ForEach(Array(visibleSections.enumerated()), id: \.element) { index, section in
+                sectionView(for: section)
+                    .modifier(SectionEntrance(order: index + 2, animate: animateSections))
+                    .sectionScrollTransition()
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.top, Theme.Spacing.lg)
+        .padding(.bottom, Theme.Spacing.scrollBottomClearance)
+        // Regular width (iPad, Duo inner): centered readable column
+        // instead of a screen-wide status card.
+        .readableColumn()
+        // Animate live layout edits made from the Customize
+        // sheet — sections glide to their new slot / fade out
+        // behind the half-height sheet instead of snapping.
+        .animation(Theme.Motion.emphasized, value: sectionOrder)
+        .animation(Theme.Motion.emphasized, value: hiddenSections)
+        // Conditionally pin the VStack height to the scrollview's
+        // visible extent ONLY in cold-start. With a real expense
+        // list this stays inactive so the normal scroll behaviour,
+        // section heights, and overflow are completely unchanged.
+        .modifier(ColdStartFillsScreenModifier(active: viewModel.expenses.isEmpty))
     }
 
     // MARK: - Header

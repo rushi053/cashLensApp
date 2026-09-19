@@ -103,6 +103,10 @@ struct LargeScreenAddButton: View {
     }
 
     var style: Style = .disc
+    /// Disc diameter, so the button can match a neighbouring icon
+    /// button (Insights' 40pt export disc) instead of sitting next to it
+    /// at a slightly different size.
+    var discDiameter: CGFloat = 34
     let action: () -> Void
 
     var body: some View {
@@ -115,7 +119,7 @@ struct LargeScreenAddButton: View {
                 Image(systemName: "plus")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 34, height: 34)
+                    .frame(width: discDiameter, height: discDiameter)
                     .background(Circle().fill(Color.appPrimary))
             case .pill:
                 HStack(spacing: 6) {
