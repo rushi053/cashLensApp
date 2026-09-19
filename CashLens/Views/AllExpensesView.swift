@@ -3,6 +3,13 @@ import SwiftUI
 struct AllExpensesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.bulkSelectionBinding) private var bulkSelectionBinding
+    /// Regular width as the tab root (iPad, iPhone Duo inner display):
+    /// the ledger becomes the sidebar column of a `NavigationSplitView`
+    /// and the expense editor opens in the detail column instead of a
+    /// sheet. Compact width keeps the stack + sheet flow. Same
+    /// hierarchy either way, so a Duo fold mid-session lands on the
+    /// same screen.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var proManager: ProManager
@@ -787,13 +794,89 @@ struct AllExpensesView: View {
     private func activityNavContainer<Content: View>(
         @ViewBuilder content: () -> Content
     ) -> some View {
-        if isRootTab {
+        if showsEditorInDetailColumn {
+            NavigationSplitView {
+                content()
+                    .navigationSplitViewColumnWidth(min: 340, ideal: 400, max: 480)
+            } detail: {
+                editorDetailColumn
+            }
+            .navigationSplitViewStyle(.balanced)
+        } else if isRootTab {
             content()
         } else {
             NavigationStack {
                 content()
             }
         }
+    }
+
+    /// Root tab + regular width → list | detail. Sheet / deep-link
+    /// presentations (form sheets report compact width on iPad) and
+    /// every compact-width case keep the sheet editor.
+    private var showsEditorInDetailColumn: Bool {
+        isRootTab && horizontalSizeClass == .regular
+    }
+
+    /// The editor sheet is disabled while the detail column owns the
+    /// selection. If the size class flips mid-edit (Duo fold, iPad
+    /// Split View resize) the editor moves columns; unsaved field
+    /// edits in the old presentation are lost — accepted.
+    private var editorSheetItem: Binding<Expense?> {
+        showsEditorInDetailColumn ? .constant(nil) : $selectedExpense
+    }
+
+    @ViewBuilder
+    private var editorDetailColumn: some View {
+        if let expense = selectedExpense {
+            expenseEditor(for: expense)
+                .onDismissRequest { selectedExpense = nil }
+                // Fresh editor state per expense — the `@State`
+                // fields are seeded in `init`, which only reruns on
+                // an identity change.
+                .id(expense.id)
+                .environmentObject(categoryViewModel)
+        } else {
+            ContentUnavailableView(
+                "Select an expense",
+                systemImage: "list.bullet.rectangle",
+                description: Text("Pick an expense from the list to view or edit it.")
+            )
+        }
+    }
+
+    /// The edit form for `expense`, shared by the compact sheet and the
+    /// regular-width detail column.
+    private func expenseEditor(for expense: Expense) -> AddExpenseView {
+        AddExpenseView(
+            viewModel: viewModel,
+            title: expense.title,
+            amount: viewModel.formattedAmount(expense.amount),
+            date: expense.date,
+            selectedCategory: expense.category,
+            selectedCustomCategoryId: expense.customCategoryId,
+            notes: expense.notes ?? "",
+            tags: expense.tags ?? [],
+            isRefund: expense.isRefund,
+            paymentMethod: expense.paymentMethod,
+            receiptImagePath: expense.receiptImagePath,
+            isEditing: true,
+            expenseId: expense.id,
+            onSave: { title, amount, date, category, customCategoryId, notes, tags, isRefund, paymentMethod, receiptImagePath in
+                var updatedExpense = expense
+                updatedExpense.title = title
+                updatedExpense.amount = amount
+                updatedExpense.date = date
+                updatedExpense.category = category
+                updatedExpense.customCategoryId = customCategoryId
+                updatedExpense.notes = notes
+                updatedExpense.tags = tags
+                updatedExpense.isRefund = isRefund
+                updatedExpense.paymentMethod = paymentMethod
+                updatedExpense.receiptImagePath = receiptImagePath
+                viewModel.updateExpense(updatedExpense)
+            }
+        )
     }
 
     var body: some View {
@@ -997,37 +1080,9 @@ struct AllExpensesView: View {
                 }
             }
         }
-        .sheet(item: $selectedExpense) { expense in
-            AddExpenseView(
-                viewModel: viewModel,
-                title: expense.title,
-                amount: viewModel.formattedAmount(expense.amount),
-                date: expense.date,
-                selectedCategory: expense.category,
-                selectedCustomCategoryId: expense.customCategoryId,
-                notes: expense.notes ?? "",
-                tags: expense.tags ?? [],
-                isRefund: expense.isRefund,
-                paymentMethod: expense.paymentMethod,
-                receiptImagePath: expense.receiptImagePath,
-                isEditing: true,
-                expenseId: expense.id,
-                onSave: { title, amount, date, category, customCategoryId, notes, tags, isRefund, paymentMethod, receiptImagePath in
-                    var updatedExpense = expense
-                    updatedExpense.title = title
-                    updatedExpense.amount = amount
-                    updatedExpense.date = date
-                    updatedExpense.category = category
-                    updatedExpense.customCategoryId = customCategoryId
-                    updatedExpense.notes = notes
-                    updatedExpense.tags = tags
-                    updatedExpense.isRefund = isRefund
-                    updatedExpense.paymentMethod = paymentMethod
-                    updatedExpense.receiptImagePath = receiptImagePath
-                    viewModel.updateExpense(updatedExpense)
-                }
-            )
-            .environmentObject(categoryViewModel)
+        .sheet(item: editorSheetItem) { expense in
+            expenseEditor(for: expense)
+                .environmentObject(categoryViewModel)
         }
         .sheet(isPresented: $showingDateRangePicker) {
             dateRangeSheet

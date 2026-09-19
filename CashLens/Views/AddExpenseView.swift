@@ -194,6 +194,12 @@ struct AddExpenseView: View {
     /// compatibility shim needed.
     var onSave: ((String, Double, Date, Expense.Category, UUID?, String?, [String]?, Bool, PaymentMethod?, String?) -> Void)?
     var expenseId: UUID?
+    /// When the editor is hosted somewhere `dismiss()` is a no-op — the
+    /// detail column of Activity's `NavigationSplitView` on regular
+    /// width — the host supplies this to clear its selection instead.
+    /// `nil` (the default, every sheet presentation) keeps the normal
+    /// environment dismiss. Set via `onDismissRequest(_:)`.
+    var onDismissRequest: (() -> Void)? = nil
     @State private var showingDeleteConfirmation = false
     @State private var showingDraftRestored = false
     @State private var showingDuplicateConfirmation = false
@@ -1942,7 +1948,7 @@ struct AddExpenseView: View {
             onClose: {
                 if !isEditing { clearDraft() }
                 cleanupUnsavedReceipt()
-                dismiss()
+                requestDismiss()
             }
         ) {
             headerTrailingSlot
@@ -3391,7 +3397,7 @@ struct AddExpenseView: View {
             )
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                dismiss()
+                requestDismiss()
             }
         } else {
             if isPotentialDuplicate(amountValue: amountValue) {
@@ -3515,7 +3521,7 @@ struct AddExpenseView: View {
         )
         
         // Dismiss the view
-        dismiss()
+        requestDismiss()
     }
     
     /// User-facing name of the category being saved — resolves custom
@@ -3707,7 +3713,30 @@ struct AddExpenseView: View {
         HapticManager.shared.success()
         
         // Dismiss the view
-        dismiss()
+        requestDismiss()
+    }
+
+    // MARK: - Dismissal
+
+    /// Every "we're done here" path funnels through this so a host that
+    /// can't be dismissed (split-view detail column) can still close the
+    /// editor.
+    private func requestDismiss() {
+        if let onDismissRequest {
+            onDismissRequest()
+        } else {
+            dismiss()
+        }
+    }
+}
+
+extension AddExpenseView {
+    /// Overrides the environment `dismiss` for hosts where it would be a
+    /// no-op (see `onDismissRequest`).
+    func onDismissRequest(_ action: @escaping () -> Void) -> AddExpenseView {
+        var copy = self
+        copy.onDismissRequest = action
+        return copy
     }
 }
 
