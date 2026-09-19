@@ -29,7 +29,7 @@ struct AppIconPickerView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.xxl) {
                     heroPreview
@@ -112,11 +112,11 @@ struct AppIconPickerView: View {
     // MARK: - Grid
 
     private var iconGrid: some View {
+        // Adaptive: 62pt minimum (60pt tile + breathing room) still
+        // yields 4 columns at the SE's ~303pt card content width, and
+        // 6 in an iPad form sheet.
         let columns = [
-            GridItem(.flexible(), spacing: Theme.Spacing.lg),
-            GridItem(.flexible(), spacing: Theme.Spacing.lg),
-            GridItem(.flexible(), spacing: Theme.Spacing.lg),
-            GridItem(.flexible(), spacing: Theme.Spacing.lg)
+            GridItem(.adaptive(minimum: 62, maximum: 96), spacing: Theme.Spacing.lg)
         ]
 
         return VStack(alignment: .leading, spacing: Theme.Spacing.lg) {

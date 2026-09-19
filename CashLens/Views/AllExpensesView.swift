@@ -313,10 +313,6 @@ struct AllExpensesView: View {
         displayLimit = min(totalMatchCount, displayLimit + 250)
     }
     
-    private var isIPad: Bool {
-        return UIDevice.current.userInterfaceIdiom == .pad
-    }
-    
     private var quickFiltersRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.sm + 2) {
@@ -782,7 +778,7 @@ struct AllExpensesView: View {
         return "\(totalMatchCount) \(noun) totaling \(viewModel.formattedAmount(totalNetAmount))"
     }
 
-    /// Wraps Activity content in `NavigationView` only when this
+    /// Wraps Activity content in `NavigationStack` only when this
     /// screen is presented as a sheet / deep-link (needs Back +
     /// toolbar). As the tab root, returns content bare so no
     /// `UINavigationController` sits under the tab bar for the
@@ -794,80 +790,35 @@ struct AllExpensesView: View {
         if isRootTab {
             content()
         } else {
-            NavigationView {
+            NavigationStack {
                 content()
-            }
-            .if(isIPad) { view in
-                view.navigationViewStyle(StackNavigationViewStyle())
             }
         }
     }
 
     var body: some View {
-        // PERF: as the Activity tab root, skip `NavigationView`
+        // PERF: as the Activity tab root, skip `NavigationStack`
         // entirely. TabView keeps visited tabs mounted — a hidden
         // UINavigationController still re-lays out on every tab
         // switch (same permanent-stutter class as the old You-tab
         // nav wrapper). Sheet / deep-link presentations keep the
-        // NavigationView so Back + toolbar still work.
+        // NavigationStack so Back + toolbar still work.
+        //
+        // The old iPad-only hand-drawn header (Back / title / calendar
+        // / search) is gone: it existed to dodge `NavigationView`'s
+        // split-column behaviour on iPad, which `NavigationStack`
+        // doesn't have. Every width now gets the same system bar, and
+        // calendar + search already live in `searchAndModeRow`.
         activityNavContainer {
             ZStack {
                 Color.systemBackground.edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0) {
-                    if isIPad {
-                        HStack {
-                            Button(action: {
-                                dismiss()
-                            }) {
-                                HStack(spacing: Theme.Spacing.xs) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Text("Back")
-                                        .fontWeight(.medium)
-                                }
-                                .foregroundColor(.appPrimary)
-                            }
-
-                            Spacer()
-
-                            Text("All Expenses")
-                                .font(Theme.Typography.sectionTitle)
-
-                            Spacer()
-
-                            HStack(spacing: Theme.Spacing.xl) {
-                                Button {
-                                    HapticManager.shared.lightTap()
-                                    showingCalendar = true
-                                } label: {
-                                    Image(systemName: "calendar")
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundColor(.appPrimary)
-                                }
-                                .accessibilityLabel("Browse by calendar")
-
-                                Button {
-                                    HapticManager.shared.lightTap()
-                                    showingQuickSearch = true
-                                } label: {
-                                    Image(systemName: "magnifyingglass")
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundColor(.appPrimary)
-                                }
-                                .accessibilityLabel("Search expenses")
-                            }
-                            .frame(height: 32)
-                        }
-                        .padding(.horizontal, Theme.Spacing.lg)
-                        .padding(.vertical, Theme.Spacing.md)
-                    }
-                    
                     // v2 nav fix: as the Activity tab root the screen
                     // draws its own in-content page title (same
                     // treatment as Today and Insights) instead of a
                     // UIKit large-title bar.
-                    if isRootTab && !isIPad {
+                    if isRootTab {
                         activityPageHeader
                             .opacity(animateContent ? 1 : 0)
                             .offset(y: animateContent ? 0 : -10)
@@ -925,14 +876,13 @@ struct AllExpensesView: View {
                 .animation(Theme.Motion.snappy, value: viewMode)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .navigationTitle(isIPad || isRootTab ? "" : "All Expenses")
+            .navigationTitle(isRootTab ? "" : "All Expenses")
             .navigationBarTitleDisplayMode(.inline)
-            // Hidden on iPad (custom header above) AND as the tab
-            // root, where the in-content `activityPageHeader` draws
-            // the title.
-            .navigationBarHidden(isIPad || isRootTab)
+            // Hidden as the tab root, where the in-content
+            // `activityPageHeader` draws the title.
+            .navigationBarHidden(isRootTab)
             .toolbar {
-                if !isIPad && !isRootTab {
+                if !isRootTab {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button(action: {
                             dismiss()
@@ -1333,7 +1283,7 @@ struct AllExpensesView: View {
     // MARK: - Bulk Category Picker
 
     private var bulkCategoryPickerSheet: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Spacing.sm) {
                     ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
@@ -1420,7 +1370,7 @@ struct AllExpensesView: View {
     // MARK: - Bulk Tag Sheet
 
     private var bulkTagSheet: some View {
-        NavigationView {
+        NavigationStack {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                 Text("Add this tag to \(selectedIds.count) expense\(selectedIds.count == 1 ? "" : "s"). Existing tags are kept.")
                     .font(.subheadline)
@@ -1505,7 +1455,7 @@ struct AllExpensesView: View {
     }
 
     private var dateRangeSheet: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section {
                     ForEach(dateRangePresets, id: \.label) { preset in

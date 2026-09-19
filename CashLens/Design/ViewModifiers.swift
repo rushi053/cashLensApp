@@ -352,6 +352,58 @@ extension View {
     }
 }
 
+// MARK: - Adaptive height (charts)
+//
+// Charts used to ship with fixed heights (200 / 280 / 300) picked per
+// device idiom. That wastes an iPad's width, crowds an iPhone SE, and
+// ignores landscape entirely. This modifier derives the height from
+// the view's *own* width — the one dimension every container (phone,
+// iPad column, Split View pane, Duo inner display) actually gives us —
+// and clamps it, with a tighter cap when the vertical size class is
+// compact (iPhone landscape) so a chart never eats the whole viewport.
+struct AdaptiveHeightModifier: ViewModifier {
+    /// height / width.
+    let ratio: CGFloat
+    let minHeight: CGFloat
+    let maxHeight: CGFloat
+
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @State private var measuredWidth: CGFloat = 0
+
+    /// Compact height (landscape phone): cap at 60% of the regular max.
+    private var effectiveMax: CGFloat {
+        verticalSizeClass == .compact ? max(minHeight, maxHeight * 0.6) : maxHeight
+    }
+
+    private var height: CGFloat {
+        guard measuredWidth > 0 else { return minHeight }
+        return min(max(measuredWidth * ratio, minHeight), effectiveMax)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { newWidth in
+                measuredWidth = newWidth
+            }
+    }
+}
+
+extension View {
+    /// Width-derived, clamped height for charts and other full-width
+    /// visual blocks. `ratio` is height ÷ width.
+    ///
+    /// Reference points: a 350pt-wide phone card at `ratio: 0.55` is
+    /// ~192pt (what the old fixed 200 gave); a 1000pt iPad column hits
+    /// the `maxHeight` cap.
+    func adaptiveHeight(ratio: CGFloat, min minHeight: CGFloat, max maxHeight: CGFloat) -> some View {
+        modifier(AdaptiveHeightModifier(ratio: ratio, minHeight: minHeight, maxHeight: maxHeight))
+    }
+}
+
 // MARK: - Skeleton shimmer
 //
 // Slow opacity breathe for loading skeletons (Today verdict skeleton,

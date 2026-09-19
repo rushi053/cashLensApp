@@ -25,7 +25,12 @@ extension ExpenseViewModel {
         // was just persisted under the same id).
         applyIncrementalInsert(newExpense)
         
-        FeedbackManager.shared.incrementSuccessfulAction()
+        // Rating prompt trigger. Only trust the count once the full
+        // history has published — the launch hot window would fake
+        // the "10th expense" moment.
+        ReviewPromptManager.shared.recordExpenseSaved(
+            totalExpenseCount: isFullyHydrated ? expenses.count : nil
+        )
         return true
     }
     

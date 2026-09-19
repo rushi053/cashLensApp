@@ -111,7 +111,7 @@ struct YearOverYearChart: View {
                         .foregroundStyle(Color.secondary)
                 }
             }
-            .frame(height: 200)
+            .adaptiveHeight(ratio: 0.55, min: 180, max: 320)
         }
     }
 

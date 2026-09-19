@@ -69,9 +69,6 @@ class SubscriptionViewModel: NSObject, ObservableObject {
             persistIfNeeded()
         }
         syncNotification(for: subscription)
-        
-        // Track successful action for feedback request
-        FeedbackManager.shared.incrementSuccessfulAction()
     }
     
     func updateSubscription(_ subscription: Subscription) async {

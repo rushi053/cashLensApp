@@ -24,6 +24,11 @@ struct SpendingHeatmap: View {
     let maxDaysToRender: Int = 365
     
     @State private var selectedCell: DayCell?
+
+    /// Day cell edge. Scales with Dynamic Type (against `.caption2`,
+    /// the weekday label style) so the grid and its labels stay aligned
+    /// and the 18pt tap target isn't frozen at Large text on an AX size.
+    @ScaledMetric(relativeTo: .caption2) private var cellSize: CGFloat = 18
     
     private var calendar: Calendar { .current }
     
@@ -151,19 +156,19 @@ struct SpendingHeatmap: View {
                         Text(day)
                             .font(.caption2)
                             .foregroundColor(.secondary)
-                            .frame(height: 18)
+                            .frame(height: cellSize)
                     }
                 }
                 .padding(.top, 2)
                 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    let rows = Array(repeating: GridItem(.fixed(18), spacing: 8), count: 7)
+                    let rows = Array(repeating: GridItem(.fixed(cellSize), spacing: 8), count: 7)
                     LazyHGrid(rows: rows, spacing: 8) {
                         ForEach(Array(gridCellsRowMajor.enumerated()), id: \.offset) { _, cell in
                             if let cell {
                                 RoundedRectangle(cornerRadius: 5)
                                     .fill(accentColor.opacity(0.12 + (0.78 * cell.intensity)))
-                                    .frame(width: 18, height: 18)
+                                    .frame(width: cellSize, height: cellSize)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 5)
                                             .stroke(selectedCell?.id == cell.id ? accentColor.opacity(0.9) : Color.clear, lineWidth: 2)
@@ -175,7 +180,7 @@ struct SpendingHeatmap: View {
                                     }
                             } else {
                                 Color.clear
-                                    .frame(width: 18, height: 18)
+                                    .frame(width: cellSize, height: cellSize)
                             }
                         }
                     }

@@ -1165,12 +1165,14 @@ struct AddExpenseView: View {
     /// dismisses on selection, and links out to Manage Categories for
     /// edits.
     private var categoryPickerSheet: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
-                let columns = Array(
-                    repeating: GridItem(.flexible(), spacing: Theme.Spacing.sm + 2, alignment: .top),
-                    count: 4
-                )
+                // Adaptive columns: 74pt minimum keeps 4 columns on every
+                // iPhone (SE included, 343pt content width) and grows to
+                // 6 in an iPad form sheet, instead of stretching 4 tiles.
+                let columns = [
+                    GridItem(.adaptive(minimum: 74, maximum: 110), spacing: Theme.Spacing.sm + 2, alignment: .top)
+                ]
 
                 LazyVGrid(columns: columns, alignment: .center, spacing: Theme.Spacing.lg) {
                     ForEach(viewModel.getAvailableDefaultCategories(), id: \.self) { category in
@@ -1844,7 +1846,7 @@ struct AddExpenseView: View {
     /// updated as the user typed.
     @ViewBuilder
     private func fieldEditorSheet(_ editor: FieldEditor) -> some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     switch editor {
@@ -2016,7 +2018,7 @@ struct AddExpenseView: View {
 
     @ViewBuilder
     private var templatesSheet: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
                     HStack(alignment: .firstTextBaseline) {

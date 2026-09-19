@@ -35,7 +35,7 @@ struct ManageCategoriesView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 Color(uiColor: .systemBackground).ignoresSafeArea()
 

@@ -32,9 +32,17 @@ struct ExpenseTrendChart: View {
     /// nearest bucket in `selectedPoint`.
     @State private var rawSelectedDate: Date? = nil
 
-    private var isIPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad
-    }
+    /// Regular width (iPad, Duo inner) gets denser axis labels and a
+    /// roomier empty state. Size class, never device idiom.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    private var isWide: Bool { horizontalSizeClass == .regular }
+
+    /// Height clamps, shared by the chart and its empty state so the
+    /// card doesn't jump when data arrives. Height follows width (see
+    /// `adaptiveHeight`), so iPad / landscape / SE each get their own.
+    private static let heightRatio: CGFloat = 0.55
+    private static let minHeight: CGFloat = 180
+    private static let maxHeight: CGFloat = 320
 
     private var hasData: Bool {
         chartValues.contains { $0 > 0 }
@@ -64,7 +72,7 @@ struct ExpenseTrendChart: View {
         VStack(alignment: .leading, spacing: 16) {
             if hasData {
                 chart
-                    .frame(height: isIPad ? 300 : 200)
+                    .adaptiveHeight(ratio: Self.heightRatio, min: Self.minHeight, max: Self.maxHeight)
             } else {
                 emptyState
             }
@@ -148,11 +156,11 @@ struct ExpenseTrendChart: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: isIPad ? 10 : 6)) { value in
+            AxisMarks(values: .automatic(desiredCount: isWide ? 10 : 6)) { value in
                 AxisValueLabel {
                     if let date = value.as(Date.self) {
                         Text(formatDate(date))
-                            .font(isIPad ? .caption : .caption2)
+                            .font(isWide ? .caption : .caption2)
                             .foregroundColor(.secondary)
                     }
                 }
@@ -179,26 +187,25 @@ struct ExpenseTrendChart: View {
     // MARK: - Empty state
 
     private var emptyState: some View {
-        VStack(spacing: isIPad ? 20 : 14) {
+        VStack(spacing: isWide ? 20 : 14) {
             Image(systemName: "chart.xyaxis.line")
-                .font(.system(size: isIPad ? 44 : 32, weight: .medium))
+                .font(.system(size: isWide ? 44 : 32, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.tertiary)
 
-            VStack(spacing: isIPad ? 8 : 4) {
+            VStack(spacing: isWide ? 8 : 4) {
                 Text("No trend data yet")
-                    .font(isIPad ? .title3.weight(.semibold) : Theme.Typography.rowTitle)
+                    .font(isWide ? .title3.weight(.semibold) : Theme.Typography.rowTitle)
                     .foregroundColor(.primary)
 
                 Text("Add more expenses to see your spending trends.")
-                    .font(isIPad ? .subheadline : .footnote)
+                    .font(isWide ? .subheadline : .footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, isIPad ? 24 : 0)
+                    .padding(.horizontal, isWide ? 24 : 0)
             }
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: isIPad ? 300 : 200)
+        .adaptiveHeight(ratio: Self.heightRatio, min: Self.minHeight, max: Self.maxHeight)
         .background(Color.secondarySystemBackground.opacity(0.5))
         .cornerRadius(16)
     }

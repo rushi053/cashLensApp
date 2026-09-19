@@ -31,16 +31,15 @@ enum UserDefaultsKeys {
     /// in `QuickSearchView`. Capped to 5; deduped; most-recent-first.
     static let quickSearchRecents = "quick_search_recents"
     
-    // MARK: - Feedback
-    /// Legacy (pre-2.0): permanent "never ask again" flag. Read once for
-    /// migration in `FeedbackManager`, never written anymore.
-    static let hasRequestedFeedback = "hasRequestedFeedback"
-    static let successfulActionsCount = "successfulActionsCount"
-    static let lastFeedbackAttempt = "lastFeedbackAttempt"
-    static let feedbackPromptCount = "feedbackPromptCount"
-    static let feedbackUsageDayCount = "feedbackUsageDayCount"
-    static let feedbackLastUsageDay = "feedbackLastUsageDay"
-    static let feedbackLegacyMigrated = "feedbackLegacyMigrated"
+    // MARK: - Review prompt
+    /// Marketing version (`CFBundleShortVersionString`) the in-app
+    /// rating prompt was last requested for. `ReviewPromptManager` asks
+    /// at most once per version. (Pre-2.2 `FeedbackManager` keys —
+    /// `hasRequestedFeedback`, `successfulActionsCount`,
+    /// `lastFeedbackAttempt`, `feedbackPromptCount`,
+    /// `feedbackUsageDayCount`, `feedbackLastUsageDay`,
+    /// `feedbackLegacyMigrated` — are orphaned and harmless.)
+    static let reviewPromptAskedVersion = "reviewPromptAskedVersion"
     
     // MARK: - Notifications
     static let weeklySummaryEnabled = "weeklySummaryEnabled"

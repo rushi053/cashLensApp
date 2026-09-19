@@ -60,7 +60,7 @@ struct ExpenseCalendarView: View {
                 // context — no NavigationView, no sheet chrome.
                 calendarContent
             } else {
-                NavigationView {
+                NavigationStack {
                     calendarContent
                         .navigationTitle("Calendar")
                         .navigationBarTitleDisplayMode(.inline)

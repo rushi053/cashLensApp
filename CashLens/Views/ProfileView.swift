@@ -434,7 +434,7 @@ struct ProfileView: View {
                     Text("Upgrade to Pro")
                         .font(Theme.Typography.rowTitle)
                         .foregroundColor(.primary)
-                    Text("Unlimited budgets, receipts, PDF reports & more")
+                    Text("Budgets, receipt scanning, forecasts, PDF reports & more")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -1018,7 +1018,7 @@ struct ProfileView: View {
             AboutView()
         }
         .sheet(isPresented: $showingDonationSheet) {
-            NavigationView { DonationView() }
+            NavigationStack { DonationView() }
         }
         // Attached here (not on the ScrollView) so it can't collide
         // with the `alert(item:)` that owns the clear-all-data flow.

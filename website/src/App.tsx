@@ -319,7 +319,7 @@ export default function App() {
             <div className="footer-brand">CashLens</div>
             <p>
               Privacy-first expense tracking for iPhone & iPad. Built by{" "}
-              <a href="mailto:email@rushiraj.me">Rushiraj Jadeja</a>.
+              <a href="mailto:rjadeja053@gmail.com">Rushiraj Jadeja</a>.
             </p>
           </div>
           <div>

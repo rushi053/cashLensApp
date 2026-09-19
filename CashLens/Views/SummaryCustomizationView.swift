@@ -47,7 +47,7 @@ struct SummaryCustomizationView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 Color(uiColor: .systemBackground).ignoresSafeArea()
 
@@ -232,9 +232,11 @@ struct SummaryCustomizationView: View {
                 }
             }
 
+            // Adaptive: 2 columns on every iPhone (160pt min at ≥ 350pt
+            // content width), 4+ on an iPad column, an even count on
+            // the Duo inner display's usual widths.
             LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: Theme.Spacing.md),
-                GridItem(.flexible(), spacing: Theme.Spacing.md)
+                GridItem(.adaptive(minimum: 160), spacing: Theme.Spacing.md)
             ], spacing: Theme.Spacing.md) {
                 ForEach(availableItems) { item in
                     CategorySelectionCard(
@@ -358,8 +360,12 @@ private struct CategorySelectionCard: View {
     let isDisabled: Bool
     let onTap: () -> Void
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .title2) private var compactCardHeight: CGFloat = 144
+    @ScaledMetric(relativeTo: .title2) private var regularCardHeight: CGFloat = 158
+
     private var cardHeight: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 158 : 144
+        horizontalSizeClass == .regular ? regularCardHeight : compactCardHeight
     }
 
     var body: some View {

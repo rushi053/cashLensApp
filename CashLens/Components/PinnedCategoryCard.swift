@@ -58,8 +58,16 @@ struct PinnedCategoryCard: View {
     /// Fixed outer height. Identical regardless of whether a budget bar is
     /// rendered — when absent we reserve the bar's footprint as whitespace so
     /// every tile in the grid reads as exactly the same size.
+    ///
+    /// Regular width (iPad, Duo inner) gets the taller tile; the value
+    /// follows Dynamic Type so a larger text size doesn't clip the
+    /// amount line. Size class, never device idiom.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .title2) private var compactCardHeight: CGFloat = 156
+    @ScaledMetric(relativeTo: .title2) private var regularCardHeight: CGFloat = 172
+
     private var cardHeight: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 172 : 156
+        horizontalSizeClass == .regular ? regularCardHeight : compactCardHeight
     }
 
     private let iconSize: CGFloat = 40
