@@ -311,7 +311,11 @@ struct AllExpensesView: View {
                         } else {
                             groups.append((day, [e]))
                             currentDayStart = day
+                            // Start of the *next* day (not `day + 1 day`):
+                            // keeps 00:00-DST zones identical to the old
+                            // per-row `startOfDay` equality.
                             currentDayEnd = calendar.date(byAdding: .day, value: 1, to: day)
+                                .map { calendar.startOfDay(for: $0) }
                         }
                     }
                 }

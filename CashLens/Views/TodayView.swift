@@ -2534,10 +2534,13 @@ struct TodayInsight: Sendable, Equatable {
         let todayStart = cal.startOfDay(for: now)
         // PERF: `[todayStart, todayEnd)` computed once with the same
         // calendar is exactly what `isDate(_:inSameDayAs:)` answers per
-        // row (start-of-day + one calendar day, so 23/25-hour DST days
-        // are handled the same way), without a Calendar call per
-        // expense — this pass runs over all N on every recompute.
-        let todayEnd = cal.date(byAdding: .day, value: 1, to: todayStart) ?? now
+        // row, without a Calendar call per expense — this pass runs
+        // over all N on every recompute. The end is the *start of* the
+        // next day, not `todayStart + 1 day`: in zones whose DST switch
+        // is at 00:00 (Santiago, Asunción, Havana) `startOfDay` on the
+        // spring-forward day is 01:00 and adding a day keeps that wall
+        // time, which would swallow the first hour of tomorrow.
+        let todayEnd = cal.startOfDay(for: cal.date(byAdding: .day, value: 1, to: todayStart) ?? now)
         let weekStart = cal.date(byAdding: .day, value: -7, to: todayStart) ?? todayStart
         let monthInterval = cal.dateInterval(of: .month, for: now) ?? DateInterval(start: now, end: now)
 
