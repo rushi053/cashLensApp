@@ -5,9 +5,10 @@ import Combine
 /// `FeedbackManager`).
 ///
 /// Policy (2.2):
-/// - Ask **once per marketing version**, at a delight moment: the save
-///   that brings the user to `expenseThreshold` expenses, or a no-spend
-///   streak reaching `streakThreshold` days — whichever happens first.
+/// - Ask **once per major.minor version** (2.2 and 2.2.1 share one
+///   ask), at a delight moment: the save that brings the user to
+///   `expenseThreshold` expenses, or a no-spend streak reaching
+///   `streakThreshold` days — whichever happens first.
 /// - Never during onboarding, never while a paywall is on screen, and
 ///   never within `sheetQuietInterval` of a sheet dismissing (the ask
 ///   should land on a settled screen, not on top of an animation).
@@ -15,8 +16,11 @@ import Combine
 ///   final backstop.
 ///
 /// The ask itself is Apple's one-tap star sheet: `MainTabView` observes
-/// `shouldRequestReview` and calls the SwiftUI `requestReview`
-/// environment action. This type only answers *when*.
+/// `shouldRequestReview`, applies its own "nothing else is presented"
+/// check, then calls `markRequested()` + the SwiftUI `requestReview`
+/// action — or `deferWhilePresenting()` to try again later. The version
+/// key is written by `markRequested()`, so a deferred ask is never
+/// spent invisibly.
 ///
 /// Not `@MainActor`-isolated on purpose: triggers arrive from
 /// `ExpenseViewModel` (not main-actor bound). All published writes are
@@ -43,13 +47,15 @@ final class ReviewPromptManager: ObservableObject {
 
     // MARK: - State
 
-    /// `CFBundleShortVersionString` — the "asked for version X" key.
-    private static var marketingVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+    /// `CFBundleShortVersionString` truncated to major.minor — the
+    /// "asked for version X" key, so a point update does not re-ask.
+    private static var askVersionKey: String {
+        let full = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        return full.split(separator: ".").prefix(2).joined(separator: ".")
     }
 
     private var hasAskedForCurrentVersion: Bool {
-        defaults.string(forKey: UserDefaultsKeys.reviewPromptAskedVersion) == Self.marketingVersion
+        defaults.string(forKey: UserDefaultsKeys.reviewPromptAskedVersion) == Self.askVersionKey
     }
 
     private var hasCompletedOnboarding: Bool {
@@ -103,6 +109,21 @@ final class ReviewPromptManager: ObservableObject {
         DispatchQueue.main.async { self.shouldRequestReview = false }
     }
 
+    /// The observer is about to call `requestReview()`: spend this
+    /// version's ask.
+    func markRequested() {
+        defaults.set(Self.askVersionKey, forKey: UserDefaultsKeys.reviewPromptAskedVersion)
+        isPending = false
+    }
+
+    /// The observer found something presented (sheet, picker, cover)
+    /// and did not ask. Stay pending but don't spin: the next trigger
+    /// or `noteSheetDismissed()` reschedules.
+    func deferWhilePresenting() {
+        scheduledFire?.cancel()
+        isPending = true
+    }
+
     // MARK: - Scheduling
 
     private func arm() {
@@ -134,21 +155,21 @@ final class ReviewPromptManager: ObservableObject {
             schedule()
             return
         }
-        // Record the ask up front so a re-entrant trigger can't
-        // double-fire for this version.
-        defaults.set(Self.marketingVersion, forKey: UserDefaultsKeys.reviewPromptAskedVersion)
-        isPending = false
+        // Stays pending until the observer calls `markRequested()` (or
+        // `deferWhilePresenting()`), so a blocked ask is not spent.
         shouldRequestReview = true
     }
 
     // MARK: - Debug
 
+    #if DEBUG
     /// Diagnostics-only: forget that this version was asked.
     func resetForDebugging() {
         defaults.removeObject(forKey: UserDefaultsKeys.reviewPromptAskedVersion)
         isPending = false
         scheduledFire?.cancel()
         DispatchQueue.main.async { self.shouldRequestReview = false }
-        print("🔄 Review prompt state reset for testing")
+        print("Review prompt state reset for testing")
     }
+    #endif
 }

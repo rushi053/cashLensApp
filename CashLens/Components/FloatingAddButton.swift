@@ -6,20 +6,23 @@ struct FloatingAddButton: View {
     /// slightly larger hit target. Never derived from device idiom.
     let isRegularWidth: Bool
 
-    /// Hit target and glyph follow Dynamic Type (relative to `.title`
-    /// so they grow with headings, not body copy, and stay proportional).
-    @ScaledMetric(relativeTo: .title) private var compactDiameter: CGFloat = 56
-    @ScaledMetric(relativeTo: .title) private var regularDiameter: CGFloat = 66
-    @ScaledMetric(relativeTo: .title) private var compactGlyph: CGFloat = 24
-    @ScaledMetric(relativeTo: .title) private var regularGlyph: CGFloat = 28
+    /// The disc is a fixed 56 / 66pt (already a generous single-glyph
+    /// target); letting it scale with `.title` made it ~130pt at AX5
+    /// and covered a third of an SE. Only the "+" glyph follows Dynamic
+    /// Type, capped so it always fits inside the disc.
+    private var diameter: CGFloat { isRegularWidth ? 66 : 56 }
+
+    @ScaledMetric(relativeTo: .body) private var compactGlyph: CGFloat = 24
+    @ScaledMetric(relativeTo: .body) private var regularGlyph: CGFloat = 28
     
     init(action: @escaping () -> Void, isRegularWidth: Bool = false) {
         self.action = action
         self.isRegularWidth = isRegularWidth
     }
 
-    private var diameter: CGFloat { isRegularWidth ? regularDiameter : compactDiameter }
-    private var glyphSize: CGFloat { isRegularWidth ? regularGlyph : compactGlyph }
+    private var glyphSize: CGFloat {
+        isRegularWidth ? min(regularGlyph, 40) : min(compactGlyph, 34)
+    }
     
     var body: some View {
         Button(action: {

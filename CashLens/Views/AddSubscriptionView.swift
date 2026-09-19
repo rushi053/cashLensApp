@@ -146,6 +146,8 @@ struct AddSubscriptionView: View {
         SheetHeader(
             eyebrow: "Subscription",
             title: isEditing ? "Editing" : "Add New",
+            // Esc belongs to the picker while one is up.
+            escapeClosesSheet: !showingCategoryPicker && !showingDatePicker,
             onClose: { dismiss() }
         ) {
             headerTrailingSlot
@@ -566,6 +568,9 @@ struct AddSubscriptionView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { showingCategoryPicker = false }
+                        // Safe: the presenting sheet's close button drops
+                        // its Esc shortcut while this picker is up.
+                        .keyboardShortcut(.cancelAction)
                         .fontWeight(.semibold)
                         .foregroundColor(.appPrimary)
                 }

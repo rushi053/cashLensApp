@@ -29,6 +29,11 @@ struct SheetHeader<Trailing: View>: View {
     var subtitle: String? = nil
     var showsCloseButton: Bool = true
     var showsDivider: Bool = true
+    /// Whether Esc triggers `onClose`. A sheet that has presented
+    /// another sheet (category picker, field editor…) passes `false`
+    /// so only the topmost layer answers Esc — SwiftUI does not define
+    /// which of several live `.cancelAction` shortcuts wins.
+    var escapeClosesSheet: Bool = true
     var onClose: () -> Void
     @ViewBuilder var trailing: () -> Trailing
 
@@ -38,6 +43,7 @@ struct SheetHeader<Trailing: View>: View {
         subtitle: String? = nil,
         showsCloseButton: Bool = true,
         showsDivider: Bool = true,
+        escapeClosesSheet: Bool = true,
         onClose: @escaping () -> Void,
         @ViewBuilder trailing: @escaping () -> Trailing = { SheetHeaderSpacer() }
     ) {
@@ -46,6 +52,7 @@ struct SheetHeader<Trailing: View>: View {
         self.subtitle = subtitle
         self.showsCloseButton = showsCloseButton
         self.showsDivider = showsDivider
+        self.escapeClosesSheet = escapeClosesSheet
         self.onClose = onClose
         self.trailing = trailing
     }
@@ -78,7 +85,7 @@ struct SheetHeader<Trailing: View>: View {
 
             HStack {
                 if showsCloseButton {
-                    SheetCloseButton(action: onClose)
+                    SheetCloseButton(action: onClose, respondsToEscape: escapeClosesSheet)
                 } else {
                     SheetHeaderSpacer()
                 }
@@ -108,6 +115,9 @@ struct SheetHeader<Trailing: View>: View {
 /// sheets (Paywall) that place the X alone without a title strip.
 struct SheetCloseButton: View {
     var action: () -> Void
+    /// See `SheetHeader.escapeClosesSheet`. Default on: a lone close
+    /// button (paywall) is always the topmost layer.
+    var respondsToEscape: Bool = true
 
     var body: some View {
         Button {
@@ -126,7 +136,9 @@ struct SheetCloseButton: View {
         // Esc on a hardware keyboard closes the sheet through the same
         // action as the tap — so screens with custom dismiss handling
         // (`AddExpenseView.onDismissRequest`) behave identically.
-        .keyboardShortcut(.cancelAction)
+        // Passing `nil` removes the shortcut while a layer above owns
+        // Esc.
+        .keyboardShortcut(respondsToEscape ? KeyboardShortcut.cancelAction : nil)
         .accessibilityLabel("Close")
     }
 }

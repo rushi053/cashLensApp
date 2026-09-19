@@ -195,7 +195,7 @@ struct AddExpenseView: View {
     var onSave: ((String, Double, Date, Expense.Category, UUID?, String?, [String]?, Bool, PaymentMethod?, String?) -> Void)?
     var expenseId: UUID?
     /// When the editor is hosted somewhere `dismiss()` is a no-op — the
-    /// detail column of Activity's `NavigationSplitView` on regular
+    /// detail pane of Activity's two-pane layout on regular
     /// width — the host supplies this to clear its selection instead.
     /// `nil` (the default, every sheet presentation) keeps the normal
     /// environment dismiss. Set via `onDismissRequest(_:)`.
@@ -1219,6 +1219,9 @@ struct AddExpenseView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { showingCategoryPicker = false }
+                        // Safe: the presenting sheet's close button drops
+                        // its Esc shortcut while this picker is up.
+                        .keyboardShortcut(.cancelAction)
                         .fontWeight(.semibold)
                         .foregroundColor(.appPrimary)
                 }
@@ -1951,6 +1954,7 @@ struct AddExpenseView: View {
         SheetHeader(
             eyebrow: "Expense",
             title: isEditing ? "Editing" : "Add New",
+            escapeClosesSheet: !hasPresentationAbove,
             onClose: {
                 if !isEditing { clearDraft() }
                 cleanupUnsavedReceipt()
@@ -1960,6 +1964,19 @@ struct AddExpenseView: View {
             headerTrailingSlot
         }
         .animation(Theme.Motion.snappy, value: canSaveCurrentAsTemplate)
+    }
+
+    /// True while anything is presented above this editor — Esc then
+    /// belongs to that layer, not to this sheet's close button.
+    private var hasPresentationAbove: Bool {
+        showingScanner
+            || showingReceiptViewer
+            || showingReceiptPaywall
+            || showingTemplatesSheet
+            || showingManageCategories
+            || showingCategoryPicker
+            || showingDatePicker
+            || activeFieldEditor != nil
     }
 
     /// Trailing header slot — trash button when editing, otherwise

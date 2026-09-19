@@ -128,6 +128,18 @@ struct StatisticsView: View {
     private var isWideLayout: Bool {
         horizontalSizeClass == .regular
     }
+
+    /// Measured content width of the scroll view. Regular width alone
+    /// is not enough for two columns: an 11" iPad at 50/50 (~597pt) or
+    /// the Duo inner display (~626pt) are regular yet would give ~260pt
+    /// columns — narrower than an iPhone SE. Two columns need ≥ 640pt.
+    @State private var measuredContentWidth: CGFloat = 0
+
+    private static let twoColumnMinimumWidth: CGFloat = 640
+
+    private var usesTwoColumns: Bool {
+        isWideLayout && measuredContentWidth >= Self.twoColumnMinimumWidth
+    }
     
     // MARK: - Main Body
     //
@@ -152,6 +164,11 @@ struct StatisticsView: View {
                 .padding(.bottom, Theme.Spacing.scrollBottomClearance)
                 .frame(maxWidth: isWideLayout ? 1200 : .infinity)
                 .frame(maxWidth: .infinity)
+            }
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { newWidth in
+                measuredContentWidth = newWidth
             }
             .background(Color.systemBackground)
             .onAppear {
@@ -1326,7 +1343,7 @@ struct StatisticsView: View {
             }
 
             LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: Theme.Spacing.md), count: isWideLayout ? 2 : 1),
+                columns: Array(repeating: GridItem(.flexible(), spacing: Theme.Spacing.md), count: usesTwoColumns ? 2 : 1),
                 spacing: Theme.Spacing.md
             ) {
                 ForEach(insights) { insight in

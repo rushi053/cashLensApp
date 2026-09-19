@@ -4,8 +4,8 @@ struct AllExpensesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.bulkSelectionBinding) private var bulkSelectionBinding
     /// Regular width as the tab root (iPad, iPhone Duo inner display):
-    /// the ledger becomes the sidebar column of a `NavigationSplitView`
-    /// and the expense editor opens in the detail column instead of a
+    /// the ledger becomes the leading pane of a two-pane `HStack` and
+    /// the expense editor opens in the trailing pane instead of a
     /// sheet. Compact width keeps the stack + sheet flow. Same
     /// hierarchy either way, so a Duo fold mid-session lands on the
     /// same screen.
@@ -20,6 +20,10 @@ struct AllExpensesView: View {
     /// sheet-presented call sites pass `false` (default) and keep
     /// their existing behavior.
     let isRootTab: Bool
+    /// Tab-root only: opens the app-level Add Expense sheet. Used by the
+    /// regular-width ledger header, where `MainTabView` hides the
+    /// floating "+" (it would sit on the detail editor's Save button).
+    let onRequestAddExpense: (() -> Void)?
     @State private var sortOption: SortOption = .dateDesc
     @State private var animateContent = false
     /// Guards the `.onAppear` work (entrance animation + initial
@@ -622,6 +626,27 @@ struct AllExpensesView: View {
             if viewMode == .list {
                 selectModeButton
             }
+
+            // Regular width: the root FAB is hidden on this tab (it
+            // overlapped the detail editor's Save button), so the
+            // ledger header carries the add action instead.
+            if showsEditorInDetailColumn, let onRequestAddExpense {
+                Button {
+                    HapticManager.shared.lightTap()
+                    onRequestAddExpense()
+                } label: {
+                    Label("Add expense", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.appPrimary))
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.lift)
+                .accessibilityLabel("Add expense")
+                .padding(.leading, Theme.Spacing.sm)
+            }
         }
         .padding(.horizontal, Theme.Spacing.lg)
         .padding(.top, Theme.Spacing.xl)
@@ -786,8 +811,14 @@ struct AllExpensesView: View {
     }
 
     /// Navigation container for Activity content:
-    ///   • tab root, regular width → `NavigationSplitView` (ledger as
-    ///     the sidebar column, editor in the detail column);
+    ///   • tab root, regular width → plain two-pane `HStack` (ledger |
+    ///     hairline | editor). Deliberately *not* `NavigationSplitView`:
+    ///     nesting one inside a `.sidebarAdaptable` `TabView` is a
+    ///     composition Apple has said is unsupported (top tab bar over
+    ///     the split's bars, double sidebars), and with both bars hidden
+    ///     a collapsed ledger column would have had no toggle to bring
+    ///     it back. The HStack never collapses, so the ledger is always
+    ///     on screen; no `UINavigationController` is created either;
     ///   • tab root, compact width → bare content, so no
     ///     `UINavigationController` sits under the tab bar for the
     ///     rest of the session (see PERF note in `body`);
@@ -797,17 +828,20 @@ struct AllExpensesView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         if showsEditorInDetailColumn {
-            NavigationSplitView {
+            HStack(spacing: 0) {
                 content()
                     // Narrow-regular windows (11" iPad at 50/50 ≈ 597pt,
                     // Duo inner ≈ 626pt) must still leave ≥ ~300pt for
                     // the editor, so the ledger yields first. Anything
                     // narrower than that is compact and never gets here.
-                    .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
-            } detail: {
+                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
+
+                Divider()
+
                 editorDetailColumn
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(uiColor: .systemBackground))
             }
-            .navigationSplitViewStyle(.balanced)
         } else if isRootTab {
             content()
         } else {
@@ -1731,8 +1765,10 @@ struct AllExpensesView: View {
                         }
                     }
                     
-                    // Bottom padding — extra room when the bulk action bar is visible.
-                    Color.clear.frame(height: isSelecting ? 96 : 40)
+                    // Bottom clearance for the FAB (or the bulk action
+                    // bar, which is the same height class). The old 40
+                    // left the last row's amount under the FAB.
+                    Color.clear.frame(height: Theme.Spacing.scrollBottomClearance)
                 }
             }
             // `scrollToTop` is the one-shot signal every filter/sort
@@ -1928,9 +1964,14 @@ struct AllExpensesView: View {
         }
     }
 
-    init(initialFilter: AllExpensesInitialFilter? = nil, isRootTab: Bool = false) {
+    init(
+        initialFilter: AllExpensesInitialFilter? = nil,
+        isRootTab: Bool = false,
+        onRequestAddExpense: (() -> Void)? = nil
+    ) {
         self.initialFilter = initialFilter
         self.isRootTab = isRootTab
+        self.onRequestAddExpense = onRequestAddExpense
     }
 }
 

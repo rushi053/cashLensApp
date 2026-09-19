@@ -166,10 +166,16 @@ struct MainTabView: View {
         .onReceive(reviewPromptManager.$shouldRequestReview) { shouldShow in
             guard shouldShow else { return }
             reviewPromptManager.consume()
-            // Never over the app-lock cover. The version's ask is spent
-            // either way — this can only happen if the app was locked
-            // within the 2s settle window, which is vanishingly rare.
-            guard !AppLockManager.shared.isLocked else { return }
+            // Never over the app-lock cover or on top of anything else
+            // this view (or the app root) has presented: a first-run
+            // currency picker, the auto-paywall, win-back, donor thanks,
+            // an open Add Expense sheet, or a deep-link sheet. The ask
+            // stays pending and is retried at the next trigger.
+            guard !AppLockManager.shared.isLocked, !hasPresentation else {
+                reviewPromptManager.deferWhilePresenting()
+                return
+            }
+            reviewPromptManager.markRequested()
             requestReview()
         }
         .sheet(isPresented: $showingAutoPaywall) {
@@ -206,12 +212,25 @@ struct MainTabView: View {
         }
     }
 
+    /// True while this view (or the app root) has something presented
+    /// above the tab shell. Presenting a second sheet from the same
+    /// view is silently dropped by SwiftUI and leaves the flag stuck
+    /// `true`, so both the rating ask and Cmd-N wait for this to clear.
+    private var hasPresentation: Bool {
+        showingAddExpense
+            || showingAutoPaywall
+            || showingCurrencyPicker
+            || proManager.shouldShowWinBack
+            || proManager.pendingDonorThanks != nil
+            || DeepLinkRouter.shared.route != nil
+    }
+
     private func handleKeyboardCommand(_ command: AppCommandCenter.Command) {
         guard !AppLockManager.shared.isLocked,
               UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding) else { return }
         switch command {
         case .newExpense:
-            guard !showingAddExpense else { return }
+            guard !hasPresentation else { return }
             showingAddExpense = true
         case .openSettings:
             selectedTab = .you
@@ -278,8 +297,15 @@ struct MainTabView: View {
     /// Also hidden in bulk-selection mode — Activity surfaces an
     /// inline action bar at the bottom there, and a floating "+"
     /// would overlap (and visually compete with) those actions.
+    ///
+    /// And hidden on Activity at regular width: the detail column hosts
+    /// the expense editor, whose "Update Expense" button occupies the
+    /// same bottom-trailing corner. The ledger header carries "+" there
+    /// instead (`AllExpensesView.onRequestAddExpense`).
     private var shouldShowFAB: Bool {
-        selectedTab != .you && !isBulkSelecting
+        guard selectedTab != .you, !isBulkSelecting else { return false }
+        if selectedTab == .activity && isRegularWidth { return false }
+        return true
     }
 
     // MARK: - iOS 26+ native Liquid Glass tab bar
@@ -305,7 +331,7 @@ struct MainTabView: View {
             }
 
             SwiftUI.Tab("Activity", systemImage: "list.bullet.rectangle.fill", value: Tab.activity) {
-                AllExpensesView(isRootTab: true)
+                AllExpensesView(isRootTab: true, onRequestAddExpense: { showingAddExpense = true })
                     .environmentObject(viewModel)
                     .environmentObject(categoryViewModel)
                     .id("activity-\(themeId)")
@@ -398,7 +424,16 @@ struct MainTabView: View {
         // so child views re-evaluate `Color.appPrimary` on a theme change.
         let themeId = themeStore.currentTheme.id
 
+        // The hidden UITabBar contributes no inset and the enclosing
+        // ZStack ignores the bottom safe area, so the custom bar's
+        // footprint is published as safe area on *each tab root* (not
+        // on the `TabView`: safe-area modifiers on the UIKit-backed
+        // container have a history of not reaching the hosted tab
+        // content). Tab-root scroll views then clear the bar
+        // automatically, same contract as the iOS 26 system bar.
         return GeometryReader { geometry in
+            let legacyBarInset = tabBarHeight + geometry.safeAreaInsets.bottom
+
             ZStack {
                 // Main content
                 TabView(selection: $selectedTab) {
@@ -408,30 +443,27 @@ struct MainTabView: View {
                         onRequestAddExpense: { showingAddExpense = true }
                     )
                         .environmentObject(viewModel)
+                        .safeAreaPadding(.bottom, legacyBarInset)
                         .tag(Tab.today)
                         .id("today-\(themeId)")
 
-                    AllExpensesView(isRootTab: true)
+                    AllExpensesView(isRootTab: true, onRequestAddExpense: { showingAddExpense = true })
                         .environmentObject(viewModel)
                         .environmentObject(categoryViewModel)
+                        .safeAreaPadding(.bottom, legacyBarInset)
                         .tag(Tab.activity)
                         .id("activity-\(themeId)")
 
                     StatisticsView()
                         .environmentObject(viewModel)
+                        .safeAreaPadding(.bottom, legacyBarInset)
                         .tag(Tab.insights)
                         .id("insights-\(themeId)")
 
                     youTabRoot(themeId: themeId)
+                        .safeAreaPadding(.bottom, legacyBarInset)
                         .tag(Tab.you)
                 }
-                // The hidden UITabBar contributes no inset and the
-                // enclosing ZStack ignores the bottom safe area, so the
-                // custom bar's footprint is published as safe area here.
-                // Tab-root scroll views then clear it automatically
-                // (same contract as the iOS 26 system bar) instead of
-                // each hard-coding a 100pt bottom pad.
-                .safeAreaPadding(.bottom, tabBarHeight + geometry.safeAreaInsets.bottom)
                 .environment(\.bulkSelectionBinding, $isBulkSelecting)
                 .animation(Theme.Motion.snappy, value: isBulkSelecting)
 
