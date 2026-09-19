@@ -37,6 +37,20 @@ struct SheetHeader<Trailing: View>: View {
     var onClose: () -> Void
     @ViewBuilder var trailing: () -> Trailing
 
+    /// Laid-out width of the trailing control. The title stack used to
+    /// reserve a fixed 44pt per side, which assumes both side controls
+    /// are the 36pt disc/spacer. A "Continue" / "Done" pill is ~90pt, so
+    /// on a narrow content width (iPhone Duo outer display with the
+    /// vertical system bar ≈ 340pt; also an SE with a long title) the
+    /// centred title ran underneath it. The title now yields to the
+    /// wider of the two sides. Starts at 36 so the first frame matches
+    /// the old geometry exactly for the common 36pt trailing slot.
+    @State private var trailingWidth: CGFloat = 36
+
+    private var titleSidePadding: CGFloat {
+        max(44, trailingWidth + Theme.Spacing.sm)
+    }
+
     init(
         eyebrow: String? = nil,
         title: String,
@@ -80,8 +94,9 @@ struct SheetHeader<Trailing: View>: View {
                 }
             }
             // Keep the title clear of the side controls even on
-            // narrow devices / large Dynamic Type.
-            .padding(.horizontal, 44)
+            // narrow devices / large Dynamic Type. Symmetric so the
+            // title stays optically centred; sized by the wider side.
+            .padding(.horizontal, titleSidePadding)
 
             HStack {
                 if showsCloseButton {
@@ -91,6 +106,13 @@ struct SheetHeader<Trailing: View>: View {
                 }
                 Spacer()
                 trailing()
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.width
+                    } action: { newWidth in
+                        if newWidth != trailingWidth {
+                            trailingWidth = newWidth
+                        }
+                    }
             }
         }
         .padding(.horizontal, Theme.Spacing.xl)
