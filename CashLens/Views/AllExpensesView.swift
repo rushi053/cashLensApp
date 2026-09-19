@@ -20,6 +20,10 @@ struct AllExpensesView: View {
     /// sheet-presented call sites pass `false` (default) and keep
     /// their existing behavior.
     let isRootTab: Bool
+    /// Tab-root only: opens the app-level Add Expense sheet. Used by the
+    /// regular-width ledger header, where `MainTabView` hides the
+    /// floating "+" (it would sit on the detail editor's Save button).
+    let onRequestAddExpense: (() -> Void)?
     @State private var sortOption: SortOption = .dateDesc
     @State private var animateContent = false
     /// Guards the `.onAppear` work (entrance animation + initial
@@ -621,6 +625,27 @@ struct AllExpensesView: View {
 
             if viewMode == .list {
                 selectModeButton
+            }
+
+            // Regular width: the root FAB is hidden on this tab (it
+            // overlapped the detail editor's Save button), so the
+            // ledger header carries the add action instead.
+            if showsEditorInDetailColumn, let onRequestAddExpense {
+                Button {
+                    HapticManager.shared.lightTap()
+                    onRequestAddExpense()
+                } label: {
+                    Label("Add expense", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.appPrimary))
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.lift)
+                .accessibilityLabel("Add expense")
+                .padding(.leading, Theme.Spacing.sm)
             }
         }
         .padding(.horizontal, Theme.Spacing.lg)
@@ -1928,9 +1953,14 @@ struct AllExpensesView: View {
         }
     }
 
-    init(initialFilter: AllExpensesInitialFilter? = nil, isRootTab: Bool = false) {
+    init(
+        initialFilter: AllExpensesInitialFilter? = nil,
+        isRootTab: Bool = false,
+        onRequestAddExpense: (() -> Void)? = nil
+    ) {
         self.initialFilter = initialFilter
         self.isRootTab = isRootTab
+        self.onRequestAddExpense = onRequestAddExpense
     }
 }
 

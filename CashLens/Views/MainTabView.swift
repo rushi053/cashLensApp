@@ -278,8 +278,15 @@ struct MainTabView: View {
     /// Also hidden in bulk-selection mode — Activity surfaces an
     /// inline action bar at the bottom there, and a floating "+"
     /// would overlap (and visually compete with) those actions.
+    ///
+    /// And hidden on Activity at regular width: the detail column hosts
+    /// the expense editor, whose "Update Expense" button occupies the
+    /// same bottom-trailing corner. The ledger header carries "+" there
+    /// instead (`AllExpensesView.onRequestAddExpense`).
     private var shouldShowFAB: Bool {
-        selectedTab != .you && !isBulkSelecting
+        guard selectedTab != .you, !isBulkSelecting else { return false }
+        if selectedTab == .activity && isRegularWidth { return false }
+        return true
     }
 
     // MARK: - iOS 26+ native Liquid Glass tab bar
@@ -305,7 +312,7 @@ struct MainTabView: View {
             }
 
             SwiftUI.Tab("Activity", systemImage: "list.bullet.rectangle.fill", value: Tab.activity) {
-                AllExpensesView(isRootTab: true)
+                AllExpensesView(isRootTab: true, onRequestAddExpense: { showingAddExpense = true })
                     .environmentObject(viewModel)
                     .environmentObject(categoryViewModel)
                     .id("activity-\(themeId)")
@@ -411,7 +418,7 @@ struct MainTabView: View {
                         .tag(Tab.today)
                         .id("today-\(themeId)")
 
-                    AllExpensesView(isRootTab: true)
+                    AllExpensesView(isRootTab: true, onRequestAddExpense: { showingAddExpense = true })
                         .environmentObject(viewModel)
                         .environmentObject(categoryViewModel)
                         .tag(Tab.activity)
