@@ -811,8 +811,14 @@ struct AllExpensesView: View {
     }
 
     /// Navigation container for Activity content:
-    ///   • tab root, regular width → `NavigationSplitView` (ledger as
-    ///     the sidebar column, editor in the detail column);
+    ///   • tab root, regular width → plain two-pane `HStack` (ledger |
+    ///     hairline | editor). Deliberately *not* `NavigationSplitView`:
+    ///     nesting one inside a `.sidebarAdaptable` `TabView` is a
+    ///     composition Apple has said is unsupported (top tab bar over
+    ///     the split's bars, double sidebars), and with both bars hidden
+    ///     a collapsed ledger column would have had no toggle to bring
+    ///     it back. The HStack never collapses, so the ledger is always
+    ///     on screen; no `UINavigationController` is created either;
     ///   • tab root, compact width → bare content, so no
     ///     `UINavigationController` sits under the tab bar for the
     ///     rest of the session (see PERF note in `body`);
@@ -822,17 +828,20 @@ struct AllExpensesView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         if showsEditorInDetailColumn {
-            NavigationSplitView {
+            HStack(spacing: 0) {
                 content()
                     // Narrow-regular windows (11" iPad at 50/50 ≈ 597pt,
                     // Duo inner ≈ 626pt) must still leave ≥ ~300pt for
                     // the editor, so the ledger yields first. Anything
                     // narrower than that is compact and never gets here.
-                    .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
-            } detail: {
+                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
+
+                Divider()
+
                 editorDetailColumn
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(uiColor: .systemBackground))
             }
-            .navigationSplitViewStyle(.balanced)
         } else if isRootTab {
             content()
         } else {
