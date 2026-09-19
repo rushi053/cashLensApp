@@ -1905,7 +1905,12 @@ struct TodayView: View {
             // showing, the count must be the full history, and there
             // must be a logged expense in the last 30 days — otherwise
             // an empty or abandoned ledger reads as a "90-day streak".
-            if viewModel.isFullyHydrated,
+            // And never on the cold-launch recompute (`previousStreak`
+            // is nil then): the user must have done something in this
+            // session first, so the ask can't land on a first-run or
+            // deep-link sheet two seconds after launch.
+            if previousStreak != nil,
+               viewModel.isFullyHydrated,
                result.streak.isMeaningful,
                result.streak.currentStreak >= ReviewPromptManager.streakThreshold,
                let recentCutoff = Calendar.current.date(byAdding: .day, value: -30, to: now),

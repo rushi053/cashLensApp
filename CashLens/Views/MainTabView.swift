@@ -166,10 +166,16 @@ struct MainTabView: View {
         .onReceive(reviewPromptManager.$shouldRequestReview) { shouldShow in
             guard shouldShow else { return }
             reviewPromptManager.consume()
-            // Never over the app-lock cover. The version's ask is spent
-            // either way — this can only happen if the app was locked
-            // within the 2s settle window, which is vanishingly rare.
-            guard !AppLockManager.shared.isLocked else { return }
+            // Never over the app-lock cover or on top of anything else
+            // this view (or the app root) has presented: a first-run
+            // currency picker, the auto-paywall, win-back, donor thanks,
+            // an open Add Expense sheet, or a deep-link sheet. The ask
+            // stays pending and is retried at the next trigger.
+            guard !AppLockManager.shared.isLocked, !hasPresentation else {
+                reviewPromptManager.deferWhilePresenting()
+                return
+            }
+            reviewPromptManager.markRequested()
             requestReview()
         }
         .sheet(isPresented: $showingAutoPaywall) {
@@ -206,12 +212,25 @@ struct MainTabView: View {
         }
     }
 
+    /// True while this view (or the app root) has something presented
+    /// above the tab shell. Presenting a second sheet from the same
+    /// view is silently dropped by SwiftUI and leaves the flag stuck
+    /// `true`, so both the rating ask and Cmd-N wait for this to clear.
+    private var hasPresentation: Bool {
+        showingAddExpense
+            || showingAutoPaywall
+            || showingCurrencyPicker
+            || proManager.shouldShowWinBack
+            || proManager.pendingDonorThanks != nil
+            || DeepLinkRouter.shared.route != nil
+    }
+
     private func handleKeyboardCommand(_ command: AppCommandCenter.Command) {
         guard !AppLockManager.shared.isLocked,
               UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding) else { return }
         switch command {
         case .newExpense:
-            guard !showingAddExpense else { return }
+            guard !hasPresentation else { return }
             showingAddExpense = true
         case .openSettings:
             selectedTab = .you
