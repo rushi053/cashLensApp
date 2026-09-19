@@ -138,7 +138,10 @@ struct StatisticsView: View {
     private static let twoColumnMinimumWidth: CGFloat = 640
 
     private var usesTwoColumns: Bool {
-        isWideLayout && measuredContentWidth >= Self.twoColumnMinimumWidth
+        // Before the first measurement, trust the size class so an iPad
+        // doesn't flash one column for a frame.
+        guard measuredContentWidth > 0 else { return isWideLayout }
+        return isWideLayout && measuredContentWidth >= Self.twoColumnMinimumWidth
     }
     
     // MARK: - Main Body

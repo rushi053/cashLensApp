@@ -48,6 +48,8 @@ struct AppearanceStudioView: View {
             SheetHeader(
                 eyebrow: "Make it yours",
                 title: "Appearance",
+                // Esc belongs to the paywall while it is up.
+                escapeClosesSheet: !showingPaywall,
                 onClose: { dismiss() }
             )
 

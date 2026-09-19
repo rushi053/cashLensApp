@@ -92,6 +92,8 @@ struct BudgetListView: View {
             eyebrow: "Manage",
             title: "Budgets",
             subtitle: headerSubtitle,
+            // Esc belongs to the budget editor / paywall while one is up.
+            escapeClosesSheet: !showingAddBudget && editingBudget == nil && !showingPaywall,
             onClose: { dismiss() }
         ) {
             addButton

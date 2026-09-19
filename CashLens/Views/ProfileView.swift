@@ -157,6 +157,9 @@ struct ProfileView: View {
                 notificationsSection
                 dataSection
                 aboutSection
+                #if DEBUG
+                developerSection
+                #endif
                 versionFooter
             }
             .padding()
@@ -1034,6 +1037,34 @@ struct ProfileView: View {
             Text(restoreResultMessage ?? "")
         }
     }
+
+    #if DEBUG
+    // MARK: - Developer (debug builds only)
+
+    @State private var showingDiagnostics = false
+
+    /// The only entry point to `DiagnosticsView` (itself `#if DEBUG`):
+    /// stress seeder, smoke checks, review-prompt reset. Nothing here
+    /// is compiled into Release.
+    private var developerSection: some View {
+        SettingsGroup(title: "Developer (debug builds only)") {
+            SettingsRow(
+                icon: "wrench.and.screwdriver.fill",
+                title: "Diagnostics",
+                subtitle: "Stress-test seeder, smoke checks",
+                style: .bare
+            )
+            .onTapGesture {
+                HapticManager.shared.lightTap()
+                showingDiagnostics = true
+            }
+        }
+        .sheet(isPresented: $showingDiagnostics) {
+            DiagnosticsView()
+                .environmentObject(viewModel)
+        }
+    }
+    #endif
 
     private var restorePurchasesRow: some View {
         SettingsRow(

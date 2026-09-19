@@ -1905,10 +1905,14 @@ struct TodayView: View {
             // showing, the count must be the full history, and there
             // must be a logged expense in the last 30 days — otherwise
             // an empty or abandoned ledger reads as a "90-day streak".
-            // And never on the cold-launch recompute (`previousStreak`
-            // is nil then): the user must have done something in this
-            // session first, so the ask can't land on a first-run or
-            // deep-link sheet two seconds after launch.
+            // And never on the very first recompute of the session
+            // (`previousStreak` is nil then). Note this is only a
+            // partial guard: for users whose history predates the hot
+            // window, full hydration publishes a second recompute
+            // ~100 ms after launch with no user action. The real
+            // protection against asking over a first-run or deep-link
+            // sheet is `MainTabView.hasPresentation`, which defers the
+            // ask while anything is presented.
             if previousStreak != nil,
                viewModel.isFullyHydrated,
                result.streak.isMeaningful,
@@ -2534,10 +2538,13 @@ struct TodayInsight: Sendable, Equatable {
         let todayStart = cal.startOfDay(for: now)
         // PERF: `[todayStart, todayEnd)` computed once with the same
         // calendar is exactly what `isDate(_:inSameDayAs:)` answers per
-        // row (start-of-day + one calendar day, so 23/25-hour DST days
-        // are handled the same way), without a Calendar call per
-        // expense — this pass runs over all N on every recompute.
-        let todayEnd = cal.date(byAdding: .day, value: 1, to: todayStart) ?? now
+        // row, without a Calendar call per expense — this pass runs
+        // over all N on every recompute. The end is the *start of* the
+        // next day, not `todayStart + 1 day`: in zones whose DST switch
+        // is at 00:00 (Santiago, Asunción, Havana) `startOfDay` on the
+        // spring-forward day is 01:00 and adding a day keeps that wall
+        // time, which would swallow the first hour of tomorrow.
+        let todayEnd = cal.startOfDay(for: cal.date(byAdding: .day, value: 1, to: todayStart) ?? now)
         let weekStart = cal.date(byAdding: .day, value: -7, to: todayStart) ?? todayStart
         let monthInterval = cal.dateInterval(of: .month, for: now) ?? DateInterval(start: now, end: now)
 

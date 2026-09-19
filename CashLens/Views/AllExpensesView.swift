@@ -10,6 +10,9 @@ struct AllExpensesView: View {
     /// hierarchy either way, so a Duo fold mid-session lands on the
     /// same screen.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Inherited from `MainTabView` (true while an app-level sheet is
+    /// up); OR-ed with this view's own sheets for the detail editor.
+    @Environment(\.escapeOwnedByPresentation) private var inheritedEscapeOwned
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var proManager: ProManager
@@ -308,7 +311,11 @@ struct AllExpensesView: View {
                         } else {
                             groups.append((day, [e]))
                             currentDayStart = day
+                            // Start of the *next* day (not `day + 1 day`):
+                            // keeps 00:00-DST zones identical to the old
+                            // per-row `startOfDay` equality.
                             currentDayEnd = calendar.date(byAdding: .day, value: 1, to: day)
+                                .map { calendar.startOfDay(for: $0) }
                         }
                     }
                 }
@@ -856,7 +863,7 @@ struct AllExpensesView: View {
 
                 editorDetailColumn
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(uiColor: .systemBackground))
+                    .background(Color.systemBackground)
             }
         } else if isRootTab {
             content()
@@ -872,6 +879,19 @@ struct AllExpensesView: View {
     /// every compact-width case keep the sheet editor.
     private var showsEditorInDetailColumn: Bool {
         isRootTab && horizontalSizeClass == .regular
+    }
+
+    /// True while one of this view's own sheets is presented (they are
+    /// attached outside `activityNavContainer`, so the inline editor
+    /// sits underneath them).
+    private var hasOwnPresentation: Bool {
+        showingQuickSearch
+            || showingCalendar
+            || showingDateRangePicker
+            || showingTagPaywall
+            || showingBulkCategoryPicker
+            || showingBulkTagSheet
+            || showingBulkTagPaywall
     }
 
     /// The editor sheet is disabled while the detail column owns the
@@ -892,6 +912,11 @@ struct AllExpensesView: View {
                 // an identity change.
                 .id(expense.id)
                 .environmentObject(categoryViewModel)
+                // Esc belongs to whichever sheet is above the ledger
+                // (Quick Search, calendar, date range, tag paywall,
+                // bulk pickers) or to an app-level sheet — never to
+                // the inline editor while one of those is up.
+                .environment(\.escapeOwnedByPresentation, inheritedEscapeOwned || hasOwnPresentation)
         } else {
             ContentUnavailableView(
                 "Select an expense",

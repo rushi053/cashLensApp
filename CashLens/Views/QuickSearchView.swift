@@ -206,6 +206,8 @@ struct QuickSearchView: View {
             title: "Search",
             subtitle: "Find any expense, fast",
             showsDivider: false,
+            // Esc belongs to the editor sheet while one is up.
+            escapeClosesSheet: selectedExpense == nil,
             onClose: { dismiss() }
         )
     }
