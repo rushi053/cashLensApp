@@ -26,10 +26,12 @@
 //
 //  Launch arguments the suite passes to the app:
 //
-//    -hasCompletedOnboarding YES / -hasShownCurrencyPicker YES
+//    -hasCompletedOnboarding YES / -hasShownCurrencyPicker YES /
+//    -hasAutoShownPaywall YES
 //        Plain `UserDefaults` argument-domain overrides; the app already
-//        reads these keys, so onboarding and the first-run currency
-//        picker are skipped with zero app-side code.
+//        reads these keys, so onboarding, the first-run currency picker
+//        and the automatic 10th-expense paywall are skipped with zero
+//        app-side code.
 //    -UITestSeedDemoData YES
 //        Contract for the app target: when present, seed the demo
 //        dataset (`Marketing/ScreenshotSampleData/`) into the store
@@ -112,6 +114,9 @@ final class ScreenshotSuiteUITests: XCTestCase {
         app.launchArguments += [
             "-hasCompletedOnboarding", "YES",
             "-hasShownCurrencyPicker", "YES",
+            // Post-value auto paywall fires on the 10th logged expense;
+            // repeated runs on one simulator could cross that mid-walk.
+            "-hasAutoShownPaywall", "YES",
             "-UITestSeedDemoData", "YES",
             "-UITestResetState", "YES"
         ]
