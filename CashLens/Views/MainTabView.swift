@@ -157,6 +157,12 @@ struct MainTabView: View {
                 maybeShowPostValuePaywall()
             }
         }
+        // Hardware-keyboard commands declared in `AppCommands`. Ignored
+        // while the app is locked (a sheet would present above the
+        // cover) or before onboarding has finished.
+        .onReceive(AppCommandCenter.shared.commands) { command in
+            handleKeyboardCommand(command)
+        }
         .onReceive(reviewPromptManager.$shouldRequestReview) { shouldShow in
             guard shouldShow else { return }
             reviewPromptManager.consume()
@@ -197,6 +203,28 @@ struct MainTabView: View {
                 // blocked presentation, the pending flag survives for
                 // the next foreground instead of being spent invisibly.
                 .onAppear { proManager.markWinBackShown() }
+        }
+    }
+
+    private func handleKeyboardCommand(_ command: AppCommandCenter.Command) {
+        guard !AppLockManager.shared.isLocked,
+              UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding) else { return }
+        switch command {
+        case .newExpense:
+            guard !showingAddExpense else { return }
+            showingAddExpense = true
+        case .openSettings:
+            selectedTab = .you
+        case .searchActivity:
+            selectedTab = .activity
+            // The Activity root may be mounting right now (first visit)
+            // and can't hear this publish yet — give it a beat, then
+            // ask it to open Quick Search.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                AppCommandCenter.shared.send(.presentActivitySearch)
+            }
+        case .presentActivitySearch:
+            break // Handled by AllExpensesView.
         }
     }
 
