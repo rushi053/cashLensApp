@@ -162,12 +162,14 @@ final class ReviewPromptManager: ObservableObject {
 
     // MARK: - Debug
 
+    #if DEBUG
     /// Diagnostics-only: forget that this version was asked.
     func resetForDebugging() {
         defaults.removeObject(forKey: UserDefaultsKeys.reviewPromptAskedVersion)
         isPending = false
         scheduledFire?.cancel()
         DispatchQueue.main.async { self.shouldRequestReview = false }
-        print("🔄 Review prompt state reset for testing")
+        print("Review prompt state reset for testing")
     }
+    #endif
 }
