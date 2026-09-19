@@ -195,7 +195,7 @@ struct AddExpenseView: View {
     var onSave: ((String, Double, Date, Expense.Category, UUID?, String?, [String]?, Bool, PaymentMethod?, String?) -> Void)?
     var expenseId: UUID?
     /// When the editor is hosted somewhere `dismiss()` is a no-op — the
-    /// detail column of Activity's `NavigationSplitView` on regular
+    /// detail pane of Activity's two-pane layout on regular
     /// width — the host supplies this to clear its selection instead.
     /// `nil` (the default, every sheet presentation) keeps the normal
     /// environment dismiss. Set via `onDismissRequest(_:)`.
