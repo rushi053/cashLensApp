@@ -370,6 +370,11 @@ struct MainTabView: View {
         .duoTabBarCompression()
         .tint(.appPrimary)
         .environment(\.bulkSelectionBinding, $isBulkSelecting)
+        // Applied *inside* the `.sheet` modifiers below, so the tab
+        // content (incl. Activity's detail-column editor) drops its Esc
+        // shortcut while an app-level sheet is up, but the sheet itself
+        // does not inherit the flag.
+        .environment(\.escapeOwnedByPresentation, hasPresentation)
         .animation(Theme.Motion.snappy, value: isBulkSelecting)
         .overlay(alignment: .bottomTrailing) {
             // The tab roots intentionally have no navigation container
@@ -470,6 +475,9 @@ struct MainTabView: View {
                         .tag(Tab.you)
                 }
                 .environment(\.bulkSelectionBinding, $isBulkSelecting)
+                // See the modern path: tab content yields Esc while an
+                // app-level sheet is presented.
+                .environment(\.escapeOwnedByPresentation, hasPresentation)
                 .animation(Theme.Motion.snappy, value: isBulkSelecting)
 
                 // Floating Add Button - visible on Today + Activity

@@ -147,6 +147,8 @@ struct CustomCategoryForm: View {
         SheetHeader(
             eyebrow: "Category",
             title: isEditing ? "Editing" : "Add New",
+            // Esc belongs to the icon / color picker while one is up.
+            escapeClosesSheet: !showingIconPicker && !showingColorPicker,
             onClose: { dismiss() }
         ) {
             if isEditing, onDelete != nil {

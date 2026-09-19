@@ -75,6 +75,9 @@ struct NotificationsSettingsView: View {
             SheetHeader(
                 title: "Notifications",
                 subtitle: "Reminders & insights",
+                // Esc belongs to a schedule sheet / paywall while one is up.
+                escapeClosesSheet: !showingWeeklySchedule && !showingMonthlySchedule
+                    && !showingBackupSchedule && !showingPaywall,
                 onClose: { dismiss() }
             )
 

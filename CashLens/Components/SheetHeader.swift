@@ -118,6 +118,16 @@ struct SheetCloseButton: View {
     /// See `SheetHeader.escapeClosesSheet`. Default on: a lone close
     /// button (paywall) is always the topmost layer.
     var respondsToEscape: Bool = true
+    /// Set by an ancestor that currently has a presentation above this
+    /// button (the tab shell while any app-level sheet is up; Activity's
+    /// detail-column editor while one of its sheets is up). Sheets don't
+    /// inherit it because the ancestors set it *inside* their `.sheet`
+    /// modifiers, so only the layer underneath a presentation drops Esc.
+    @Environment(\.escapeOwnedByPresentation) private var escapeOwnedByPresentation
+
+    private var escapeIsLive: Bool {
+        respondsToEscape && !escapeOwnedByPresentation
+    }
 
     var body: some View {
         Button {
@@ -138,7 +148,7 @@ struct SheetCloseButton: View {
         // (`AddExpenseView.onDismissRequest`) behave identically.
         // Passing `nil` removes the shortcut while a layer above owns
         // Esc.
-        .keyboardShortcut(respondsToEscape ? KeyboardShortcut.cancelAction : nil)
+        .keyboardShortcut(escapeIsLive ? KeyboardShortcut.cancelAction : nil)
         .accessibilityLabel("Close")
     }
 }
@@ -148,5 +158,23 @@ struct SheetCloseButton: View {
 struct SheetHeaderSpacer: View {
     var body: some View {
         Color.clear.frame(width: 36, height: 36)
+    }
+}
+
+// MARK: - Esc ownership environment key
+//
+// SwiftUI does not define which of several live `.cancelAction`
+// shortcuts wins. Presenters that can have a sheet above content that
+// itself carries a `SheetCloseButton` publish "Esc is owned above" into
+// that content's environment; the button then drops its shortcut.
+// Default `false` — every close button answers Esc unless told otherwise.
+private struct EscapeOwnedByPresentationKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
+extension EnvironmentValues {
+    var escapeOwnedByPresentation: Bool {
+        get { self[EscapeOwnedByPresentationKey.self] }
+        set { self[EscapeOwnedByPresentationKey.self] = newValue }
     }
 }

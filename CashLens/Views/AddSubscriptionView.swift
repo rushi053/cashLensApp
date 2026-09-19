@@ -146,8 +146,8 @@ struct AddSubscriptionView: View {
         SheetHeader(
             eyebrow: "Subscription",
             title: isEditing ? "Editing" : "Add New",
-            // Esc belongs to the picker while one is up.
-            escapeClosesSheet: !showingCategoryPicker && !showingDatePicker,
+            // Esc belongs to the picker / Manage Categories while one is up.
+            escapeClosesSheet: !showingCategoryPicker && !showingDatePicker && !showingManageCategories,
             onClose: { dismiss() }
         ) {
             headerTrailingSlot

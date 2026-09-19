@@ -32,6 +32,8 @@ struct PrivacyDashboardView: View {
             SheetHeader(
                 title: "Privacy",
                 subtitle: "What's on this \(deviceName)",
+                // Esc belongs to the export sheet while it is up.
+                escapeClosesSheet: !showingExportSheet,
                 onClose: { dismiss() }
             )
 

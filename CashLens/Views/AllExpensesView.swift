@@ -10,6 +10,9 @@ struct AllExpensesView: View {
     /// hierarchy either way, so a Duo fold mid-session lands on the
     /// same screen.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Inherited from `MainTabView` (true while an app-level sheet is
+    /// up); OR-ed with this view's own sheets for the detail editor.
+    @Environment(\.escapeOwnedByPresentation) private var inheritedEscapeOwned
     @EnvironmentObject var viewModel: ExpenseViewModel
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var proManager: ProManager
@@ -874,6 +877,19 @@ struct AllExpensesView: View {
         isRootTab && horizontalSizeClass == .regular
     }
 
+    /// True while one of this view's own sheets is presented (they are
+    /// attached outside `activityNavContainer`, so the inline editor
+    /// sits underneath them).
+    private var hasOwnPresentation: Bool {
+        showingQuickSearch
+            || showingCalendar
+            || showingDateRangePicker
+            || showingTagPaywall
+            || showingBulkCategoryPicker
+            || showingBulkTagSheet
+            || showingBulkTagPaywall
+    }
+
     /// The editor sheet is disabled while the detail column owns the
     /// selection. If the size class flips mid-edit (Duo fold, iPad
     /// Split View resize) the editor moves columns; unsaved field
@@ -892,6 +908,11 @@ struct AllExpensesView: View {
                 // an identity change.
                 .id(expense.id)
                 .environmentObject(categoryViewModel)
+                // Esc belongs to whichever sheet is above the ledger
+                // (Quick Search, calendar, date range, tag paywall,
+                // bulk pickers) or to an app-level sheet — never to
+                // the inline editor while one of those is up.
+                .environment(\.escapeOwnedByPresentation, inheritedEscapeOwned || hasOwnPresentation)
         } else {
             ContentUnavailableView(
                 "Select an expense",
