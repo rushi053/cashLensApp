@@ -260,8 +260,12 @@ struct BudgetMiniCard: View {
 
     // MARK: Layout constants — kept in sync with `PinnedCategoryCard`.
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .title2) private var compactCardHeight: CGFloat = 156
+    @ScaledMetric(relativeTo: .title2) private var regularCardHeight: CGFloat = 172
+
     private var cardHeight: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 172 : 156
+        horizontalSizeClass == .regular ? regularCardHeight : compactCardHeight
     }
 
     private let iconSize: CGFloat = 40

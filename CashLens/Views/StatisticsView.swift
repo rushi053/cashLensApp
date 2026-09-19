@@ -122,13 +122,11 @@ struct StatisticsView: View {
     
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
-    private var isIPad: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad
-    }
-    
-    /// True when we have extra horizontal space (iPad or iPhone landscape)
+    /// True when we have extra horizontal space: iPad full screen or a
+    /// wide Split View pane, iPhone Duo inner display. Size class only —
+    /// an iPad in Slide Over is compact and must get the phone layout.
     private var isWideLayout: Bool {
-        isIPad || horizontalSizeClass == .regular
+        horizontalSizeClass == .regular
     }
     
     // MARK: - Main Body
