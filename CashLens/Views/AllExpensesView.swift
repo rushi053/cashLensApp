@@ -301,9 +301,15 @@ struct AllExpensesView: View {
                         groups[groups.count - 1].1.append(e)
                     } else {
                         let day = calendar.startOfDay(for: e.date)
-                        groups.append((day, [e]))
-                        currentDayStart = day
-                        currentDayEnd = calendar.date(byAdding: .day, value: 1, to: day)
+                        if day == currentDayStart {
+                            // Only reachable if the day-end lookup failed;
+                            // falls back to the old per-row equality.
+                            groups[groups.count - 1].1.append(e)
+                        } else {
+                            groups.append((day, [e]))
+                            currentDayStart = day
+                            currentDayEnd = calendar.date(byAdding: .day, value: 1, to: day)
+                        }
                     }
                 }
             }
