@@ -3568,11 +3568,16 @@ struct AddExpenseView: View {
         let window: TimeInterval = 5 * 60
         let targetDate = date
         
+        // PERF: same predicate, cheap checks first. This runs on the main
+        // thread at the Save tap over every expense; the amount and
+        // 5-minute-window compares reject almost every row for free, so
+        // the trim + case-insensitive title compare only runs on the
+        // handful of candidates. Verdict is identical (pure AND).
         return viewModel.expenses.contains { existing in
-            let existingTitle = existing.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard existingTitle.caseInsensitiveCompare(trimmedTitle) == .orderedSame else { return false }
             guard abs(existing.amount - amountValue) < 0.0001 else { return false }
-            return abs(existing.date.timeIntervalSince(targetDate)) <= window
+            guard abs(existing.date.timeIntervalSince(targetDate)) <= window else { return false }
+            let existingTitle = existing.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return existingTitle.caseInsensitiveCompare(trimmedTitle) == .orderedSame
         }
     }
     

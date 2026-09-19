@@ -1868,9 +1868,9 @@ struct StatisticsView: View {
                 accent: accentForSelection,
                 weekdayPoints: cachedWeekdayAverages,
                 topDays: cachedTopDays,
-                formattedAmount: viewModel.formattedAmount
+                formattedAmount: viewModel.formattedAmount,
+                currencySymbol: viewModel.currencySymbol
             )
-            .environmentObject(viewModel)
             .padding(Theme.Spacing.lg)
             .cardSurface()
         }

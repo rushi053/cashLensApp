@@ -26,7 +26,12 @@ struct ExpenseTrendChart: View {
     let chartValues: [Double]
     let timeFrame: ExpenseViewModel.TimeFrame
     let categoryColor: Color
-    @EnvironmentObject var viewModel: ExpenseViewModel
+    /// The active currency symbol, passed in by the owner. PERF: this
+    /// view used to observe the whole `ExpenseViewModel` just for this
+    /// one string, so every publish (2–3 per save) re-evaluated the
+    /// chart and re-laid out Swift Charts. Now it only re-renders when
+    /// its inputs change.
+    let currencySymbol: String
 
     /// Raw scrub position from `chartXSelection`; snapped to the
     /// nearest bucket in `selectedPoint`.
@@ -249,7 +254,7 @@ struct ExpenseTrendChart: View {
 
     private func formatCurrency(_ value: Double) -> String {
         let formatter = Self.currencyFormatter
-        formatter.currencySymbol = viewModel.currencySymbol
+        formatter.currencySymbol = currencySymbol
         return formatter.string(from: NSNumber(value: value)) ?? "$0"
     }
 }
@@ -268,7 +273,8 @@ extension ExpenseTrendChart {
     init(
         expenses: [Expense],
         timeFrame: ExpenseViewModel.TimeFrame,
-        categoryColor: Color
+        categoryColor: Color,
+        currencySymbol: String
     ) {
         let series = ExpenseTrendChart.buildChartData(
             expenses: expenses,
@@ -279,7 +285,8 @@ extension ExpenseTrendChart {
             chartDates: series.dates,
             chartValues: series.values,
             timeFrame: timeFrame,
-            categoryColor: categoryColor
+            categoryColor: categoryColor,
+            currencySymbol: currencySymbol
         )
     }
 
@@ -386,7 +393,8 @@ struct ExpenseTrendChart_Previews: PreviewProvider {
             ExpenseTrendChart(
                 expenses: Expense.sampleData,
                 timeFrame: .month,
-                categoryColor: .appPrimary
+                categoryColor: .appPrimary,
+                currencySymbol: "$"
             )
             .padding()
             .background(Color.systemBackground)

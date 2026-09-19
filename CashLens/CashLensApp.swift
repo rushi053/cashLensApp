@@ -72,6 +72,14 @@ struct CashLensApp: App {
             context = PersistenceController(inMemory: true).container.viewContext
         } else {
             context = PersistenceController.shared.container.viewContext
+            #if DEBUG
+            // Perf measurement only: `-CLSeedExpenses 20000` fills the
+            // store before the view models hydrate so cold start is
+            // measured against a full table. Compiled out of Release.
+            DebugExpenseSeeder.seedFromLaunchArgumentsIfRequested(
+                container: PersistenceController.shared.container
+            )
+            #endif
         }
 
         // Create plain instances first so the expense-view-model dependency

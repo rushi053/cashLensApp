@@ -41,6 +41,15 @@ struct QuickSearchView: View {
     /// per redraw, twice); now the view just renders prebaked state.
     @State private var resultGroups: [(title: String, expenses: [Expense])] = []
     @State private var resultNetTotal: Double = 0
+
+    /// PERF: each group renders as a non-lazy `VStack` inside the
+    /// `LazyVStack`, so a broad query at 20k rows ("a", "#food") used to
+    /// build thousands of rows in one layout pass — the last true
+    /// main-thread O(N) hang in the UI. Only the top `maxRenderedResults`
+    /// ranked matches are grouped and rendered; the summary chip and net
+    /// total still describe the full match set, and a footer tells the
+    /// user how many are hidden. Matching and ranking are unchanged.
+    private static let maxRenderedResults = 200
     @State private var searchTask: Task<Void, Never>?
 
     /// Pre-lowered searchable fields for the whole dataset. Built
@@ -520,10 +529,31 @@ struct QuickSearchView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
                 }
 
+                if searchResults.count > Self.maxRenderedResults {
+                    truncationFooter
+                        .padding(.horizontal, Theme.Spacing.lg)
+                }
+
                 Spacer(minLength: Theme.Spacing.xxxl)
             }
             .padding(.top, Theme.Spacing.xs)
         }
+    }
+
+    /// Shown only when more matches exist than are rendered — never
+    /// hides results silently.
+    private var truncationFooter: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary)
+            Text("Showing the top \(Self.maxRenderedResults) of \(searchResults.count) matches. Narrow your search to see the rest.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, Theme.Spacing.sm)
+        .accessibilityElement(children: .combine)
     }
 
     private var resultSummaryRow: some View {
@@ -858,9 +888,12 @@ struct QuickSearchView: View {
 
             let output = await Task.detached(priority: .userInitiated) {
                 let results = Self.rankedSearch(query: trimmed, index: indexSnapshot)
+                // Groups are built from the top-ranked slice only (see
+                // `maxRenderedResults`); count and total use everything.
+                let rendered = Array(results.prefix(Self.maxRenderedResults))
                 return SearchOutput(
                     results: results,
-                    groups: Self.groupResults(results),
+                    groups: Self.groupResults(rendered),
                     netTotal: results.netTotal()
                 )
             }.value

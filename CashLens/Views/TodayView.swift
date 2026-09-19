@@ -2532,13 +2532,19 @@ struct TodayInsight: Sendable, Equatable {
 
         let cal = Calendar.current
         let todayStart = cal.startOfDay(for: now)
+        // PERF: `[todayStart, todayEnd)` computed once with the same
+        // calendar is exactly what `isDate(_:inSameDayAs:)` answers per
+        // row (start-of-day + one calendar day, so 23/25-hour DST days
+        // are handled the same way), without a Calendar call per
+        // expense — this pass runs over all N on every recompute.
+        let todayEnd = cal.date(byAdding: .day, value: 1, to: todayStart) ?? now
         let weekStart = cal.date(byAdding: .day, value: -7, to: todayStart) ?? todayStart
         let monthInterval = cal.dateInterval(of: .month, for: now) ?? DateInterval(start: now, end: now)
 
         // Heuristic 1: spent today already? Celebrate or warn based on
         // recent average.
         let todaySpend = expenses
-            .filter { cal.isDate($0.date, inSameDayAs: todayStart) }
+            .filter { $0.date >= todayStart && $0.date < todayEnd }
             .reduce(0) { $0 + max($1.signedAmount, 0) }
         let weekSpend = expenses
             .filter { $0.date >= weekStart && $0.date < todayStart }

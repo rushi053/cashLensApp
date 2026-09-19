@@ -22,17 +22,19 @@ enum TagSuggestionProvider {
 
     /// Aggregate usage/recency across all expenses.
     ///
-    /// - Parameter expenses: snapshot of expenses; safe to pass from any actor
-    ///   since it's a value type.
+    /// - Parameter expenses: snapshot of expenses **in date-descending
+    ///   order** (the invariant `ExpenseViewModel.expenses` maintains via
+    ///   its fetch sort descriptor and the incremental insert/update
+    ///   paths). `recentTags` is derived from that order; the redundant
+    ///   O(N log N) re-sort that used to live here was dropped in 2.2.
+    ///   Safe to pass from any actor since it's a value type.
     /// - Parameter recentCap: how many recent tags to keep in the "recent" list.
     static func computeStats(from expenses: [Expense], recentCap: Int = 12) -> Stats {
         var counts: [String: Int] = [:]
         var recentOrder: [String] = []
         var seenInRecent: Set<String> = []
 
-        let sortedByDate = expenses.sorted { $0.date > $1.date }
-
-        for expense in sortedByDate {
+        for expense in expenses {
             guard let tags = expense.tags, !tags.isEmpty else { continue }
             for tag in tags {
                 counts[tag, default: 0] += 1
