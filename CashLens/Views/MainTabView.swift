@@ -405,7 +405,16 @@ struct MainTabView: View {
         // so child views re-evaluate `Color.appPrimary` on a theme change.
         let themeId = themeStore.currentTheme.id
 
+        // The hidden UITabBar contributes no inset and the enclosing
+        // ZStack ignores the bottom safe area, so the custom bar's
+        // footprint is published as safe area on *each tab root* (not
+        // on the `TabView`: safe-area modifiers on the UIKit-backed
+        // container have a history of not reaching the hosted tab
+        // content). Tab-root scroll views then clear the bar
+        // automatically, same contract as the iOS 26 system bar.
         return GeometryReader { geometry in
+            let legacyBarInset = tabBarHeight + geometry.safeAreaInsets.bottom
+
             ZStack {
                 // Main content
                 TabView(selection: $selectedTab) {
@@ -415,30 +424,27 @@ struct MainTabView: View {
                         onRequestAddExpense: { showingAddExpense = true }
                     )
                         .environmentObject(viewModel)
+                        .safeAreaPadding(.bottom, legacyBarInset)
                         .tag(Tab.today)
                         .id("today-\(themeId)")
 
                     AllExpensesView(isRootTab: true, onRequestAddExpense: { showingAddExpense = true })
                         .environmentObject(viewModel)
                         .environmentObject(categoryViewModel)
+                        .safeAreaPadding(.bottom, legacyBarInset)
                         .tag(Tab.activity)
                         .id("activity-\(themeId)")
 
                     StatisticsView()
                         .environmentObject(viewModel)
+                        .safeAreaPadding(.bottom, legacyBarInset)
                         .tag(Tab.insights)
                         .id("insights-\(themeId)")
 
                     youTabRoot(themeId: themeId)
+                        .safeAreaPadding(.bottom, legacyBarInset)
                         .tag(Tab.you)
                 }
-                // The hidden UITabBar contributes no inset and the
-                // enclosing ZStack ignores the bottom safe area, so the
-                // custom bar's footprint is published as safe area here.
-                // Tab-root scroll views then clear it automatically
-                // (same contract as the iOS 26 system bar) instead of
-                // each hard-coding a 100pt bottom pad.
-                .safeAreaPadding(.bottom, tabBarHeight + geometry.safeAreaInsets.bottom)
                 .environment(\.bulkSelectionBinding, $isBulkSelecting)
                 .animation(Theme.Motion.snappy, value: isBulkSelecting)
 

@@ -4,8 +4,8 @@ struct AllExpensesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.bulkSelectionBinding) private var bulkSelectionBinding
     /// Regular width as the tab root (iPad, iPhone Duo inner display):
-    /// the ledger becomes the sidebar column of a `NavigationSplitView`
-    /// and the expense editor opens in the detail column instead of a
+    /// the ledger becomes the leading pane of a two-pane `HStack` and
+    /// the expense editor opens in the trailing pane instead of a
     /// sheet. Compact width keeps the stack + sheet flow. Same
     /// hierarchy either way, so a Duo fold mid-session lands on the
     /// same screen.
