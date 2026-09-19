@@ -603,7 +603,7 @@ Not a single feature but the release that turned the Pro wave into a shippable a
 | 14.4 | **No-Spend Streak** | Small / Medium + Lock circular / rectangular / inline | Pro | Low | ✅ Shipped |
 | 13.8 | **Quick Log** (interactive) | Small / Medium | Free with 1 template; more templates Pro | Medium | ✅ Shipped later, in the pre-submission wave — see Phase 13 |
 
-The bundle therefore vends **seven** widgets (five Home Screen + two Lock Screen), not six. None supports `systemExtraLarge` (iPad) — planned for 2.2.
+The bundle therefore vends **seven** widgets (five Home Screen + two Lock Screen), not six. None supports `systemExtraLarge` (iPad) yet: `release/2.2` already writes `WidgetSnapshot.dailyNetLast7Days` (7 refund-adjusted daily nets, oldest first, from `WidgetSnapshotBuilder.buildDailyTotals`) for an Extra Large Spending sparkline, but the widget that reads it lives in the unmerged PR #8 (`feat/2.2-widgets-tests`).
 
 **Architecture:**
 
