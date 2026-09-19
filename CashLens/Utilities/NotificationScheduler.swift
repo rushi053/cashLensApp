@@ -403,10 +403,14 @@ struct NotificationScheduler {
         )
 
         // Compose engine inputs on the main actor so we can read the live
-        // expense set + active subscriptions through normal APIs without
-        // having to bridge a nonisolated snapshot. The engine itself is
-        // pure, so the heavy work (loops over expenses) runs to completion
-        // synchronously; for typical datasets this is microseconds.
+        // expense set + active subscriptions + `UserDefaults` history
+        // through normal APIs. Everything captured below is a value
+        // snapshot (`[Expense]`, `[Subscription]`, the history record,
+        // a dictionary-backed name lookup) plus `formattedAmount`, which
+        // is documented thread-safe — so the engine's O(N) pass runs
+        // off the main actor, same as the digest calculators. At 20k
+        // rows the six candidate producers cost tens of ms; on the main
+        // actor that landed on every foreground after a save.
         let activeSubs = await fetchActiveSubscriptionsForInsights()
         let history = loadSmartInsightHistory()
         // PERF: see `makeCategoryNameLookup` — one Core Data fetch
@@ -423,7 +427,11 @@ struct NotificationScheduler {
             history: history
         )
 
-        guard let insight = SmartInsightsEngine.selectInsight(inputs: inputs) else {
+        let selected = await Task.detached(priority: .utility) {
+            SmartInsightsEngine.selectInsight(inputs: inputs)
+        }.value
+
+        guard let insight = selected else {
             // No headline today — nothing to schedule, and we leave the
             // pending queue empty. The next foreground will re-evaluate.
             return false
