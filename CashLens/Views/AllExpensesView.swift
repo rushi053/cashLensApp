@@ -799,7 +799,11 @@ struct AllExpensesView: View {
         if showsEditorInDetailColumn {
             NavigationSplitView {
                 content()
-                    .navigationSplitViewColumnWidth(min: 340, ideal: 400, max: 480)
+                    // Narrow-regular windows (11" iPad at 50/50 ≈ 597pt,
+                    // Duo inner ≈ 626pt) must still leave ≥ ~300pt for
+                    // the editor, so the ledger yields first. Anything
+                    // narrower than that is compact and never gets here.
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
             } detail: {
                 editorDetailColumn
             }
