@@ -59,9 +59,12 @@ struct TrendChartPager: View {
     let weekdayPoints: [WeekdayAveragePoint]
     let topDays: [TopDayPoint]
     let formattedAmount: (Double) -> String
+    /// Active currency symbol for the trend chart's axis / scrub labels.
+    /// PERF: passed in explicitly so neither this pager nor the chart
+    /// observes `ExpenseViewModel` (see `ExpenseTrendChart`).
+    let currencySymbol: String
 
     @State private var selection: Int = 0
-    @EnvironmentObject var viewModel: ExpenseViewModel
 
     /// Rank badge on the "Top days" rows — follows Dynamic Type so the
     /// digit never outgrows its box.
@@ -172,9 +175,9 @@ struct TrendChartPager: View {
             chartDates: trendDates,
             chartValues: trendValues,
             timeFrame: timeFrame,
-            categoryColor: accent
+            categoryColor: accent,
+            currencySymbol: currencySymbol
         )
-        .environmentObject(viewModel)
     }
 
     // MARK: Page 2 — By weekday
