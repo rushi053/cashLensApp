@@ -253,6 +253,9 @@ struct TodayView: View {
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.top, Theme.Spacing.lg)
             .padding(.bottom, Theme.Spacing.tabBarInset)
+            // Regular width (iPad, Duo inner): centered readable column
+            // instead of a screen-wide status card.
+            .readableColumn()
             // Animate live layout edits made from the Customize
             // sheet — sections glide to their new slot / fade out
             // behind the half-height sheet instead of snapping.

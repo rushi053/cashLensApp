@@ -161,6 +161,9 @@ struct ProfileView: View {
             }
             .padding()
             .padding(.bottom, Theme.Spacing.xl)
+            // Regular width (iPad, Duo inner): settings groups stay a
+            // readable width instead of stretching edge to edge.
+            .readableColumn()
         }
         .background(Color.systemBackground)
         .alert(item: $activeAlert) { alert in

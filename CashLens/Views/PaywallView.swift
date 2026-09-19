@@ -208,6 +208,9 @@ struct PaywallView: View {
                 // Breathing room below the sheet's grab-handle zone.
                 .padding(.top, Theme.Spacing.lg)
                 .padding(.bottom, 40)
+                // Regular width (full-screen iPad / Duo inner): keep
+                // the plan cards and copy at a readable measure.
+                .readableColumn(maxWidth: 640)
             }
 
             if isProcessing {

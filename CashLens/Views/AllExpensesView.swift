@@ -785,11 +785,13 @@ struct AllExpensesView: View {
         return "\(totalMatchCount) \(noun) totaling \(viewModel.formattedAmount(totalNetAmount))"
     }
 
-    /// Wraps Activity content in `NavigationStack` only when this
-    /// screen is presented as a sheet / deep-link (needs Back +
-    /// toolbar). As the tab root, returns content bare so no
-    /// `UINavigationController` sits under the tab bar for the
-    /// rest of the session.
+    /// Navigation container for Activity content:
+    ///   • tab root, regular width → `NavigationSplitView` (ledger as
+    ///     the sidebar column, editor in the detail column);
+    ///   • tab root, compact width → bare content, so no
+    ///     `UINavigationController` sits under the tab bar for the
+    ///     rest of the session (see PERF note in `body`);
+    ///   • sheet / deep-link → `NavigationStack` (needs Back + toolbar).
     @ViewBuilder
     private func activityNavContainer<Content: View>(
         @ViewBuilder content: () -> Content
