@@ -4,13 +4,16 @@
 //
 //  Spending Snapshot — the headline widget surface for CashLens.
 //
-//  Three sizes:
+//  Four sizes:
 //
-//  - **Small**  → big net total, delta vs prior period, timeframe label,
-//                 a row of category dots for at-a-glance variety.
-//  - **Medium** → left column with total/delta/timeframe, right column
-//                 with the top 3 categories and progress bars.
-//  - **Large**  → header strip + total + 5–6 category rows with bars.
+//  - **Small**       → big net total, delta vs prior period, timeframe
+//                      label, a row of category dots for at-a-glance variety.
+//  - **Medium**      → left column with total/delta/timeframe, right column
+//                      with the top 3 categories and progress bars.
+//  - **Large**       → header strip + total + 5–6 category rows with bars.
+//  - **Extra Large** → iPad only. Hero column (total, delta, 7-day
+//                      sparkline) beside a full category breakdown with
+//                      share-of-total percentages. Not a stretched Large.
 //
 //  Configurable via App Intent — the user picks Today / Week / Month /
 //  Year on the widget configuration sheet, and the widget re-renders
@@ -140,7 +143,9 @@ struct SpendingWidget: Widget {
         }
         .configurationDisplayName("Spending Snapshot")
         .description("Your CashLens spend at a glance.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        // `.systemExtraLarge` is iPad-only; WidgetKit simply never offers
+        // it on iPhone, so listing it here is safe for a universal binary.
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }
 }
 
@@ -155,10 +160,11 @@ struct SpendingEntryView: View {
         // the hero surface that drives Pro upgrades by demonstrating
         // quality. Other widgets are Pro-gated via `WidgetProUpsellView`.
         switch family {
-        case .systemSmall:  SpendingSmallView(entry: entry)
-        case .systemMedium: SpendingMediumView(entry: entry)
-        case .systemLarge:  SpendingLargeView(entry: entry)
-        default:            SpendingSmallView(entry: entry)
+        case .systemSmall:      SpendingSmallView(entry: entry)
+        case .systemMedium:     SpendingMediumView(entry: entry)
+        case .systemLarge:      SpendingLargeView(entry: entry)
+        case .systemExtraLarge: SpendingExtraLargeView(entry: entry)
+        default:                SpendingSmallView(entry: entry)
         }
     }
 }
@@ -532,6 +538,248 @@ struct SpendingLargeView: View {
     }
 }
 
+// MARK: - Extra Large (iPad)
+
+/// iPad-only 4×2 surface. A genuine two-column design rather than a
+/// stretched Large:
+///
+///   ┌────────────────────────┬────────────────────────────────┐
+///   │ THIS MONTH             │ CATEGORIES            6 shown  │
+///   │ $528.80                │ ▣ Food & Drinks   $187.40  35% │
+///   │ +12%  vs last month    │ ▣ Groceries       $142.10  27% │
+///   │                        │ ▣ Transport        $96.55  18% │
+///   │ LAST 7 DAYS            │ ▣ …                            │
+///   │ ▁ ▃ ▂ ▅ ▇ ▄ ▆  M T W…  │                                │
+///   │ 23 expenses · Updated  │                                │
+///   └────────────────────────┴────────────────────────────────┘
+///
+/// The two columns split the width evenly (each is roughly one Large
+/// widget wide), so nothing depends on a fixed point size.
+struct SpendingExtraLargeView: View {
+    @Environment(\.colorScheme) private var scheme
+    let entry: SpendingEntry
+
+    var body: some View {
+        let theme = WidgetTheme.resolve(id: entry.snapshot.activeThemeId)
+        let primary = theme.primary(for: scheme)
+        let agg = entry.snapshot.spending.byTimeframe[entry.timeframe.snapshotKey]
+            ?? .init(net: 0, previousNet: 0, topCategories: [], expenseCount: 0)
+        let peak = max(1, agg.topCategories.first.map { abs($0.total) } ?? 1)
+        // Share-of-total denominator is the sum of the rows shown, so the
+        // percentages add up to ~100% even when a refund makes `agg.net`
+        // smaller than the biggest single category.
+        let shareBase = max(1, agg.topCategories.reduce(0) { $0 + abs($1.total) })
+
+        HStack(alignment: .top, spacing: 20) {
+            // Left column: hero total + 7-day sparkline + footer.
+            VStack(alignment: .leading, spacing: 10) {
+                WidgetSectionHeader(
+                    icon: "creditcard.fill",
+                    label: entry.timeframe.label,
+                    color: primary
+                )
+
+                Text(WidgetMoneyFormatter.full(agg.net, currencyCode: entry.snapshot.currencyCode))
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    WidgetDeltaPill(current: agg.net, previous: agg.previousNet, compact: false)
+                    Text(entry.timeframe.previousLabel)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 6)
+
+                WidgetSectionHeader(
+                    icon: "chart.bar.fill",
+                    label: "Last 7 days",
+                    color: primary
+                )
+
+                SpendingSparkline(
+                    days: entry.snapshot.dailyNetLast7Days ?? [],
+                    accent: primary,
+                    currencyCode: entry.snapshot.currencyCode
+                )
+                .frame(maxHeight: .infinity)
+
+                HStack(spacing: 5) {
+                    Image(systemName: "creditcard.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("\(agg.expenseCount) \(agg.expenseCount == 1 ? "expense" : "expenses") · Updated ")
+                        + Text(entry.snapshot.generatedAt, style: .relative)
+                }
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider().opacity(0.22)
+
+            // Right column: full category breakdown.
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    WidgetSectionHeader(
+                        icon: "square.grid.2x2.fill",
+                        label: "Categories",
+                        color: primary
+                    )
+                    Spacer(minLength: 0)
+                    if !agg.topCategories.isEmpty {
+                        Text("\(agg.topCategories.count) shown")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if agg.topCategories.isEmpty {
+                    Spacer(minLength: 0)
+                    Text("No expenses in \(entry.timeframe.label.lowercased()).")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Text("Open CashLens to log one.")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                    Spacer(minLength: 0)
+                } else {
+                    ForEach(Array(agg.topCategories.prefix(6).enumerated()), id: \.offset) { _, slice in
+                        categoryRow(slice: slice, peak: peak, shareBase: shareBase, theme: theme)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func categoryRow(
+        slice: WidgetSnapshot.CategorySlice,
+        peak: Double,
+        shareBase: Double,
+        theme: WidgetTheme
+    ) -> some View {
+        let color = Color(hex: slice.hex) ?? theme.primary(for: scheme)
+        let ratio = min(1, abs(slice.total) / peak)
+        let share = Int((abs(slice.total) / shareBase * 100).rounded())
+
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(color.opacity(0.20))
+                Image(systemName: slice.symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            .frame(width: 30, height: 30)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(slice.name)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(WidgetMoneyFormatter.full(slice.total, currencyCode: entry.snapshot.currencyCode))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text("\(share)%")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 36, alignment: .trailing)
+                }
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(color.opacity(0.16))
+                        Capsule().fill(color).frame(width: geo.size.width * ratio)
+                    }
+                }
+                .frame(height: 6)
+            }
+        }
+    }
+}
+
+/// Seven-bar daily spend chart for the Extra Large surface. Plain
+/// SwiftUI shapes (no Swift Charts) so it stays cheap inside the widget
+/// render budget. Today's bar is drawn in the full accent colour; the
+/// six prior days are muted.
+private struct SpendingSparkline: View {
+    let days: [WidgetSnapshot.DailyTotal]
+    let accent: Color
+    let currencyCode: String
+
+    /// Narrow weekday letter ("M", "T", …) under each bar.
+    private static let weekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEEEE"
+        return f
+    }()
+
+    var body: some View {
+        let shown = Array(days.suffix(7))
+        // Refund-only days go negative; the bar height only reflects
+        // spending, so clamp at zero.
+        let values = shown.map { max(0, $0.net) }
+        let peak = max(values.max() ?? 0, 0.01)
+        let total = shown.reduce(0) { $0 + $1.net }
+
+        if shown.isEmpty {
+            placeholder
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .bottom, spacing: 6) {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { index, day in
+                        let isToday = index == shown.count - 1
+                        let ratio = CGFloat(max(0, day.net) / peak)
+                        VStack(spacing: 4) {
+                            GeometryReader { geo in
+                                VStack(spacing: 0) {
+                                    Spacer(minLength: 0)
+                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                        .fill(isToday ? accent : accent.opacity(0.38))
+                                        .frame(height: max(3, geo.size.height * ratio))
+                                }
+                            }
+                            Text(Self.weekdayFormatter.string(from: day.date))
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundStyle(isToday ? accent : Color.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                Text("7-day total \(WidgetMoneyFormatter.compact(total, currencyCode: currencyCode))")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    /// Shown when the snapshot predates the `dailyNetLast7Days` field
+    /// (app not yet updated or not yet relaunched since the update).
+    private var placeholder: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 6) {
+                ForEach(0..<7, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(accent.opacity(0.12))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 6)
+                }
+            }
+            Text("Daily totals appear after the next CashLens refresh.")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .lineLimit(2)
+        }
+    }
+}
+
 // MARK: - Previews
 
 #Preview("Small", as: .systemSmall) {
@@ -550,6 +798,20 @@ struct SpendingLargeView: View {
     SpendingWidget()
 } timeline: {
     SpendingEntry(date: .now, snapshot: .preview, timeframe: .month)
+}
+
+// Extra Large only renders on an iPad preview device — pick one in the
+// canvas device menu, otherwise the preview shows an empty canvas.
+#Preview("Extra Large", as: .systemExtraLarge) {
+    SpendingWidget()
+} timeline: {
+    SpendingEntry(date: .now, snapshot: .preview, timeframe: .month)
+}
+
+#Preview("Extra Large (no daily data)", as: .systemExtraLarge) {
+    SpendingWidget()
+} timeline: {
+    SpendingEntry(date: .now, snapshot: .previewWithoutDailyTotals, timeframe: .month)
 }
 
 // MARK: - Preview snapshot helper
@@ -601,6 +863,21 @@ extension WidgetSnapshot {
         ]
         s.streak = .init(noSpendDaysThisMonth: 8, daysElapsedThisMonth: 19,
                          currentStreak: 2, bestStreak: 9)
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let dailyNets: [Double] = [12.40, 48.90, 0, 31.25, 96.10, 22.00, 14.50]
+        s.dailyNetLast7Days = dailyNets.enumerated().map { index, net in
+            let date = cal.date(byAdding: .day, value: index - 6, to: today) ?? today
+            return WidgetSnapshot.DailyTotal(date: date, net: net)
+        }
+        return s
+    }
+
+    /// Same as `preview` but with the 2.2 sparkline field missing, to
+    /// check the Extra Large placeholder path (old snapshot on disk).
+    static var previewWithoutDailyTotals: WidgetSnapshot {
+        var s = WidgetSnapshot.preview
+        s.dailyNetLast7Days = nil
         return s
     }
 }
