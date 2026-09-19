@@ -49,16 +49,16 @@ struct EvenColumnGrid<Content: View>: View {
         self.content = content
     }
 
-    /// Same arithmetic `GridItem.adaptive` uses, then the even rule.
-    /// Before the first measurement (`measuredWidth == 0`) this yields
-    /// 2, so the first frame is a sane two-column layout rather than a
-    /// single stretched column.
     /// Column gap, widened by the hinge gutter when a division region
     /// is present (Duo 27.1; zero everywhere else).
     private var effectiveColumnSpacing: CGFloat {
         columnSpacing + measurement.divisionGutter
     }
 
+    /// Same arithmetic `GridItem.adaptive` uses, then the even rule.
+    /// Before the first measurement (`width == 0`) this yields 2, so
+    /// the first frame is a sane two-column layout rather than a single
+    /// stretched column.
     private var columnCount: Int {
         guard measurement.width > 0 else { return 2 }
         let fit = Int((measurement.width + effectiveColumnSpacing) / (minimumItemWidth + effectiveColumnSpacing))
