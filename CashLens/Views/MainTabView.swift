@@ -334,6 +334,9 @@ struct MainTabView: View {
         // iOS 18+ API, so no availability gate is needed inside this
         // iOS 26-only path.
         .tabViewStyle(.sidebarAdaptable)
+        // Duo 27.1: tab bar compresses before the add action on the
+        // outer display's vertical bar. No-op on today's SDK.
+        .duoTabBarCompression()
         .tint(.appPrimary)
         .environment(\.bulkSelectionBinding, $isBulkSelecting)
         .animation(Theme.Motion.snappy, value: isBulkSelecting)

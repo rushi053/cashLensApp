@@ -359,6 +359,9 @@ struct AddExpenseView: View {
             }
         }
         .navigationBarHidden(true)
+        // Duo 27.1: single-Close sheet keeps a horizontal bar on the
+        // outer display. No-op on today's SDK.
+        .duoHorizontalToolbar()
         // App-wide sheet convention: visible grab handle on every
         // custom-chrome sheet, with the header giving it clear air.
         .presentationDragIndicator(.visible)

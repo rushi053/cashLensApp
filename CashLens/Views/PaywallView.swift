@@ -249,6 +249,9 @@ struct PaywallView: View {
                 processingOverlay
             }
         }
+        // Duo 27.1: single-Close sheet keeps a horizontal bar on the
+        // outer display. No-op on today's SDK.
+        .duoHorizontalToolbar()
         .alert("Purchase Successful!", isPresented: $showSuccess) {
             Button("Let's Go!") { dismiss() }
         } message: {

@@ -70,22 +70,28 @@ struct TrendChartPager: View {
     private let pageTitles = ["Over time", "By weekday", "Top days"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+        // Duo 27.1: `DuoArrangement` is a plain VStack today; on a
+        // partially folded inner display it becomes
+        // `ArrangementView(.split)` so the page picker sits on one half
+        // and the chart on the other. See `DuoLayoutSupport.swift`.
+        DuoArrangement(spacing: Theme.Spacing.md) {
             pageTabBar
+        } secondary: {
+            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                TabView(selection: $selection) {
+                    overTimePage.tag(0)
+                    weekdayPage.tag(1)
+                    topDaysPage.tag(2)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                // Width-derived height: 280 on phones (the "Top days" page
+                // needs that for five rows), up to 420 in an iPad column so
+                // the trend chart inside can use its own larger cap.
+                .adaptiveHeight(ratio: 0.8, min: 280, max: 420)
+                .animation(Theme.Motion.snappy, value: selection)
 
-            TabView(selection: $selection) {
-                overTimePage.tag(0)
-                weekdayPage.tag(1)
-                topDaysPage.tag(2)
+                pageIndicator
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            // Width-derived height: 280 on phones (the "Top days" page
-            // needs that for five rows), up to 420 in an iPad column so
-            // the trend chart inside can use its own larger cap.
-            .adaptiveHeight(ratio: 0.8, min: 280, max: 420)
-            .animation(Theme.Motion.snappy, value: selection)
-
-            pageIndicator
         }
     }
 
