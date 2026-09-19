@@ -1756,8 +1756,10 @@ struct AllExpensesView: View {
                         }
                     }
                     
-                    // Bottom padding — extra room when the bulk action bar is visible.
-                    Color.clear.frame(height: isSelecting ? 96 : 40)
+                    // Bottom clearance for the FAB (or the bulk action
+                    // bar, which is the same height class). The old 40
+                    // left the last row's amount under the FAB.
+                    Color.clear.frame(height: Theme.Spacing.scrollBottomClearance)
                 }
             }
             // `scrollToTop` is the one-shot signal every filter/sort

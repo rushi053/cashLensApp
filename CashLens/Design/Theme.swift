@@ -18,15 +18,16 @@ enum Theme {
         static let xl:  CGFloat = 20
         static let xxl: CGFloat = 24
         static let xxxl: CGFloat = 32
-        /// Breathing room below the last row of a tab-root scroll view so
-        /// the floating "+" button never sits on top of it. The tab bar
-        /// itself is *not* part of this number any more: on iOS 26 the
-        /// system `TabView` insets content via the safe area, and the
-        /// legacy custom bar adds a matching `safeAreaPadding` in
-        /// `MainTabView`. (Replaces the old `tabBarInset = 100`, which
-        /// double-counted the bar and left ~100pt of dead space on iPad,
-        /// where `.sidebarAdaptable` has no bottom bar at all.)
-        static let scrollBottomClearance: CGFloat = 32
+        /// Clearance below the last row of a tab-root scroll view so the
+        /// floating "+" button never sits on top of it: 12pt gap + 56pt
+        /// FAB + 32pt breathing room = 100. The tab bar itself is *not*
+        /// part of this number: on iOS 26 the system `TabView` insets
+        /// content via the safe area, and the legacy custom bar adds a
+        /// matching `safeAreaPadding` on each tab root in `MainTabView`.
+        /// (Replaces `tabBarInset = 100`, which was really this FAB
+        /// clearance under another name — the review caught that 32 let
+        /// the FAB cover the last row's amount on every iPhone.)
+        static let scrollBottomClearance: CGFloat = 100
     }
 
     // MARK: - Corner Radius
