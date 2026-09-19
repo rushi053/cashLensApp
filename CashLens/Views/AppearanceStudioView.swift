@@ -298,12 +298,6 @@ struct AppearanceStudioView: View {
     // MARK: - Theme grids
 
     private func themeGroup(title: String, themes: [AppTheme]) -> some View {
-        // Adaptive: 84pt minimum keeps 3 swatches per row on every
-        // iPhone (64pt circle + label) and reflows to 4+ on iPad.
-        let columns = [
-            GridItem(.adaptive(minimum: 84, maximum: 120), spacing: Theme.Spacing.lg)
-        ]
-
         return VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             HStack {
                 Text(title)
@@ -326,7 +320,16 @@ struct AppearanceStudioView: View {
                 }
             }
 
-            LazyVGrid(columns: columns, spacing: Theme.Spacing.xl) {
+            // Even-column adaptive grid: 84pt minimum keeps 3 swatches
+            // per row on every iPhone (64pt circle + label) — 3 is kept
+            // deliberately (`evenColumnsAbove: 3`) — and gives 4 on iPad
+            // where 5 would otherwise land a swatch on a Duo fold.
+            EvenColumnGrid(
+                minimumItemWidth: 84,
+                columnSpacing: Theme.Spacing.lg,
+                rowSpacing: Theme.Spacing.xl,
+                evenColumnsAbove: 3
+            ) {
                 ForEach(themes) { theme in
                     swatchButton(theme)
                 }

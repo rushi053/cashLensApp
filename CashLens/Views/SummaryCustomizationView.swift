@@ -232,12 +232,14 @@ struct SummaryCustomizationView: View {
                 }
             }
 
-            // Adaptive: 2 columns on every iPhone (160pt min at ≥ 350pt
-            // content width), 4+ on an iPad column, an even count on
-            // the Duo inner display's usual widths.
-            LazyVGrid(columns: [
-                GridItem(.adaptive(minimum: 160), spacing: Theme.Spacing.md)
-            ], spacing: Theme.Spacing.md) {
+            // Even-column adaptive grid: 2 columns on every iPhone
+            // (160pt min at ≥ 350pt content width), 4 on an iPad column;
+            // 3 rounds down to 2 so no card sits on a Duo fold.
+            EvenColumnGrid(
+                minimumItemWidth: 160,
+                columnSpacing: Theme.Spacing.md,
+                rowSpacing: Theme.Spacing.md
+            ) {
                 ForEach(availableItems) { item in
                     CategorySelectionCard(
                         title: item.title,

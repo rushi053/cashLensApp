@@ -653,14 +653,15 @@ struct BudgetSetupView: View {
     private var categoryPickerSheet: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                // Adaptive columns: 74pt minimum keeps 4 columns on every
-                // iPhone (SE included, 343pt content width) and grows to
-                // 6 in an iPad form sheet, instead of stretching 4 tiles.
-                let columns = [
-                    GridItem(.adaptive(minimum: 74, maximum: 110), spacing: Theme.Spacing.sm + 2, alignment: .top)
-                ]
-
-                LazyVGrid(columns: columns, alignment: .center, spacing: Theme.Spacing.lg) {
+                // Even-column adaptive grid: 74pt minimum keeps 4 columns
+                // on every iPhone (SE included, 343pt content width) and
+                // gives 6 in an iPad form sheet; odd counts at in-between
+                // widths round down so no tile sits on a Duo fold.
+                EvenColumnGrid(
+                    minimumItemWidth: 74,
+                    columnSpacing: Theme.Spacing.sm + 2,
+                    rowSpacing: Theme.Spacing.lg
+                ) {
                     // "All Spending" sits first in the grid too — it's
                     // the budget-screen equivalent of the front-of-row
                     // pinned tile.
