@@ -76,8 +76,8 @@ struct AboutView: View {
                             contactRow(
                                 icon: "envelope.fill",
                                 title: "Email",
-                                value: "email@rushiraj.me",
-                                url: "mailto:email@rushiraj.me"
+                                value: AppConstants.supportEmail,
+                                url: AppConstants.supportMailURL().absoluteString
                             )
                             Divider().padding(.leading, 38).opacity(0.4)
                             contactRow(

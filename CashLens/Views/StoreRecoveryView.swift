@@ -83,7 +83,7 @@ struct StoreRecoveryView: View {
                     .disabled(storeFileURLs.isEmpty)
                     .opacity(storeFileURLs.isEmpty ? 0.5 : 1)
 
-                    Link(destination: URL(string: "mailto:email@rushiraj.me?subject=CashLens%20data%20recovery")!) {
+                    Link(destination: AppConstants.supportMailURL(subject: "CashLens data recovery")) {
                         Text("Contact Support")
                             .font(.system(size: 15, weight: .semibold, design: .rounded))
                             .foregroundColor(.appPrimary)
