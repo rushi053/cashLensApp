@@ -117,6 +117,16 @@ struct ProfileView: View {
 
     @State private var activeAlert: ActiveAlert?
 
+    /// Regular width only (iPad, Duo inner display): two-column layout
+    /// in `ProfileView+LargeScreen.swift`. The compact branch is the
+    /// unchanged iPhone column. `verticalSizeClass` feeds the DEBUG-only
+    /// size-class readout in the Developer group.
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    @Environment(\.verticalSizeClass) var verticalSizeClass
+    /// Measured content width for the one-vs-two-column decision on
+    /// regular width. Never read on compact width.
+    @State var largeScreenMeasuredWidth: CGFloat = 0
+
     /// Static — the bundle version can't change while the app runs, so
     /// there's no reason to re-read the info dictionary on every redraw.
     private static let versionString: String = {
@@ -138,35 +148,14 @@ struct ProfileView: View {
         // lives under the tab bar. Matches Insights, which never had
         // a nav wrapper for the same reason.
         ScrollView {
-            VStack(spacing: Theme.Spacing.xxl) {
-                HStack {
-                    Text("You")
-                        .font(Theme.Typography.pageTitle)
-                        .foregroundColor(.primary)
-                    Spacer()
-                }
-                .padding(.top, Theme.Spacing.sm)
-
-                profileHeader
-                proSection
-                backupBanner
-                generalSection
-                privacySection
-                personalizationSection
-                manageSection
-                notificationsSection
-                dataSection
-                aboutSection
-                #if DEBUG
-                developerSection
-                #endif
-                versionFooter
+            if horizontalSizeClass == .regular {
+                // iPad / Duo inner display: identity + status column
+                // beside the preferences column. Same sections, same
+                // sheets; see `ProfileView+LargeScreen.swift`.
+                largeScreenContent
+            } else {
+                compactContent
             }
-            .padding()
-            .padding(.bottom, Theme.Spacing.xl)
-            // Regular width (iPad, Duo inner): settings groups stay a
-            // readable width instead of stretching edge to edge.
-            .readableColumn()
         }
         .background(Color.systemBackground)
         .alert(item: $activeAlert) { alert in
@@ -222,9 +211,14 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingCurrencyPicker) {
             CurrencyPickerView(viewModel: viewModel)
+                // Regular width: form-sized cards (presenter's size
+                // class) instead of page sheets — applies to every
+                // sheet this tab presents.
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView()
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .sheet(isPresented: $showingThemePicker) {
             AppearanceStudioView()
@@ -232,21 +226,61 @@ struct ProfileView: View {
                 .environmentObject(proManager)
                 .environmentObject(appIconStore)
                 .environmentObject(viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .sheet(isPresented: $showingAppIconPicker) {
             AppIconPickerView()
                 .environmentObject(appIconStore)
                 .environmentObject(proManager)
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .sheet(isPresented: $showingPrivacy) {
             PrivacyDashboardView()
                 .environmentObject(viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .sheet(isPresented: $showingNotifications) {
             NotificationsSettingsView()
                 .environmentObject(viewModel)
                 .environmentObject(proManager)
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
+    }
+
+    /// Presenter-side size class for `largeScreenFormSheet`.
+    var isRegularWidth: Bool { horizontalSizeClass == .regular }
+
+    /// The iPhone (compact width) layout — unchanged single column.
+    private var compactContent: some View {
+        VStack(spacing: Theme.Spacing.xxl) {
+            HStack {
+                Text("You")
+                    .font(Theme.Typography.pageTitle)
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            .padding(.top, Theme.Spacing.sm)
+
+            profileHeader
+            proSection
+            backupBanner
+            generalSection
+            privacySection
+            personalizationSection
+            manageSection
+            notificationsSection
+            dataSection
+            aboutSection
+            #if DEBUG
+            developerSection
+            #endif
+            versionFooter
+        }
+        .padding()
+        .padding(.bottom, Theme.Spacing.xl)
+        // Regular width (iPad, Duo inner): settings groups stay a
+        // readable width instead of stretching edge to edge.
+        .readableColumn()
     }
 
     private func refreshBadgeCaches() {
@@ -283,7 +317,7 @@ struct ProfileView: View {
     /// In-place edit uses `@FocusState` so the keyboard auto-presents and a Done
     /// chip replaces the pencil. No more "Edit Profile" pill — the name itself is
     /// the affordance.
-    private var profileHeader: some View {
+    var profileHeader: some View {
         // Compact horizontal treatment for the tab-root presentation
         // — avatar left, name right. The old vertical "centered hero"
         // shape was right when Profile was a sheet you opened
@@ -374,7 +408,7 @@ struct ProfileView: View {
     // MARK: - Pro Section
 
     @ViewBuilder
-    private var proSection: some View {
+    var proSection: some View {
         if proManager.isPro {
             proActiveCard
         } else {
@@ -470,7 +504,7 @@ struct ProfileView: View {
     /// Surfaces the most critical signal at the top of Settings instead of
     /// burying it at the bottom; tap → opens the export sheet directly.
     @ViewBuilder
-    private var backupBanner: some View {
+    var backupBanner: some View {
         let status = backupHealthStatus
         if status != .good {
             Button(action: {
@@ -529,7 +563,7 @@ struct ProfileView: View {
     /// of the app reads. Navigation-style rows (managers, sub-pages)
     /// live in the dedicated `manageSection` below so this group
     /// stays scannable.
-    private var generalSection: some View {
+    var generalSection: some View {
         // v2 polish: each settings section is now ONE elevated card
         // with hairline-separated bare rows (the iOS Settings-app
         // grouping). The old "every row is its own card" treatment
@@ -542,6 +576,7 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingSiriTips) {
             SiriShortcutsTipsView()
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
     }
 
@@ -566,7 +601,7 @@ struct ProfileView: View {
     /// paywall) + the privacy dashboard. Sits right under General so
     /// the app's core promise is visible without scrolling past the
     /// feature managers.
-    private var privacySection: some View {
+    var privacySection: some View {
         SettingsGroup(title: "Privacy & Security") {
             appLockToggleRow
             if appLockManager.isEnabled {
@@ -665,7 +700,7 @@ struct ProfileView: View {
     /// Categories` here closes a real discoverability gap — it used
     /// to be reachable only by drilling into the category picker
     /// inside Add Expense.
-    private var manageSection: some View {
+    var manageSection: some View {
         SettingsGroup(title: "Manage") {
             budgetManagementRow
             categoriesRow
@@ -793,7 +828,7 @@ struct ProfileView: View {
     /// the App Icon row keeps its dedicated full-catalog picker. The old
     /// standalone light/dark Menu row in General was folded into the
     /// studio so "how the app looks" lives in exactly one place.
-    private var personalizationSection: some View {
+    var personalizationSection: some View {
         SettingsGroup(title: "Personalization") {
             themeAppearanceRow
             appIconRow
@@ -887,7 +922,7 @@ struct ProfileView: View {
     /// the sub-page; tapping presents the dedicated
     /// `NotificationsSettingsView` sheet (no root nav push — see
     /// the body PERF note).
-    private var notificationsSection: some View {
+    var notificationsSection: some View {
         SettingsGroup(title: "Notifications") {
             SettingsRow(
                 icon: "bell.fill",
@@ -924,7 +959,7 @@ struct ProfileView: View {
     /// Combines export / import / clear-all + the full Backup Health card +
     /// info note. Backup-related settings now live together in one place
     /// instead of being split across two sections.
-    private var dataSection: some View {
+    var dataSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             // Section title + backup-health badge ride above the
             // grouped card so the page-level "Data" header has the
@@ -977,10 +1012,12 @@ struct ProfileView: View {
         .sheet(isPresented: $showingExportSheet) {
             ExportDataView()
                 .environmentObject(viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .sheet(isPresented: $showingImportSheet) {
             ImportDataView()
                 .environmentObject(viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
     }
 
@@ -990,7 +1027,7 @@ struct ProfileView: View {
     /// strip. Replaces the previous 3 full-width social tiles which dominated
     /// the screen, and absorbs the "Support the App" row that previously lived
     /// in Settings.
-    private var aboutSection: some View {
+    var aboutSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             SettingsGroup(title: "About") {
                 SettingsRow(icon: "star.fill", iconTint: .yellow, title: "Rate CashLens", style: .bare)
@@ -1022,9 +1059,11 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingAboutSheet) {
             AboutView()
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         .sheet(isPresented: $showingDonationSheet) {
             NavigationStack { DonationView() }
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
         // Attached here (not on the ScrollView) so it can't collide
         // with the `alert(item:)` that owns the clear-all-data flow.
@@ -1046,7 +1085,7 @@ struct ProfileView: View {
     /// The only entry point to `DiagnosticsView` (itself `#if DEBUG`):
     /// stress seeder, smoke checks, review-prompt reset. Nothing here
     /// is compiled into Release.
-    private var developerSection: some View {
+    var developerSection: some View {
         SettingsGroup(title: "Developer (debug builds only)") {
             SettingsRow(
                 icon: "wrench.and.screwdriver.fill",
@@ -1058,10 +1097,30 @@ struct ProfileView: View {
                 HapticManager.shared.lightTap()
                 showingDiagnostics = true
             }
+
+            // Live size classes of this tab root (not of a sheet, which
+            // would report compact on iPad). The large-screen layouts
+            // key off regular width; this row is how to confirm what
+            // the Duo inner display and Split View actually report.
+            SettingsRow(
+                icon: "rectangle.split.2x1",
+                title: "Size classes",
+                subtitle: "\(sizeClassName(horizontalSizeClass)) width · \(sizeClassName(verticalSizeClass)) height · \(Int(largeScreenMeasuredWidth))pt measured",
+                showsChevron: false,
+                style: .bare
+            )
         }
         .sheet(isPresented: $showingDiagnostics) {
             DiagnosticsView()
                 .environmentObject(viewModel)
+        }
+    }
+
+    private func sizeClassName(_ sizeClass: UserInterfaceSizeClass?) -> String {
+        switch sizeClass {
+        case .regular: return "regular"
+        case .compact: return "compact"
+        default: return "unknown"
         }
     }
     #endif
@@ -1185,7 +1244,7 @@ struct ProfileView: View {
 
     /// Tiny footer text — replaces the previous full "Version" settings row which
     /// wasted a tappable-row slot on a non-tappable label.
-    private var versionFooter: some View {
+    var versionFooter: some View {
         HStack {
             Spacer()
             Text("CashLens · v\(Self.versionString)")
