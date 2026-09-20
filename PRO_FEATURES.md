@@ -1,35 +1,45 @@
 # CashLens Pro — Feature Roadmap
 
-> **Baseline:** v1.0.5 (Build 5) — All current features remain free  
-> **Target:** v2.0.0 — CashLens Pro launch  
-> **Monetization:** Auto-renewable subscription + optional lifetime unlock  
-> **Branch:** `pro-features`
+> **Baseline:** v1.0.5 (Build 5, App Store 2026-01) — everything that existed then is still free  
+> **Shipped:** CashLens Pro launched with the v2 redesign; live on the App Store as **2.1** since 2026-08-29 (repo `MARKETING_VERSION` 2.0.1 / build 7 — the store string was set in App Store Connect)  
+> **Next:** 2.2 (build 8) — see [Version Plan](#version-plan)  
+> **Monetization:** Auto-renewable subscriptions (monthly / yearly, 7-day trial) **and** a lifetime unlock. Both stay — see decision below  
+> **Branch:** `redesign/v2` is what store 2.1 shipped from (`pro-features` was a single snapshot commit, `cb26f47`, that is an ancestor of it). `release/2.2` is cut from it and carries the 2.2 work (`MARKETING_VERSION = 2.2`, build 8). `main` is stale at 1.0.5.  
+> **Doc status:** phases were logged as they were built; this refresh (2026-09-19) adds the missing Phase 13, sets Phase 8's status, and rewrites the version plan to match what actually shipped.
 
 ---
 
 ## Pricing Strategy
 
-| Tier | Price | Notes |
-|------|-------|-------|
-| Monthly | $2.99/mo | 7-day free trial |
-| Yearly | $19.99/yr | ~$1.67/mo, best value badge |
-| Lifetime | $39.99 | One-time, for subscription-averse users |
+| Tier | Product ID | Price | Notes |
+|------|------------|-------|-------|
+| Monthly | `com.cashlens.pro.monthly` | $2.99/mo | 7-day free trial (shown only when `ProManager.isEligibleForIntroOffer`) |
+| Yearly | `com.cashlens.pro.yearly` | $19.99/yr | ~$1.67/mo, savings badge computed from live prices |
+| Lifetime | `com.cashlens.pro.lifetime` | $39.99 | One-time non-consumable, for subscription-averse users |
 
-**Tip jar** (existing) stays as-is for users who want to support without Pro.
+All three are listed on the live App Store page alongside the three tips ($0.99 / $4.99 / $9.99).
+
+**Monetization decision (Rushiraj, 2026-09-19): subscriptions AND lifetime both stay.** An earlier HQ decision ("never subscription") is reversed; the app has been selling all three tiers since launch and none is being retired. Logged here so the paywall, App Store listing and content calendar can be truth-passed against one statement.
+
+**Tip jar** (existing) stays as-is for users who want to support without Pro. Past donors are grandfathered into Pro — see [Donor Grandfathering](#donor-grandfathering-wave-2).
 
 ---
 
 ## What Stays Free (never gated)
 
-- Unlimited expense tracking (add/edit/delete)
-- All 10 default categories
-- Up to 5 custom categories (grandfather existing users with more)
+- Unlimited expense tracking (add/edit/delete), tags (adding), payment method, refunds, templates, bulk select
+- All 10 default categories and custom categories (no cap is enforced in code)
 - Subscription/bill tracking with reminders
-- Basic statistics (donut, trend, heatmap)
-- Import/Export (CSV/JSON)
-- Weekly/monthly digest notifications
+- Basic statistics (donut, trend pager, heatmap, highlights), Monthly Recap
+- Import/Export (`.cashlens.json`, `.csv`, `.cashlens-archive`) and import of any CashLens backup
+- Weekly/monthly digest notifications, backup reminder
 - Dark mode + appearance toggle
 - Draft recovery
+- Today screen and its customization
+- App Lock (Face ID / Touch ID / passcode)
+- Siri / Shortcuts intents (`Log Expense`, `Check Spending`)
+- Spending Snapshot widget (Home + Lock Screen) and the Quick Log widget with one template
+- Viewing and removing existing receipts (capture is Pro)
 
 ---
 
@@ -217,7 +227,7 @@ The Personalization tier — six accent color themes that recolor every primary 
 
 | # | Feature | Status |
 |---|---------|--------|
-| 6.1 | **VisionKit Document Scanner** | ✅ `VNDocumentCameraViewController` with auto-crop / perspective-correction. Page 1 of any multi-page scan is taken (multi-page support deferred to v2.1 with multi-image attachments). |
+| 6.1 | **VisionKit Document Scanner** | ✅ `VNDocumentCameraViewController` with auto-crop / perspective-correction. Page 1 of any multi-page scan is taken (multi-page support still deferred — see below). Receipt OCR auto-fill was added later (Phase 13.9). |
 | 6.2 | **PhotosUI Library Picker** | ✅ Native `PhotosPicker` for non-camera attachments. |
 | 6.3 | **Pro-gated capture, free-forever viewing** | ✅ Capture buttons gated behind `ProManager.isPro`; downgraded users keep viewing/removing existing receipts. |
 | 6.4 | **In-form preview + paperclip badge on `ExpenseCard`** | ✅ Compact attached-card UI with thumbnail, Replace, Remove. Tiny accent paperclip on rows with attached receipts. |
@@ -261,29 +271,29 @@ The Personalization tier — six accent color themes that recolor every primary 
 - The user picks **Settings → Export → Full Archive** and gets a single `.cashlens-archive` file (under-the-hood a STORE-method zip — opens in Finder, Files.app, Windows Explorer, anything). The archive contains `data.json` plus every receipt JPEG keyed by filename.
 - On the new device they pick **Settings → Import** and select the same file. Receipts restore to `Documents/Receipts/` before Core Data is touched, so a half-finished restore can never leave Core Data referencing files that aren't on disk.
 - Why pure-Swift (no `ZIPFoundation` / `Compression` framework dependency): JPEGs are already compressed, so STORE method costs nothing in size and keeps the implementation surface tiny. The whole zip layer is ~250 LoC under our own control — no library version pinning, no transitive deps, no surprises.
-- Why this isn't redundant with future iCloud sync: CloudKit (v2.1) handles **passive sync between the user's own devices**. The `.cashlens-archive` flow handles **explicit user-driven backup/restore** — the file users email themselves "just in case", AirDrop to a friend's phone, or save to Dropbox/Drive as an off-platform safety net. Both ship, neither obsoletes the other.
+- Why this isn't redundant with a future iCloud sync: CloudKit (not built; decision pending — see Version Plan) would handle **passive sync between the user's own devices**. The `.cashlens-archive` flow handles **explicit user-driven backup/restore** — the file users email themselves "just in case", AirDrop to a friend's phone, or save to Dropbox/Drive as an off-platform safety net. Today the archive is the only cross-device path.
 
-**Deferred to v2.1 (intentional):**
+**Deferred (originally "to v2.1"; still not built as of 2.2 planning, 2026-09-19):**
 
-- **iCloud-Drive auto-sync via `NSPersistentCloudKitContainer`.** Different problem from cross-device backup — CloudKit gives passive multi-device sync without user action; the archive gives the user direct control over a portable file they own. v2.1 ships both.
-- **System-wide UTType registration** (so tapping a `.cashlens-archive` in Files.app opens CashLens). Today the user goes through the in-app **Import** button and picks the archive from the file picker — works perfectly, just one extra tap. Surfacing the type to iOS requires editing the project's complex Info.plist entries (the project uses `GENERATE_INFOPLIST_FILE = YES` which makes `UTExportedTypeDeclarations` array-of-dict surgery fiddly); deferred as polish.
-- **Multi-image attachments per expense** (long pharmacy receipts, multi-page hotel folios). Today we take page 1 of any multi-page VisionKit scan. Lifting this requires a model migration to `[String]` and a small UX rethink for the in-form preview.
+- **iCloud auto-sync via `NSPersistentCloudKitContainer`.** Different problem from cross-device backup — CloudKit gives passive multi-device sync without user action; the archive gives the user direct control over a portable file they own. **Status: not built; decision pending** (see Version Plan). Making iPad a first-class layout in 2.2 without sync is a known review risk.
+- **System-wide UTType registration** (so tapping a `.cashlens-archive` in Files.app opens CashLens). Today the user goes through the in-app **Import** button and picks the archive from the file picker. Surfacing the type to iOS requires editing the project's Info.plist entries (the project uses `GENERATE_INFOPLIST_FILE = YES`, which makes `UTExportedTypeDeclarations` array-of-dict surgery fiddly). **Status: not built.**
+- **Multi-image attachments per expense** (long pharmacy receipts, multi-page hotel folios). Today we take page 1 of any multi-page VisionKit scan (`DocumentScannerView`). Lifting this requires a model migration to `[String]` and a small UX rethink for the in-form preview. **Status: not built; candidate for 2.2** (small, Pro value).
 
-**Testing checklist:**
+**Testing checklist** (audited 2026-09-19 against the code on `redesign/v2`; there are no automated tests for any of these — `CashLensTests` is a stub — so "code-verified" means the code path exists and does what the item describes, not that it was exercised on a device):
 
-- [ ] First-time scan on a real device — VisionKit prompts for camera; `INFOPLIST_KEY_NSCameraUsageDescription` resolves to the friendly explanation we wrote.
-- [ ] Library picker on a real device — `INFOPLIST_KEY_NSPhotoLibraryUsageDescription` resolves correctly.
-- [ ] Free user → tap Scan → paywall opens. Restore Pro → tap Scan → scanner opens.
-- [ ] Attach + remove without saving → file is gone from `Documents/Receipts/` (use Files.app or `cleanupOrphans` debug to verify).
-- [ ] Replace receipt during edit → old file is deleted on save commit.
-- [ ] Bulk-delete N expenses with receipts → all files cleaned up post-save.
-- [ ] Force-quit during attach → next foreground sweep removes the orphan file.
-- [ ] Round-trip a JSON backup with a receipt-bearing expense → import succeeds, paperclip badge appears, viewer shows the image (only on the same device where the file lives).
-- [ ] Round-trip an *old* JSON backup created before v2.0 → still imports cleanly (no `receiptImagePath` key → decoded as `nil`).
-- [ ] Export **Full Archive** → AirDrop to a second device → import → all receipts present, viewer opens each one. Try with 0 / 1 / 50 receipts.
-- [ ] Open a `.cashlens-archive` in 7-Zip / macOS Finder → confirm it's a real zip (no encryption prompt, files visible, `data.json` byte-identical to a `.cashlens.json` export).
-- [ ] Truncate a `.cashlens-archive` (delete last 100 bytes) → import surfaces "checksum mismatch" or "archive truncated", **never** silently accepts bad data.
-- [ ] Re-import the same archive twice (merge mode) → second pass reports "+0 expenses, +N skipped" and "+N receipts restored" (overwrites with bit-identical bytes — idempotent).
+- [ ] **Unverified (device run needed)** — First-time scan on a real device — VisionKit prompts for camera. Code: `INFOPLIST_KEY_NSCameraUsageDescription` is set in both Debug and Release configs of `project.pbxproj`.
+- [ ] **Unverified (device run needed)** — Library picker on a real device. Code: `INFOPLIST_KEY_NSPhotoLibraryUsageDescription` is set in both configs.
+- [x] **Code-verified** — Free user → tap Scan → paywall opens; Pro → scanner opens. `AddExpenseView.handleScanTapped()` guards on `proManager.isPro` → `showingReceiptPaywall`, then on `DocumentScannerView.isSupported` → `showingScanner`. `handleLibraryTapped()` is only reachable for free users and opens the paywall; Pro users get a real `PhotosPicker`.
+- [x] **Code-verified** — Attach + remove without saving → file deleted. `AddExpenseView.cleanupUnsavedReceipt()` runs on close for session-attached files; `attachReceipt(image:)` deletes a prior in-session file after the new one lands.
+- [x] **Code-verified** — Replace receipt during edit → old file deleted on save commit. `ExpenseViewModel+CRUD.updateExpense` snapshots the prior `receiptImagePath` and dispatches `cleanupReceiptFiles` on `Task.detached` after the save.
+- [x] **Code-verified** — Bulk-delete N expenses with receipts → files cleaned up. `deleteExpenses(ids:)` (and `deleteExpense(at:)` / `deleteExpenseById`) snapshot the paths before the save and clean up on a detached task.
+- [x] **Code-verified** — Force-quit during attach → next foreground removes the orphan. `CashLensApp.cleanupReceiptOrphansInBackground()` runs on every `.active` transition, gated on `viewModel.isFullyHydrated` and a non-empty expense set so it can never wipe live receipts against a partial keep-set.
+- [x] **Code-verified** — JSON backup with a receipt-bearing expense round-trips. `Expense` encodes/decodes `receiptImagePath`; the paperclip badge in `ExpenseCard` keys off `receiptImagePath != nil`. The image only exists on the device that holds the file (JSON carries the filename, not the bytes). Unverified on device.
+- [x] **Code-verified** — Pre-2.0 JSON backup still imports. `Expense.init(from:)` uses `decodeIfPresent` for `receiptImagePath` (and `isRefund`, `paymentMethod`, `tags`).
+- [ ] **Unverified (needs two devices)** — Export Full Archive → AirDrop → import on a second device with 0 / 1 / 50 receipts. Code: `BackupExporter.writeArchive` and `BackupImporter.restoreReceipts(fromArchive:)` exist; receipts are restored before Core Data is touched.
+- [ ] **Unverified (manual)** — Open a `.cashlens-archive` in 7-Zip / Finder. Code: `ZipWriter` is a STORE-only PKZIP writer with a standard central directory; `writeArchive` configures its `JSONEncoder` identically to `writeJSON` (`.prettyPrinted, .sortedKeys, .withoutEscapingSlashes`, ISO-8601 dates) so `data.json` should be byte-identical — not confirmed by a test.
+- [x] **Code-verified** — Truncated archive is rejected. `ZipReader` throws `Error.truncated` when the EOCD/central directory can't be read and `Error.crcMismatch(name:expected:actual:)` on every extraction whose CRC-32 fails; `BackupImporter.apply` fails the import before touching Core Data if the archive can't be opened.
+- [ ] **Unverified (manual)** — Re-import the same archive twice in merge mode is idempotent. Code: expense dedup by ID then content exists in `BackupImporter.apply`; receipt restore overwrites by filename. The exact "+0 / +N skipped" summary copy is not covered by a test.
 
 ---
 
@@ -325,15 +335,17 @@ The Personalization tier — six accent color themes that recolor every primary 
 
 ---
 
-### Phase 8: Multi-Currency with Live Rates (Most Complex)
+### Phase 8: Multi-Currency with Live Rates — NOT BUILT (deferred)
 
-| # | Feature | Risk | Effort | Revenue Impact |
-|---|---------|------|--------|----------------|
-| 8.1 | **Per-Expense Currency** | Medium | High | — |
-| 8.2 | **Exchange Rate API** | Medium | Medium | — |
-| 8.3 | **Conversion Display** | Medium | Medium | High — travelers/expats |
+**Status (2026-09-19): Not built, deferred until App Store Connect data shows demand.** The app still has a single global currency (`selectedCurrency`, 170+ codes with locale auto-detection); `ExpenseViewModel+Currency.syncCurrencyAcrossStoredData()` bulk-rewrites every stored row when it changes. None of the files listed under "Files to create" exist. This is the only phase in the roadmap with no shipped code. It would also be the first feature to add a network dependency to an app whose privacy positioning is "no servers, no trackers" — that trade-off needs a decision before any build starts.
 
-**Details:**
+| # | Feature | Risk | Effort | Revenue Impact | Status |
+|---|---------|------|--------|----------------|--------|
+| 8.1 | **Per-Expense Currency** | Medium | High | — | Not built |
+| 8.2 | **Exchange Rate API** | Medium | Medium | — | Not built |
+| 8.3 | **Conversion Display** | Medium | Medium | High — travelers/expats | Not built |
+
+**Details (original design, unchanged):**
 
 - **Per-Expense Currency:** Currently all expenses forced to `selectedCurrency`. Pro allows choosing currency per expense. Home currency used for totals via conversion.
 - **Exchange Rate API:** Free API (e.g., exchangerate.host), cached daily. Stored locally. Fallback to last cached rate if offline.
@@ -546,6 +558,41 @@ A single Pro-gated weekly notification that fires **only** when something genuin
 
 ---
 
+### Phase 13: v2 Redesign & Pre-Submission Wave — SHIPPED ✅ (as App Store 2.1)
+
+> This phase was never written up when it was built — the numbering jumped from 12 to 14. Reconstructed on 2026-09-19 from the code on `redesign/v2` and `git log` (`777ee11` … `9ed0450` v2 redesign, May 2026; `74f476a` pre-submission wave, 2026-07-15; `60382e3` 2.0.0 (6); `4029ae0` 2.0.1 (7), 2026-08-29). Everything below is on the App Store as 2.1 except where marked.
+
+Not a single feature but the release that turned the Pro wave into a shippable app: a new information architecture, a new landing screen, and the pre-submission set of trust, privacy and reach features. Tier per item is what the code enforces today.
+
+| # | Item | Tier | Where | Status |
+|---|------|------|-------|--------|
+| 13.1 | **4-tab IA — Today / Activity / Insights / You** (was Home / Subscriptions / Statistics with Profile behind a header icon). iOS 26+ uses the native `TabView` + `SwiftUI.Tab` floating bar; iOS 18–25 keeps a custom bar. FAB on every tab except You. | Free | `Views/MainTabView.swift` | ✅ Shipped |
+| 13.2 | **Today screen** — verdict hero (spend vs budget, days left, projected month-end, On Track / Tight / Over), 7-day strip, upcoming bills, recent, one `SmartInsightsEngine` insight, stacked budgets card, recap card; sections reorderable / hideable | Free (budget verdict needs a Pro budget; degrades to pace-vs-typical without one) | `Views/TodayView.swift`, `Views/TodayCustomizeView.swift` | ✅ Shipped |
+| 13.3 | **Activity tab** — `AllExpensesView` promoted from a sheet to a tab root; List / Calendar toggle embeds `ExpenseCalendarView`; single search surface via `QuickSearchView` | Free (tag filter + bulk tag stay Pro) | `Views/AllExpensesView.swift` | ✅ Shipped |
+| 13.4 | **You tab** — `ProfileView` promoted to a tab; every destination is a sheet (no root `UINavigationController`); grouped into Pro card / General / Privacy & Security / Personalization / Manage / Notifications / Data / About; `NotificationsSettingsView` hub behind the single "Reminders & Insights" row | Free | `Views/ProfileView.swift`, `Views/NotificationsSettingsView.swift` | ✅ Shipped |
+| 13.5 | **Monthly Recap** — v2 rebuild of the deleted paged recap: single scrolling card sequence + `ShareLink` of an `ImageRenderer` card; Today card early in a new month + permanent Insights row | Free (shared card = organic growth) | `Utilities/MonthlyRecapEngine.swift`, `Views/MonthlyRecapView.swift` | ✅ Shipped |
+| 13.6 | **App Lock** — Face ID / Touch ID / passcode with Immediately / 1 min / 5 min grace; privacy cover while inactive; relock-loop guards; deep links parked while locked | Free ("your money stays your business" is not a paywall) | `Utilities/AppLockManager.swift`, `Views/AppLockView.swift` | ✅ Shipped |
+| 13.7 | **Siri / Shortcuts** — `LogExpenseIntent` (`IntentCurrencyAmount`, required title, category inference) and `GetSpendingIntent`, zero-setup phrases via `CashLensShortcuts`; headless writes through `QuickLogService` | Free | `Intents/`, `Utilities/QuickLogService.swift`, `Views/SiriShortcutsTipsView.swift` | ✅ Shipped |
+| 13.8 | **Quick Log widget** (interactive) — today's total + one-tap template buttons; widget-process intent appends to `PendingExpenseQueue`, app drains on foreground | Free with 1 template; extra templates Pro | `CashLensWidgets/QuickLogWidget.swift`, `Shared/PendingExpenseQueue.swift` | ✅ Shipped |
+| 13.9 | **Receipt OCR** — on-device Vision text recognition fills empty amount / merchant after a capture; never overwrites typed values; silent on failure | Pro (inherits the capture gate) | `Utilities/ReceiptOCRService.swift`, `AddExpenseView.runReceiptOCR` | ✅ Shipped |
+| 13.10 | **Appearance Studio** — mode selector + 12 duotone themes (6 Classics + 6 Pastels) + "Complete the look" icon pairing; replaces `ThemePickerView` | Mode free; themes / icons Pro | `Views/AppearanceStudioView.swift`, `Models/AppTheme.swift` | ✅ Shipped (extends Phase 4) |
+| 13.11 | **Custom budget date ranges** — `Budget.Period.custom` with `customStartDate` / inclusive `customEndDate`; Core Data model v2 | Pro | `Models/Budget.swift`, `CashLens 2.xcdatamodel` | ✅ Shipped (extends Phase 2) |
+| 13.12 | **Privacy Dashboard** + **privacy manifests** (`PrivacyInfo.xcprivacy` in both targets) | Free | `Views/PrivacyDashboardView.swift` | ✅ Shipped |
+| 13.13 | **Store recovery** — if the Core Data store fails to load, show `StoreRecoveryView` (never delete, offer raw `.sqlite` export) instead of crashing | — | `Persistence.swift`, `Views/StoreRecoveryView.swift` | ✅ Shipped |
+| 13.14 | **Save error banner + save confirmation toast** — every `context.save()` failure is surfaced; successes get a short toast | — | `Utilities/SaveErrorReporter.swift`, `Components/SaveErrorBanner.swift`, `Components/SaveConfirmationToast.swift` | ✅ Shipped |
+| 13.15 | **Post-value auto-paywall** — shows once, right after the save that crosses 10 expenses (`PaywallTrigger`); `PaywallContext` copy per feature; intro-offer eligibility check so "free trial" is never promised to an ineligible Apple ID | — | `Utilities/PaywallTrigger.swift`, `Views/PaywallView.swift`, `ProManager.isEligibleForIntroOffer` | ✅ Shipped |
+| 13.16 | **Win-back sheet** after a Pro → free lapse (once per lapse, never for donors, "No thanks" is permanent) + **donor thank-you** sheet | — | `Views/WinBackView.swift`, `Views/DonorThanksView.swift`, `ProManager` | ✅ Shipped (mechanics in [Donor Grandfathering](#donor-grandfathering-wave-2)) |
+| 13.17 | **Native one-tap rating prompt** — `requestReview` driven by `FeedbackManager` (12 actions across 3+ days or 5 after an export; 30-day cooldown; max 3; threshold 12 so it never collides with the 10th-expense paywall); replaced the custom modal | — | `MainTabView` (+ `Utilities/FeedbackManager.swift`, deleted in 2.2) | ✅ Shipped in 2.0.1 (7); **replaced in 2.2** by `ReviewPromptManager` (once per major.minor version, at the 10th expense or a 7-day streak, never over onboarding / paywall / any presentation / a dismissing sheet; the ask is spent only when actually shown) |
+| 13.18 | **Single StoreKit transaction listener** — `ProManager` owns `Transaction.updates`, routes donations to `DonationManager`, finishes each transaction once (fixed a race that could drop a donation) | — | `Models/ProManager.swift` | ✅ Shipped |
+| 13.19 | **Promoted In-App Purchases** — `PurchaseIntent.intents` listener so App Store product-page purchases complete in-app; promo images for yearly + lifetime. On `release/2.2` the listener also routes promoted tip products to `DonationManager.purchase()` (`7289d22`) | — | `ProManager.listenForPurchaseIntents()`, `Marketing/PromoImages/` | ⏳ **Unshipped** — on `redesign/v2` (2026-09-02) and `release/2.2`, not in store 2.1; ships in 2.2 |
+| 13.20 | **Audit fixes** from the pre-submission review — atomic backup import, App Lock deep-link gating, save-success gating on CRUD paths, notification scheduling retries, PII-free release logging (`QuickLogService.diagTrail` redaction), restore-purchases feedback, dead-code removal; perf: visibility-gated Activity recomputes, equality-gated budget publishes, widget snapshot diffing | — | various | ✅ Shipped |
+
+**Known leftovers from the redesign** (as of 2026-09-19): `PinnedCategoryCard` and `SummaryCustomizationView` have no call sites — they belonged to the old Home screen (`DiagnosticsView` was in the same state until 2.2 restored a DEBUG-only entry point under You → Developer). `DonationManager` still exists and is used; the "Support the App" row lives under You → About. Store 2.1 also shipped two different support addresses (`email@rushiraj.me` in the app, `rjadeja053@gmail.com` on the site); 2.2 unifies on `AppConstants.supportEmail = rjadeja053@gmail.com` (`4810369`).
+
+**Not done in this phase (see Version Plan):** adaptive layout for iPad / landscape / iPhone SE — store 2.1 is a universal binary but a stretched phone layout on iPad (no sidebar, one `horizontalSizeClass` check, `userInterfaceIdiom` branches, fixed chart heights, fixed 3–4 column grids, no `systemExtraLarge` widgets). Being addressed on `release/2.2` (see the 2.2 row below). Also not done: iCloud sync, multi-currency.
+
+---
+
 ### Phase 14: Home & Lock Screen Widgets (Pro) — ✅ SHIPPED
 
 | # | Widget | Sizes | Tier | Risk | Status |
@@ -554,6 +601,9 @@ A single Pro-gated weekly notification that fires **only** when something genuin
 | 14.2 | **Budget Progress** | Small / Medium | Pro | Low | ✅ Shipped |
 | 14.3 | **Subscriptions Due** | Medium | Pro | Low | ✅ Shipped |
 | 14.4 | **No-Spend Streak** | Small / Medium + Lock circular / rectangular / inline | Pro | Low | ✅ Shipped |
+| 13.8 | **Quick Log** (interactive) | Small / Medium | Free with 1 template; more templates Pro | Medium | ✅ Shipped later, in the pre-submission wave — see Phase 13 |
+
+The bundle therefore vends **seven** widgets (five Home Screen + two Lock Screen), not six. None supports `systemExtraLarge` (iPad) yet: `release/2.2` already writes `WidgetSnapshot.dailyNetLast7Days` (7 refund-adjusted daily nets, oldest first, from `WidgetSnapshotBuilder.buildDailyTotals`) for an Extra Large Spending sparkline, but the widget that reads it lives in the unmerged PR #8 (`feat/2.2-widgets-tests`).
 
 **Architecture:**
 
@@ -610,7 +660,7 @@ Spending Snapshot is **deliberately free for everyone** — it's the hero surfac
 - `CashLens/Utilities/WidgetSnapshotCoordinator.swift` — `@MainActor` singleton; Combine subscriptions; debounced refresh; `WidgetCenter` reload
 
 **Files created (widget extension):**
-- `CashLensWidgets/CashLensWidgetsBundle.swift` — `@main WidgetBundle` listing all six widgets
+- `CashLensWidgets/CashLensWidgetsBundle.swift` — `@main WidgetBundle` listing all widgets (seven once Quick Log was added)
 - `CashLensWidgets/WidgetTheme.swift` — pure theme resolver mirror of `AppTheme` + `Color(hex:)` initializer
 - `CashLensWidgets/WidgetMoneyFormatter.swift` — currency-aware compact / full / percent-delta formatters
 - `CashLensWidgets/WidgetProUpsellView.swift` — shared "Unlock with CashLens Pro" tile
@@ -644,19 +694,19 @@ Spending Snapshot is **deliberately free for everyone** — it's the hero surfac
 
 ## UI/UX Improvements (Free + Pro)
 
-These improvements benefit all users and should be done incrementally:
+Original wish-list from the Pro planning, with status as of 2026-09-19 (checked against the code on `redesign/v2`):
 
-| Priority | Improvement | Phase |
-|----------|-------------|-------|
-| High | Redesigned Home hero card with sparkline + % change | Phase 2 |
-| High | Quick-add half-sheet (`.presentationDetents([.medium, .large])`) | Phase 2 |
-| Medium | Statistics sub-tabs (Overview / Trends / Categories) | Phase 5 |
-| Medium | Subscription calendar strip with due date dots | Phase 2 |
-| Medium | Profile settings reorganization (grouped navigation) | Phase 4 |
-| Medium | Pull-to-refresh on Home and Subscriptions | Phase 2 |
-| Low | Onboarding trim to 3-4 pages + interactive first expense | Phase 4 |
-| Low | Illustrated empty states with clear CTAs | Phase 3 |
-| Low | Contextual first-time feature tooltips | Phase 5 |
+| Priority | Improvement | Planned phase | Status |
+|----------|-------------|---------------|--------|
+| High | Redesigned Home hero card with sparkline + % change | Phase 2 | Superseded — the v2 Today verdict hero + 7-day strip replaced the Home hero (Phase 13) |
+| High | Quick-add half-sheet (`.presentationDetents([.medium, .large])`) | Phase 2 | Not done — `AddExpenseView` is a full sheet; detents are used only on `BudgetSetupView`, `TodayCustomizeView`, `WinBackView`, `DonorThanksView` and Activity's date-range sheet |
+| Medium | Statistics sub-tabs (Overview / Trends / Categories) | Phase 5 | Not done — Insights is one scrolling page; only the Trend section is a pager (`TrendChartPager`) |
+| Medium | Subscription calendar strip with due date dots | Phase 2 | Not done — `SubscriptionsView` shows a "Next up" row and Due Soon / Later / Paused groups instead |
+| Medium | Profile settings reorganization (grouped navigation) | Phase 4 | Done — `SettingsGroup` sections, every destination a sheet (Phase 13) |
+| Medium | Pull-to-refresh on Home and Subscriptions | Phase 2 | Not done — no `.refreshable` in the app (data refreshes on foreground instead) |
+| Low | Onboarding trim to 3-4 pages + interactive first expense | Phase 4 | Partially — `OnboardingView` has 5 steps (welcome, privacy, capability, firstExpense, finish) including an interactive first expense |
+| Low | Illustrated empty states with clear CTAs | Phase 3 | Done — `EmptyStatePanel` / `InlineEmptyState` in the design system, used across tabs |
+| Low | Contextual first-time feature tooltips | Phase 5 | Not done — no tooltip / coach-mark system; `InsightInfoButton` sheets cover Insights explanations |
 
 ---
 
@@ -683,13 +733,21 @@ Past tip-jar donors funded CashLens before Pro existed — they get Pro, automat
 
 ## Version Plan
 
-| Version | Contents | Branch |
-|---------|----------|--------|
-| **2.0.0** | Phase 1 (Pro infra) + Phase 2 (Budgets) + key UI improvements | `pro-features` |
-| **2.1.0** | Phase 3 (Tags) + Phase 4 (Icons/Themes) | `pro-features` |
-| **2.2.0** | Phase 5 (Advanced Stats/PDF) + Phase 6 (Receipt Scanner + `.cashlens-archive` cross-device backup) | `pro-features` |
-| **2.3.0** | Phase 7 (Forecasting) + Phase 8 (Multi-Currency) | `pro-features` |
-| **v2.1+** (post-launch) | iCloud auto-sync via `NSPersistentCloudKitContainer`. System-wide UTType registration for `.cashlens-archive`. Multi-image attachments per expense. | future |
+The original plan staged the phases across 2.0.0 → 2.3.0 on `pro-features`. That did not happen: every phase except Phase 8 shipped together in one release. This table is what actually happened and what is planned now (rewritten 2026-09-19).
+
+| Version | Status | Contents | Branch / commit |
+|---------|--------|----------|-----------------|
+| **1.0.5 (5)** | Shipped 2026-01 | Free app, tip jar only, 3 tabs | `main` (`fbf8865`) — `main` has not moved since |
+| **2.0.0 (6)** | Built 2026-07-16; whether it was published cannot be verified from the repo | Phases 1–7, 9–12, 14 + Phase 13 (v2 redesign + pre-submission wave) | `redesign/v2` (`60382e3`) |
+| **2.1** (repo 2.0.1, build 7) | **Shipped 2026-08-29** — the current App Store release | 2.0.0 contents + native one-tap rating prompt + Mark-paid hint. Store version string 2.1 was set in App Store Connect; the repo still says 2.0.1. | `redesign/v2` (`4029ae0`) |
+| **2.2 (8)** | **Code complete for Phases 0, A, B, C, the launch-readiness review fixes, and the perf quick wins on `release/2.2`** (45 commits ahead of `redesign/v2` at `774a659`, 2026-09-19, incl. four pass-2 review fixes); **nothing compiled or run yet** — needs Rushiraj's Xcode 27 build, perf measurement run and device pass before submission | **Phase 0 — housekeeping / monetization:** version 2.2 / build 8, tracked `xcuserdata` dropped (`be7a28b`); promoted-IAP listener routes tips too (`7289d22`; promo images still to be uploaded in App Store Connect before submission); paywall truth-pass (`9c9d840`); `ReviewPromptManager` (`8de55d1`); `AppConstants.supportEmail` (`4810369`); these docs. **Phase A — layout foundation:** `sidebarAdaptable` tab shell + size-class FAB (`0691176`); size classes replace `userInterfaceIdiom`, `.adaptiveHeight` (`f3e9942`, `da8a529`); `NavigationView` → `NavigationStack` (`bb47fde`); adaptive grids (`7a4e291`, superseded by `EvenColumnGrid` in Phase C); Activity list + detail on regular width + `AddExpenseView.onDismissRequest` (`eec249d`; the `NavigationSplitView` was later replaced by a two-pane `HStack`, see review fixes); `.readableColumn` for Today / You / Paywall (`0144e13`); compact-height onboarding + paywall (`7cac596`); `tabBarInset` retired (`46b7404`; clearance re-derived as 100 in review fixes); `@ScaledMetric` sweep (`5604e8d`); `WidgetSnapshot.dailyNetLast7Days` populated for the Extra Large sparkline (`3fb1b78` — the widget itself is in unmerged PR #8). Not applicable: two-column Today (v2 Today has no pin grid). **Phase B — iPad polish:** `AppCommands` Cmd-N / Cmd-F / Cmd-, + Esc on `SheetCloseButton` (`adefae7`); hover effects (`7517150`); multitasking audit — only fix was Activity ledger width 300/340/420 for 11" 50/50 and Duo inner (`ff20b27`); multiple scenes **left off** (per-scene lock / deep-link / draft state would be needed; 2.3 if ever). **Phase C — iPhone Duo prep (iOS 27 SDK):** toolbar audit — `Label`s for symbol items, `ToolbarItem` for legacy `navigationBarItems`, Esc on root Done buttons (`952a341`); safe-area audit, no change needed; `EvenColumnGrid` for every picker + `DuoLayoutSupport.divisionGutter` hook (`8f8362a`, `f34af68`); 27.1 stubs behind `CASHLENS_DUO_27_1` (`d535979`); fold-transition behaviour documented (state lives above the size-class-dependent containers; editor moves between sheet and detail pane, unsaved edits dropped — accepted). **Review fixes** (launch-readiness review, 0 blockers / 7 should-fix, all fixed): S1 FAB hidden on Activity at regular width, ledger header gets a "+" via `onRequestAddExpense` (`c9a63ed`); S2 `scrollBottomClearance` 32 → 100 (12 gap + 56 FAB + 32) on tab roots and the Activity list (`afdb5ce`); S3 Activity regular-width layout is a plain two-pane `HStack` (ledger 300/340/420 | `Divider` | editor) — `NavigationSplitView` removed entirely (`942efad`); S4 legacy tab-bar `.safeAreaPadding` moved onto the four tab roots (`56c6746`); S5 FAB disc fixed 56/66, only the glyph scales and is clamped (`58fdbb2`); S6 `ReviewPromptManager` keys on major.minor (`askVersionKey`), spends the ask only via `markRequested()` when actually shown, `deferWhilePresenting()` while anything is presented, streak trigger needs a prior recompute (`f98edeb`); S7 Cmd-N waits for `MainTabView.hasPresentation`, Esc answered only by the topmost sheet via `SheetHeader(escapeClosesSheet:)` / `SheetCloseButton(respondsToEscape:)` (`5121e1a`); N3 Insights two columns need regular width and ≥ 640 pt measured, N6 `resetForDebugging` is `#if DEBUG` (`d33ab47`). Deferred from the review by instruction: N1 (`SummaryCustomizationView` is orphaned), N4/N5 first-frame reflow of `EvenColumnGrid` / `adaptiveHeight`, N7 bulk action bar spanning both Activity panes (cosmetic), N8/N9 screenshot suite (PR #8), N11 Cmd-hold HUD grouping (verify only), accepted risks A1–A8. **Perf quick wins** (from the 2.2 performance investigation; condition: no functionality change — every item is a pure-function reorder, plumbing, or additive debug code): Quick Search renders the top 200 matches with a footer stating the true count (`19a32c3`); `SmartInsightsEngine.selectInsight` runs in `Task.detached` with inputs snapshotted on main (`9973bfa`); `isPotentialDuplicate` checks amount and date window before the title compare (`0a46d6f`); `TodayInsight.pick` uses a precomputed day range (`602b5b4`); Activity day grouping caches day bounds per group with an equality fallback (`319af89`, `d26c541`); `TagSuggestionProvider.computeStats` relies on the date-descending array instead of re-sorting (`026960f`); `TrendChartPager` / `ExpenseTrendChart` take `currencySymbol` explicitly and stop observing the view model (`3faca45`); DEBUG-only `DebugExpenseSeeder` — Diagnostics buttons for 5,000 / 20,000 rows, `-CLSeedExpenses <n>` launch argument, `NSBatchInsertRequest`, rows marked with sentinel `subscriptionId` `0000C1EE-5EED-4000-8000-000000000000`, "Delete seeded data" removes only marked rows and the six exactly named `Seed …` categories (`3af5bf4`; `name IN` list since `774a659`). Skipped by design: coalescing Today's second recompute (observable timing) and heatmap memoisation (stale-key risk). **Pass-2 review fixes:** Cmd-F and Cmd-, also wait for any presentation to clear (`e34db72`); Esc is answered only by the topmost presentation via the `escapeOwnedByPresentation` environment key plus `escapeClosesSheet` on every presenter with sub-sheets (`0922f23`); DEBUG-only "Developer (debug builds only)" group on the You tab presents `DiagnosticsView` (`6719371`); day-range ends wrapped in `startOfDay` for midnight-DST equivalence, Insights first-frame column count trusts the size class, theme token for the Activity editor pane, accurate streak-guard comment (`774a659`). Structural perf work (view-model observation split, token-gated foreground refresh, daily aggregates, lazy rows) is deferred to **2.3** — see `CODEBASE.md` §23. **Still open for 2.2:** `systemExtraLarge` widgets (PR #8), per-device screenshot suite replacing `RuntimeSmokeUITest` (PR #8), the Mac build + fix pass for the compile risks listed in the worklog (`onGeometryChange`, `Binding<Expense?>` ternary, `ContentUnavailableView`), Rushiraj's device run incl. the perf measurement scenarios at 0 / 5k / 20k rows (seeder above; plan in the Project store `docs/performance-investigation-2.2.md`), promo image upload. Candidate: multi-page receipts. | `release/2.2` (cut from `redesign/v2`), one PR to `main` |
+| **2.2.1** | Planned after Xcode 27.1 GM | Finish the iPhone Duo 27.1 APIs that 2.2 stubbed. All stubs are in `CashLens/Design/DuoLayoutSupport.swift` inside `#if CASHLENS_DUO_27_1` + `if #available(iOS 27.1, *)`; the flag is defined nowhere today so every helper is a no-op. **TODO (each line marked `// Duo 27.1`):** (1) `DuoLayoutSupport.divisionGutter(in:)` — `proxy.reservedRegions(kind: .division)` and the region's width accessor; (2) `View.duoHorizontalToolbar()` — `toolbarVerticalBehavior(.never)` modifier + case names (Paywall, Add Expense); (3) `View.duoTabBarCompression()` — `toolbarCompressionBehavior(.tabBarFirst)`; may need to move from the `TabView` onto the toolbar / tab bar; (4) `DuoArrangement.body` — `ArrangementView(.split)` initializer and `.split` / `.overlay` case names; decide whether `TrendChartPager`'s page tab bar is primary or secondary in table pose; (5) consider `onHingeChange` to reset `EvenColumnGrid` measurement if `onGeometryChange` does not fire on pose changes; (6) Duo simulator names for `Scripts/screenshots.sh` (PR #8). **Steps:** add `CASHLENS_DUO_27_1` to Active Compilation Conditions → fix the marked lines against the real SDK → build → drop the flag again if the SDK is not ready. Also verify on the 27.1 simulator: Duo inner (~626 pt) splits the Activity two-pane roughly 313 / 313 between ledger and editor; FAB vs. the outer-display vertical bar (FAB stays an overlay — a toolbar "+" would need navigation containers on the tab roots, which v2 removed for perf). Deployment target stays iOS 18. | to be branched from 2.2 |
+| **2.3 performance release** | Planned; baseline = the 2.2 measurement traces | Observation split / `@Observable` for `ExpenseViewModel` and deletion of the legacy filter/totals pipeline; change-token-gated foreground refresh (`NSPersistentStoreRemoteChange`); denormalised daily aggregates so Today / Insights / Calendar / heatmap / widget read ≤ 365 rows; row-level laziness in Activity and Search groups; background write context; shadow-radius review after measuring; import prefetch + batch insert. Details in `CODEBASE.md` §23. | — |
+| **iCloud sync** (`NSPersistentCloudKitContainer`) | **Decision pending** | Either scoped as a Pro feature in a later release (2.3 / 2.4) or iPad marketing stays quiet. Decided once App Store Connect numbers (downloads, trials, conversions) are in. | — |
+| **Phase 8 Multi-currency with live rates** | Deferred until ASC data shows demand | See Phase 8 | — |
+| **Also not scheduled** | — | System-wide UTType registration for `.cashlens-archive` | — |
+
+Build constraint for every row above: Swift for iOS can only be compiled, run and screenshotted on a Mac with Xcode. Cloud workers write code on branches; build, test, screenshots and TestFlight happen on Rushiraj's Mac, and every PR needs his Xcode run before merge.
 
 ---
 
