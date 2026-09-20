@@ -30,7 +30,7 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:RuntimeSmoke.xctestplan"
+            reference = "container:Screenshots.xctestplan"
             default = "YES">
          </TestPlanReference>
       </TestPlans>

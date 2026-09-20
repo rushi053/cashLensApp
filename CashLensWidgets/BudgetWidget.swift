@@ -4,7 +4,8 @@
 //
 //  Budget Progress widget — usage rings and bars with a calm typography
 //  ladder. Small surface focuses on a single most-relevant budget;
-//  Medium shows two with thick capsule bars.
+//  Medium shows two with thick capsule bars; Extra Large (iPad) shows
+//  every active budget as a two-column card grid with a roll-up header.
 //
 
 import WidgetKit
@@ -48,7 +49,9 @@ struct BudgetWidget: Widget {
         }
         .configurationDisplayName("Budget Progress")
         .description("Track your active budgets at a glance.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        // `.systemExtraLarge` is iPad-only; WidgetKit never offers it on
+        // iPhone, so listing it is safe for a universal binary.
+        .supportedFamilies([.systemSmall, .systemMedium, .systemExtraLarge])
     }
 }
 
@@ -65,9 +68,10 @@ struct BudgetEntryView: View {
             BudgetEmptyView(themeId: entry.snapshot.activeThemeId)
         } else {
             switch family {
-            case .systemSmall:  BudgetSmallView(entry: entry)
-            case .systemMedium: BudgetMediumView(entry: entry)
-            default:            BudgetSmallView(entry: entry)
+            case .systemSmall:      BudgetSmallView(entry: entry)
+            case .systemMedium:     BudgetMediumView(entry: entry)
+            case .systemExtraLarge: BudgetExtraLargeView(entry: entry)
+            default:                BudgetSmallView(entry: entry)
             }
         }
     }
@@ -262,6 +266,195 @@ struct BudgetMediumView: View {
     }
 }
 
+// MARK: - Extra Large (iPad)
+
+/// iPad-only 4×2 surface: roll-up header (total spent of total cap,
+/// over-budget count) above a two-column grid of budget cards. Rows are
+/// built by pairing budgets, so the grid needs no fixed cell size and
+/// reflows with whatever width the Home Screen gives the widget.
+struct BudgetExtraLargeView: View {
+    @Environment(\.colorScheme) private var scheme
+    let entry: BudgetEntry
+
+    /// 2 columns × 3 rows. The snapshot carries at most 8 budgets; any
+    /// beyond six are summarised in the footer rather than squeezed in.
+    private static let maxCards = 6
+
+    var body: some View {
+        let theme = WidgetTheme.resolve(id: entry.snapshot.activeThemeId)
+        let primary = theme.primary(for: scheme)
+        // Over-budget rows first (they need attention), then by usage.
+        let sorted = entry.snapshot.budgets.sorted { a, b in
+            if a.isOverBudget != b.isOverBudget { return a.isOverBudget }
+            return a.usageRatio > b.usageRatio
+        }
+        let shown = Array(sorted.prefix(Self.maxCards))
+        let hidden = sorted.count - shown.count
+        let overCount = sorted.filter { $0.isOverBudget }.count
+        let totalSpent = sorted.reduce(0) { $0 + $1.spent }
+        let totalCap = sorted.reduce(0) { $0 + $1.cap }
+
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "target")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(primary)
+                Text("BUDGETS")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .tracking(0.7)
+                    .foregroundStyle(primary)
+                Text("\(sorted.count) active")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 0)
+
+                Text("\(WidgetMoneyFormatter.compact(totalSpent, currencyCode: entry.snapshot.currencyCode)) of \(WidgetMoneyFormatter.compact(totalCap, currencyCode: entry.snapshot.currencyCode))")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                statusPill(overCount: overCount)
+            }
+
+            ForEach(Array(pairs(shown).enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(Array(row.enumerated()), id: \.offset) { _, budget in
+                        budgetCard(budget, theme: theme)
+                    }
+                    if row.count == 1 {
+                        Color.clear.frame(maxWidth: .infinity)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            if hidden > 0 {
+                Text("+\(hidden) more in CashLens")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    /// Splits the budgets into rows of two for the grid.
+    private func pairs(_ budgets: [WidgetSnapshot.BudgetRow]) -> [[WidgetSnapshot.BudgetRow]] {
+        stride(from: 0, to: budgets.count, by: 2).map { start in
+            Array(budgets[start..<min(start + 2, budgets.count)])
+        }
+    }
+
+    @ViewBuilder
+    private func statusPill(overCount: Int) -> some View {
+        let isOver = overCount > 0
+        let color: Color = isOver ? .red : .green
+        HStack(spacing: 3) {
+            Image(systemName: isOver ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text(isOver ? "\(overCount) over budget" : "All on track")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(color.opacity(0.14)))
+        .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func budgetCard(_ b: WidgetSnapshot.BudgetRow, theme: WidgetTheme) -> some View {
+        let color: Color = b.isOverBudget ? .red
+            : b.usageRatio >= 0.8 ? .orange
+            : (Color(hex: b.hex) ?? theme.primary(for: scheme))
+        let pct = Int((b.usageRatio * 100).rounded())
+        let remaining = b.cap - b.spent
+
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 9) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(color.opacity(0.20))
+                    Image(systemName: b.symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(b.name)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    Text(periodLabel(b.period))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(WidgetMoneyFormatter.compact(b.spent, currencyCode: entry.snapshot.currencyCode))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                    Text("of \(WidgetMoneyFormatter.compact(b.cap, currencyCode: entry.snapshot.currencyCode))")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            HStack(spacing: 8) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(color.opacity(0.16))
+                        Capsule()
+                            .fill(color)
+                            .frame(width: geo.size.width * b.usageRatio)
+                    }
+                }
+                .frame(height: 6)
+
+                Text("\(pct)%")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(color)
+                    .frame(minWidth: 32, alignment: .trailing)
+            }
+
+            HStack {
+                if b.isOverBudget {
+                    Text("Over by \(WidgetMoneyFormatter.compact(-remaining, currencyCode: entry.snapshot.currencyCode))")
+                        .foregroundStyle(Color.red)
+                } else {
+                    Text("\(WidgetMoneyFormatter.compact(remaining, currencyCode: entry.snapshot.currencyCode)) left")
+                        .foregroundStyle(Color.secondary)
+                }
+                Spacer(minLength: 0)
+                Text("\(b.daysRemaining)d left")
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(color.opacity(scheme == .dark ? 0.10 : 0.07))
+        )
+    }
+
+    private func periodLabel(_ period: WidgetSnapshot.BudgetPeriod) -> String {
+        switch period {
+        case .weekly:  return "Weekly"
+        case .monthly: return "Monthly"
+        case .custom:  return "Custom period"
+        }
+    }
+}
+
 // MARK: - Empty state
 
 struct BudgetEmptyView: View {
@@ -299,6 +492,14 @@ struct BudgetEmptyView: View {
 }
 
 #Preview("Medium", as: .systemMedium) {
+    BudgetWidget()
+} timeline: {
+    BudgetEntry(date: .now, snapshot: .preview)
+}
+
+// Extra Large only renders on an iPad preview device — pick one in the
+// canvas device menu, otherwise the preview shows an empty canvas.
+#Preview("Extra Large", as: .systemExtraLarge) {
     BudgetWidget()
 } timeline: {
     BudgetEntry(date: .now, snapshot: .preview)
