@@ -168,14 +168,18 @@ struct LargeScreenAddButton: View {
 struct LargeScreenSheetSizing: PresentationSizing {
     let usesForm: Bool
 
+    /// The SDK's sizing types have no public initializers (iOS 27 SDK
+    /// swiftinterface); the only way to obtain them is through the static
+    /// accessors `PresentationSizing` provides (`.form`, `.automatic`),
+    /// spelled on the concrete type so no contextual `Self` is needed.
     func proposedSize(
         for root: PresentationSizingRoot,
         context: PresentationSizingContext
     ) -> ProposedViewSize {
         if usesForm {
-            return FormPresentationSizing().proposedSize(for: root, context: context)
+            return FormPresentationSizing.form.proposedSize(for: root, context: context)
         }
-        return AutomaticPresentationSizing().proposedSize(for: root, context: context)
+        return AutomaticPresentationSizing.automatic.proposedSize(for: root, context: context)
     }
 }
 
