@@ -11,11 +11,11 @@ struct StatisticsView: View {
     @State private var showingAddExpense = false
     @State private var selectedCategory: Expense.Category? = nil
     @State private var selectedCustomCategoryId: UUID? = nil
-    @State private var animateCards = false
+    @State var animateCards = false
     @State private var showingDateRangePicker = false
     
     // Performance: cache ONLY aggregated data (not full arrays) to minimize memory.
-    @State private var cachedFilteredCount: Int = 0
+    @State var cachedFilteredCount: Int = 0
     @State private var cachedInsights: [StatInsight] = []
     @State private var cachedTotalSpent: Double = 0
     @State private var cachedPreviousTotalSpent: Double = 0
@@ -99,13 +99,13 @@ struct StatisticsView: View {
     // actually has data (checked off-main in the recompute pass so the
     // body never walks the full expense array).
     @State private var showingMonthlyRecap = false
-    @State private var cachedHasLastMonthData = false
+    @State var cachedHasLastMonthData = false
 
     /// True once the first background stats pass has *committed* its
     /// results. Until then the hero card shows a skeleton instead of
     /// stale/zero numbers (design review "Loading" item — the hero
     /// used to flash ₹0 during the first recompute after cold start).
-    @State private var statsResultsReady = false
+    @State var statsResultsReady = false
 
     // MARK: - Computed Properties
 
@@ -116,7 +116,7 @@ struct StatisticsView: View {
     // `TrendChartPager` reads pre-built `cachedTrendChartDates / Values`.
     // Both are populated off-main once per recompute pass.
 
-    private var insights: [StatInsight] {
+    var insights: [StatInsight] {
         cachedInsights
     }
     
@@ -125,19 +125,22 @@ struct StatisticsView: View {
     /// True when we have extra horizontal space: iPad full screen or a
     /// wide Split View pane, iPhone Duo inner display. Size class only —
     /// an iPad in Slide Over is compact and must get the phone layout.
-    private var isWideLayout: Bool {
+    var isWideLayout: Bool {
         horizontalSizeClass == .regular
     }
 
     /// Measured content width of the scroll view. Regular width alone
     /// is not enough for two columns: an 11" iPad at 50/50 (~597pt) or
     /// the Duo inner display (~626pt) are regular yet would give ~260pt
-    /// columns — narrower than an iPhone SE. Two columns need ≥ 640pt.
-    @State private var measuredContentWidth: CGFloat = 0
+    /// columns — narrower than an iPhone SE. Two columns need ≥ 700pt.
+    @State var measuredContentWidth: CGFloat = 0
 
-    private static let twoColumnMinimumWidth: CGFloat = 640
+    /// Shared with the other regular-width dashboards (see
+    /// `LargeScreenLayout.twoColumnMinimumWidth`, 700pt). Regular-width
+    /// logic only; compact never evaluates it.
+    private static let twoColumnMinimumWidth: CGFloat = LargeScreenLayout.twoColumnMinimumWidth
 
-    private var usesTwoColumns: Bool {
+    var usesTwoColumns: Bool {
         // Before the first measurement, trust the size class so an iPad
         // doesn't flash one column for a frame.
         guard measuredContentWidth > 0 else { return isWideLayout }
@@ -153,20 +156,14 @@ struct StatisticsView: View {
     // need navigation chrome from this level.
     var body: some View {
             ScrollView {
-                VStack(spacing: Theme.Spacing.xxl) {
-                    headerSection
-                    controlSection
-
-                    if viewModel.expenses.isEmpty {
-                        emptyStateView
-                    } else {
-                        statisticsContent
-                    }
+                if isWideLayout {
+                    // iPad / Duo inner display: multi-column dashboard,
+                    // see `StatisticsView+LargeScreen.swift`. Same cached
+                    // results, same sheets — only the arrangement differs.
+                    largeScreenContent
+                } else {
+                    compactContent
                 }
-                .padding(.horizontal, isWideLayout ? Theme.Spacing.xxxl : Theme.Spacing.xl)
-                .padding(.bottom, Theme.Spacing.scrollBottomClearance)
-                .frame(maxWidth: isWideLayout ? 1200 : .infinity)
-                .frame(maxWidth: .infinity)
             }
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.width
@@ -232,9 +229,12 @@ struct StatisticsView: View {
             // implicit sheet-environment inheritance is fragile.
             AddExpenseView(viewModel: viewModel)
                 .environmentObject(categoryViewModel)
+                // Regular width: form-sized card (presenter's size class).
+                .largeScreenFormSheet(enabled: isWideLayout)
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: paywallContext)
+                .largeScreenFormSheet(enabled: isWideLayout)
         }
         .sheet(isPresented: $showingMonthlyRecap) {
             // Recap always covers the most recent *complete* month.
@@ -310,6 +310,77 @@ struct StatisticsView: View {
         }
     }
 
+    /// The iPhone (compact width) layout — unchanged single column.
+    private var compactContent: some View {
+        VStack(spacing: Theme.Spacing.xxl) {
+            headerSection
+            controlSection
+
+            if viewModel.expenses.isEmpty {
+                emptyStateView
+            } else {
+                statisticsContent
+            }
+        }
+        .padding(.horizontal, isWideLayout ? Theme.Spacing.xxxl : Theme.Spacing.xl)
+        .padding(.bottom, Theme.Spacing.scrollBottomClearance)
+        .frame(maxWidth: isWideLayout ? 1200 : .infinity)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Large-screen building blocks
+    //
+    // `StatisticsView+LargeScreen.swift` re-tiles the same sections into
+    // columns. The two Pro sections are constructed inline inside
+    // `statisticsContent`; these blocks repeat that construction so the
+    // compact tree above stays untouched. Keep both in sync.
+
+    var proInsightsBlock: some View {
+        ProInsightsSection(
+            isPro: proManager.isPro,
+            dailyPace: cachedDailyPace,
+            velocity: cachedVelocity,
+            yearOverYearPoints: cachedYoYPoints,
+            accent: accentForSelection,
+            formattedAmount: viewModel.formattedAmount,
+            onUpgradeTap: {
+                paywallContext = .insights
+                showingPaywall = true
+            }
+        )
+    }
+
+    var forecastBlock: some View {
+        ForecastSection(
+            isPro: proManager.isPro,
+            forecast: cachedForecast,
+            horizon: forecastHorizon,
+            topDriverDisplayName: forecastTopDriverDisplayName,
+            topDriverColor: forecastTopDriverColor,
+            accent: .appPrimary,
+            formattedAmount: viewModel.formattedAmount,
+            currency: viewModel.selectedCurrency,
+            onHorizonChange: { newValue in
+                forecastHorizon = newValue
+                scheduleRecomputeStats(immediate: true)
+            },
+            onUpgradeTap: {
+                paywallContext = .forecast
+                showingPaywall = true
+            }
+        )
+    }
+
+    /// Placed add action for the regular-width header (the floating "+"
+    /// is hidden on regular width). Presents this view's own Add Expense
+    /// sheet.
+    var largeScreenAddAction: some View {
+        // 40pt to match `exportReportButton`'s disc beside it.
+        LargeScreenAddButton(style: .disc, discDiameter: 40) {
+            showingAddExpense = true
+        }
+    }
+
     // MARK: - Header Section
     private var headerSection: some View {
         VStack(spacing: 0) {
@@ -338,7 +409,7 @@ struct StatisticsView: View {
 
     /// Pro-gated "Export PDF Report" icon button. Free users tap → paywall; Pro users
     /// tap → PDF is generated off-main and a share sheet opens automatically.
-    private var exportReportButton: some View {
+    var exportReportButton: some View {
         Button {
             HapticManager.shared.lightTap()
             if proManager.isPro {
@@ -389,7 +460,7 @@ struct StatisticsView: View {
     // A single card that combines time frame, date range, and category filter in
     // three tight rows with no verbose subheaders. Each row is self-describing
     // (icon + context) so the card stays glanceable.
-    private var controlSection: some View {
+    var controlSection: some View {
         VStack(spacing: Theme.Spacing.md) {
             timeFrameRow
             dateRangeRow
@@ -1034,7 +1105,7 @@ struct StatisticsView: View {
     // Bottom of the stack on purpose — Insights answers "what's
     // happening now?" first, then offers the look-back as the closing
     // beat of the screen.
-    private var monthlyRecapRow: some View {
+    var monthlyRecapRow: some View {
         Button {
             HapticManager.shared.lightTap()
             showingMonthlyRecap = true
@@ -1116,7 +1187,7 @@ struct StatisticsView: View {
     // Single card that dominates the first fold: huge total spend, delta pill vs.
     // previous period, a subtle rule, and three inline mini-stats. Replaces the
     // old three-card grid — one glance, one number, zero redundancy.
-    private var heroOverviewSection: some View {
+    var heroOverviewSection: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 HStack(spacing: Theme.Spacing.sm) {
@@ -1175,7 +1246,7 @@ struct StatisticsView: View {
     /// real thing so nothing jumps when results land. Shown only until
     /// the first recompute commits (previously the hero rendered ₹0 /
     /// stale numbers for that window).
-    private var heroSkeleton: some View {
+    var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             RoundedRectangle(cornerRadius: 6).fill(Color.tertiarySystemBackground).frame(width: 90, height: 12)
             RoundedRectangle(cornerRadius: 10).fill(Color.tertiarySystemBackground).frame(width: 200, height: 40)
@@ -1339,7 +1410,7 @@ struct StatisticsView: View {
     }
 
     // MARK: - Highlights Section (auto insights)
-    private var highlightsSection: some View {
+    var highlightsSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             SectionHeader("Highlights") {
                 InsightInfoButton(info: .highlights)
@@ -1361,7 +1432,7 @@ struct StatisticsView: View {
     // Donut chart + category rows combined into one card. Tapping a row selects the
     // matching donut slice (and vice versa) via shared `donutSelectedId` state, so
     // the user can explore by either side and the two halves always stay in sync.
-    private var whereItGoesSection: some View {
+    var whereItGoesSection: some View {
         let slices = categorySlices()
         let rows = getCategoriesWithExpenses()
         let slicesTotal = slices.reduce(0) { $0 + $1.amount }
@@ -1529,7 +1600,15 @@ struct StatisticsView: View {
     // We hide the section entirely if **no** expense in the current view
     // has a payment method *and* the user is free — there's literally
     // nothing to show, and an empty Pro card would feel like dead space.
-    private var paymentMethodsSection: some View {
+    /// Whether `paymentMethodsSection` renders anything (it is an
+    /// `EmptyView` with no tagged or untagged payment data). The
+    /// regular-width dashboard uses this to avoid pairing a card with a
+    /// missing partner.
+    var showsPaymentMethodsSection: Bool {
+        cachedPaymentMethodBreakdown.hasData || cachedPaymentMethodBreakdown.unspecifiedCount > 0
+    }
+
+    var paymentMethodsSection: some View {
         let breakdown = cachedPaymentMethodBreakdown
         let hasAnyData = breakdown.hasData || breakdown.unspecifiedCount > 0
         let totalCount = breakdown.slices.reduce(0) { $0 + $1.count }
@@ -1807,7 +1886,7 @@ struct StatisticsView: View {
     }
 
     // MARK: - Spending Pattern Section (heatmap)
-    private var spendingPatternSection: some View {
+    var spendingPatternSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             SectionHeader("Spending Pattern") {
                 HStack(spacing: Theme.Spacing.sm) {
@@ -1844,7 +1923,7 @@ struct StatisticsView: View {
     //
     // The pager owns its own selection state. Weekday + top-day aggregates are
     // precomputed on the background recompute task so swipes stay at 60 fps.
-    private var trendSection: some View {
+    var trendSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
             SectionHeader("Trend") {
                 HStack(spacing: Theme.Spacing.sm) {
@@ -2075,7 +2154,7 @@ struct StatisticsView: View {
     }
     
     // MARK: - Empty State
-    private var emptyStateView: some View {
+    var emptyStateView: some View {
         EmptyStatePanel(
             icon: "chart.pie",
             title: "No Statistics Available",
@@ -2292,7 +2371,7 @@ struct StatisticsView: View {
         )
     }
     
-    private func getHeaderSubtitle() -> String {
+    func getHeaderSubtitle() -> String {
         if viewModel.expenses.isEmpty {
             return "Add expenses to see insights"
         }

@@ -27,7 +27,7 @@ struct AllExpensesView: View {
     /// regular-width ledger header, where `MainTabView` hides the
     /// floating "+" (it would sit on the detail editor's Save button).
     let onRequestAddExpense: (() -> Void)?
-    @State private var sortOption: SortOption = .dateDesc
+    @State var sortOption: SortOption = .dateDesc
     @State private var animateContent = false
     /// Guards the `.onAppear` work (entrance animation + initial
     /// recompute). As a tab root this view stays mounted across tab
@@ -46,8 +46,8 @@ struct AllExpensesView: View {
     /// them pending, and run one catch-up pass on the next appear.
     @State private var isTabVisible = false
     @State private var recomputePending = false
-    @State private var scrollToTop = false  // Track when to scroll to top
-    @State private var selectedExpense: Expense?
+    @State var scrollToTop = false  // Track when to scroll to top
+    @State var selectedExpense: Expense?
     @State private var didApplyInitialFilter = false
 
     /// Modal Quick Search. AllExpensesView is the "Library" — it browses,
@@ -88,17 +88,25 @@ struct AllExpensesView: View {
             }
         }
     }
-    @State private var viewMode: ViewMode = .list
+    @State var viewMode: ViewMode = .list
+
+    /// Measured width of the regular-width pane container. Decides
+    /// whether the filter rail (third region) is shown; see
+    /// `AllExpensesView+LargeScreen.swift`. Never read on compact width.
+    @State var largeScreenMeasuredWidth: CGFloat = 0
+    /// Accessibility text sizes drop the rail (240pt cannot hold AX
+    /// rows); the chip row comes back instead.
+    @Environment(\.dynamicTypeSize) var dynamicTypeSize
 
     // Performance: cache computed results + paginate rendering for large datasets
     @State private var computedExpenses: [Expense] = []
     @State private var computedDateGroups: [(Date, [Expense])] = []
-    @State private var totalMatchCount: Int = 0
+    @State var totalMatchCount: Int = 0
     /// Refund-aware net total of the *entire* filtered result set (not
     /// just the visible pagination window). Shown next to the match
     /// count so the screen answers "how much?" — the number users come
     /// to a ledger to verify — without them summing rows in their head.
-    @State private var totalNetAmount: Double = 0
+    @State var totalNetAmount: Double = 0
     @State private var displayLimit: Int = 250
     @State private var isRecomputing: Bool = false
 
@@ -114,19 +122,19 @@ struct AllExpensesView: View {
     @State private var recomputeTask: Task<Void, Never>? = nil
     
     // Date range filter
-    @State private var useDateRangeFilter = false
+    @State var useDateRangeFilter = false
     @State private var rangeStartDate = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     @State private var rangeEndDate = Date()
-    @State private var showingDateRangePicker = false
+    @State var showingDateRangePicker = false
     
     // Quick filters
-    @State private var filterCategory: Expense.Category? = nil
-    @State private var filterCustomCategoryId: UUID? = nil
-    @State private var showOnlySubscriptions = false
+    @State var filterCategory: Expense.Category? = nil
+    @State var filterCustomCategoryId: UUID? = nil
+    @State var showOnlySubscriptions = false
 
     /// Tag filter — Pro-only. Nil means "no tag filter active".
-    @State private var filterTag: String? = nil
-    @State private var showingTagPaywall = false
+    @State var filterTag: String? = nil
+    @State var showingTagPaywall = false
 
     // MARK: - Bulk select state
     //
@@ -654,21 +662,9 @@ struct AllExpensesView: View {
             // overlapped the detail editor's Save button), so the
             // ledger header carries the add action instead.
             if showsEditorInDetailColumn, let onRequestAddExpense {
-                Button {
-                    HapticManager.shared.lightTap()
-                    onRequestAddExpense()
-                } label: {
-                    Label("Add expense", systemImage: "plus")
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 32, height: 32)
-                        .background(Circle().fill(Color.appPrimary))
-                }
-                .buttonStyle(.plain)
-                .hoverEffect(.lift)
-                .accessibilityLabel("Add expense")
-                .padding(.leading, Theme.Spacing.sm)
+                // Shared placed-action component (same disc as Insights).
+                LargeScreenAddButton(style: .disc, discDiameter: 32, action: onRequestAddExpense)
+                    .padding(.leading, Theme.Spacing.sm)
             }
         }
         .padding(.horizontal, Theme.Spacing.lg)
@@ -698,8 +694,13 @@ struct AllExpensesView: View {
 
     private var sortBar: some View {
         HStack(spacing: Theme.Spacing.sm + 2) {
-            sortPill
-            dateRangePill
+            // With the regular-width filter rail on screen, sort and
+            // date range live in the rail; the bar keeps the count.
+            // `showsFilterRail` is false on every compact layout.
+            if !showsFilterRail {
+                sortPill
+                dateRangePill
+            }
 
             Spacer(minLength: Theme.Spacing.sm)
 
@@ -811,7 +812,7 @@ struct AllExpensesView: View {
         .accessibilityLabel(useDateRangeFilter ? "Date range: \(dateRangeLabel)" : "Filter by date range")
     }
 
-    private var dateRangeLabel: String {
+    var dateRangeLabel: String {
         guard useDateRangeFilter else { return "Date range" }
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
@@ -852,12 +853,28 @@ struct AllExpensesView: View {
     ) -> some View {
         if showsEditorInDetailColumn {
             HStack(spacing: 0) {
+                // Wide regular (≥ 1000pt measured — iPad 13" portrait,
+                // any iPad landscape): a third region, the filter rail,
+                // leads. See `AllExpensesView+LargeScreen.swift`.
+                if showsFilterRail {
+                    filterRail
+                        .frame(width: LargeScreenLayout.filterRailWidth)
+                    Divider()
+                }
+
                 content()
                     // Narrow-regular windows (11" iPad at 50/50 ≈ 597pt,
                     // Duo inner ≈ 626pt) must still leave ≥ ~300pt for
                     // the editor, so the ledger yields first. Anything
                     // narrower than that is compact and never gets here.
-                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
+                    // With the rail on screen the ledger may grow a
+                    // little: the chip row is gone, so the extra width
+                    // goes to row titles and amounts.
+                    .frame(
+                        minWidth: 300,
+                        idealWidth: showsFilterRail ? 380 : 340,
+                        maxWidth: showsFilterRail ? 480 : 420
+                    )
 
                 Divider()
 
@@ -865,6 +882,7 @@ struct AllExpensesView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.systemBackground)
             }
+            .measureLayoutWidth($largeScreenMeasuredWidth)
         } else if isRootTab {
             content()
         } else {
@@ -877,7 +895,7 @@ struct AllExpensesView: View {
     /// Root tab + regular width → list | detail. Sheet / deep-link
     /// presentations (form sheets report compact width on iPad) and
     /// every compact-width case keep the sheet editor.
-    private var showsEditorInDetailColumn: Bool {
+    var showsEditorInDetailColumn: Bool {
         isRootTab && horizontalSizeClass == .regular
     }
 
@@ -917,12 +935,16 @@ struct AllExpensesView: View {
                 // bulk pickers) or to an app-level sheet — never to
                 // the inline editor while one of those is up.
                 .environment(\.escapeOwnedByPresentation, inheritedEscapeOwned || hasOwnPresentation)
+                // A 900pt editor pane (13" iPad landscape with the rail)
+                // would stretch every field to the full width; keep the
+                // form at a readable measure, centred in the column.
+                .frame(maxWidth: LargeScreenLayout.editorMaxWidth)
+                .frame(maxWidth: .infinity)
         } else {
-            ContentUnavailableView(
-                "Select an expense",
-                systemImage: "list.bullet.rectangle",
-                description: Text("Pick an expense from the list to view or edit it.")
-            )
+            // No selection: the pane summarises what the ledger is
+            // showing and carries the primary action, so the largest
+            // region on screen is never a blank placeholder.
+            largeScreenEmptyDetail
         }
     }
 
@@ -1010,7 +1032,11 @@ struct AllExpensesView: View {
                     // (md instead of lg) since there are fewer rows.
                     VStack(spacing: Theme.Spacing.md) {
                         sortBar
-                        quickFiltersRow
+                        // Regular width ≥ 1000pt: the rail lists every
+                        // filter vertically, so the chip scroller goes.
+                        if !showsFilterRail {
+                            quickFiltersRow
+                        }
                     }
                     .padding(.top, Theme.Spacing.md)
                     .padding(.bottom, Theme.Spacing.sm)
@@ -1157,6 +1183,8 @@ struct AllExpensesView: View {
             }
             .sheet(isPresented: $showingTagPaywall) {
                 PaywallView(context: .tags)
+                    // Regular width: form-sized card (presenter's size class).
+                    .largeScreenFormSheet(enabled: horizontalSizeClass == .regular)
             }
             .onChange(of: categoryViewModel.customCategories) {
                 // Only affects display names in the category sort — no
@@ -1214,6 +1242,7 @@ struct AllExpensesView: View {
         }
         .sheet(isPresented: $showingBulkTagPaywall) {
             PaywallView(context: .tags)
+                .largeScreenFormSheet(enabled: horizontalSizeClass == .regular)
         }
     }
 
@@ -1692,7 +1721,7 @@ struct AllExpensesView: View {
     
     /// Are any browse-time filters narrowing the list right now? Used to
     /// distinguish "you have no expenses at all" from "your filters are too tight".
-    private var hasActiveFilters: Bool {
+    var hasActiveFilters: Bool {
         useDateRangeFilter
             || showOnlySubscriptions
             || filterCategory != nil
@@ -1788,6 +1817,10 @@ struct AllExpensesView: View {
                                 }
                                 ExpenseCard(expense: expense, viewModel: viewModel, categoryViewModel: categoryViewModel)
                                     .equatable()
+                                    // Regular width: selected-row tint (see
+                                    // `largeScreenSelectionTint`); clear on
+                                    // compact.
+                                    .background(largeScreenSelectionTint(for: expense, cornerRadius: Theme.Radius.card))
                             }
                                 .padding(.horizontal)
                                 .padding(.top, idx == 0 ? 12 : 0)
@@ -1949,6 +1982,10 @@ struct AllExpensesView: View {
             )
                 .equatable()
         }
+            // Regular width: tint the row whose editor is open in the
+            // detail column so the two panes read as one selection.
+            // Clear on compact (the editor is a sheet there).
+            .background(largeScreenSelectionTint(for: expense))
             .contentShape(Rectangle())
             .onTapGesture {
                 handleRowTap(expense: expense)

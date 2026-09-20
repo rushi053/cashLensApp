@@ -28,6 +28,32 @@ import SwiftUI
 
 enum DuoLayoutSupport {
 
+    /// Heuristic for "the system has moved its bars to a vertical strip
+    /// on the trailing edge" — the iPhone Duo outer display (iOS 27
+    /// SDK builds). Pure geometry, no SDK dependency:
+    ///
+    ///   • compact width and regular height (a portrait phone-class
+    ///     window), and
+    ///   • a trailing safe-area inset of at least `verticalBarMinimumInset`
+    ///     that is clearly larger than the leading one.
+    ///
+    /// Every iPhone reports 0/0 horizontal insets in portrait and
+    /// symmetric insets with *compact* height in landscape, so this is
+    /// `false` on every iPhone. iPad is regular width and never gets
+    /// here. Used only to move the floating "+" into the bottom corner
+    /// when there is no bottom tab bar to clear.
+    static let verticalBarMinimumInset: CGFloat = 44
+
+    static func hasVerticalSystemBar(
+        safeAreaInsets: EdgeInsets,
+        horizontalSizeClass: UserInterfaceSizeClass?,
+        verticalSizeClass: UserInterfaceSizeClass?
+    ) -> Bool {
+        guard horizontalSizeClass == .compact, verticalSizeClass == .regular else { return false }
+        return safeAreaInsets.trailing >= verticalBarMinimumInset
+            && safeAreaInsets.trailing > safeAreaInsets.leading + Theme.Spacing.xxl
+    }
+
     /// Width of the hinge's division region intersecting `proxy`, or 0
     /// when there is none (every non-Duo device, and a Duo that is
     /// fully open or closed). `EvenColumnGrid` adds this to its column
@@ -35,10 +61,12 @@ enum DuoLayoutSupport {
     static func divisionGutter(in proxy: GeometryProxy) -> CGFloat {
         #if CASHLENS_DUO_27_1
         if #available(iOS 27.1, *) {
-            // Duo 27.1: verify `reservedRegions(kind:)` and the region
-            // type's frame accessor against the SDK.
+            // Duo 27.1: best reading of the API — `reservedRegions(kind:)`
+            // returns the regions of that kind intersecting the proxy, each
+            // with a `frame` in the proxy's local space. If the SDK hands
+            // back plain `CGRect`s instead, drop `.frame`.
             return proxy.reservedRegions(kind: .division)
-                .map { $0.width }
+                .map { $0.frame.width }
                 .max() ?? 0
         }
         return 0
@@ -95,15 +123,29 @@ extension View {
 /// chart and its range picker in Insights. Everywhere else — and on
 /// today's SDK — this is a plain `VStack`.
 struct DuoArrangement<Primary: View, Secondary: View>: View {
+    /// Our own spelling of the two arrangements so call sites compile
+    /// with the flag off. Mapped to the SDK's cases inside the flag.
+    enum Mode {
+        /// Primary and secondary on opposite halves of the fold
+        /// (chart | range picker).
+        case split
+        /// Secondary floats over the primary (e.g. controls over a
+        /// full-bleed chart) when the fold is not active.
+        case overlay
+    }
+
+    var mode: Mode = .split
     var spacing: CGFloat = Theme.Spacing.md
     @ViewBuilder let primary: () -> Primary
     @ViewBuilder let secondary: () -> Secondary
 
     init(
+        mode: Mode = .split,
         spacing: CGFloat = Theme.Spacing.md,
         @ViewBuilder primary: @escaping () -> Primary,
         @ViewBuilder secondary: @escaping () -> Secondary
     ) {
+        self.mode = mode
         self.spacing = spacing
         self.primary = primary
         self.secondary = secondary
@@ -112,11 +154,21 @@ struct DuoArrangement<Primary: View, Secondary: View>: View {
     var body: some View {
         #if CASHLENS_DUO_27_1
         if #available(iOS 27.1, *) {
-            // Duo 27.1: verify `ArrangementView` initializer and the
-            // `.split` / `.overlay` case names.
-            ArrangementView(.split) {
-                primary()
-                secondary()
+            // Duo 27.1: best reading — `ArrangementView` takes the
+            // arrangement first and a two-view builder. The first view is
+            // the primary (kept on the display half the user is looking
+            // at in table pose); the second is displaced across the fold.
+            switch mode {
+            case .split:
+                ArrangementView(.split) {
+                    primary()
+                    secondary()
+                }
+            case .overlay:
+                ArrangementView(.overlay) {
+                    primary()
+                    secondary()
+                }
             }
         } else {
             stacked
