@@ -84,8 +84,10 @@ struct DocumentScannerView: UIViewControllerRepresentable {
 /// current device. False on simulator and on the rare Mac Catalyst
 /// configurations without a camera. We use this to fall back to the
 /// library-only path silently rather than presenting a broken scanner.
+///
+/// Cached for the process lifetime. The capability bit does not change
+/// at runtime; probing from `AddExpenseView.body` / the receipt-source
+/// picker on every form keystroke was a framework hop for a constant.
 extension DocumentScannerView {
-    static var isSupported: Bool {
-        VNDocumentCameraViewController.isSupported
-    }
+    static let isSupported: Bool = VNDocumentCameraViewController.isSupported
 }
