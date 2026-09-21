@@ -183,6 +183,11 @@ struct AddExpenseView: View {
     // overhead that competed with the system sheet spring, contributing
     // to the "sheet lifts slowly" feel.
     @State private var isSaving: Bool = false
+    /// Disk-committed add waiting for `onDisappear` / background /
+    /// 500 ms fallback before the in-memory publish + toast. Nil on
+    /// the edit / cancel paths.
+    @State private var pendingSheetPublish: PendingSheetPublish? = nil
+    @State private var pendingPublishTask: Task<Void, Never>? = nil
     
     // Additional parameters
     var isEditing: Bool
@@ -391,9 +396,19 @@ struct AddExpenseView: View {
         }
         // Auto-save draft functionality for new expenses
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .background && !isEditing {
+            // If the user backgrounds before `onDisappear`, the list
+            // must still pick up the just-saved row.
+            if newPhase != .active {
+                flushPendingSheetPublish()
+            }
+            // Skip after a successful save (`isSaving`) so we don't
+            // rewrite the just-cleared draft from leftover fields.
+            if newPhase == .background && !isEditing && !isSaving {
                 saveDraft()
             }
+        }
+        .onDisappear {
+            flushPendingSheetPublish()
         }
         .onChange(of: title) { _, _ in
             if !isEditing {
@@ -3531,20 +3546,49 @@ struct AddExpenseView: View {
             receiptImagePath: receiptImagePath
         )
         
-        // Add to view model
-        viewModel.addExpense(newExpense)
-        
-        // Clear draft when expense is successfully added
-        clearDraft()
-        
-        // Confirmation toast rendered on the presenting view (host in
-        // MainTabView) so it never delays the sheet's dismissal.
-        SaveConfirmationReporter.report(
-            message: "Added \(viewModel.formattedAmount(amountValue)) to \(savedCategoryDisplayName)"
-        )
-        
+        // Disk first (same `saveContext()` path as before). The
+        // in-memory insert, `@Published expenses`, follow-on Today /
+        // widget commits, and the toast wait for `onDisappear` so they
+        // don't share a turn with `requestDismiss()`. Visual dismiss
+        // timing is unchanged.
+        let toastMessage = "Added \(viewModel.formattedAmount(amountValue)) to \(savedCategoryDisplayName)"
+        if let saved = viewModel.persistNewExpenseDeferringPublish(newExpense) {
+            clearDraft()
+            pendingSheetPublish = PendingSheetPublish(expense: saved, toastMessage: toastMessage)
+            schedulePendingPublishFallback()
+        }
+
         // Dismiss the view
         requestDismiss()
+    }
+
+    /// Stashed add that has hit disk but not yet published `expenses`.
+    private struct PendingSheetPublish {
+        let expense: Expense
+        let toastMessage: String
+    }
+
+    /// 500 ms safety net so a sheet that never hits `onDisappear`
+    /// (killed mid-spring, rare SwiftUI teardown) cannot leave the
+    /// list stale. Cancelled by `flushPendingSheetPublish`.
+    private func schedulePendingPublishFallback() {
+        pendingPublishTask?.cancel()
+        pendingPublishTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            flushPendingSheetPublish()
+        }
+    }
+
+    /// Apply the deferred insert + toast once. Safe to call from
+    /// `onDisappear`, scene-background, and the fallback.
+    private func flushPendingSheetPublish() {
+        pendingPublishTask?.cancel()
+        pendingPublishTask = nil
+        guard let pending = pendingSheetPublish else { return }
+        pendingSheetPublish = nil
+        viewModel.publishPersistedInsert(pending.expense)
+        SaveConfirmationReporter.report(message: pending.toastMessage)
     }
     
     /// User-facing name of the category being saved — resolves custom

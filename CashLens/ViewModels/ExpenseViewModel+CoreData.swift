@@ -156,6 +156,9 @@ extension ExpenseViewModel {
     /// scan + shift) but with no Core Data round-trip and no
     /// allocation per existing row.
     func applyIncrementalInsert(_ expense: Expense) {
+        // Idempotent: a deferred sheet publish can race a full-table
+        // hydration that already materialized the same id from disk.
+        if expenses.contains(where: { $0.id == expense.id }) { return }
         let insertIndex = expenses.firstIndex(where: { $0.date < expense.date }) ?? expenses.count
         expenses.insert(expense, at: insertIndex)
     }

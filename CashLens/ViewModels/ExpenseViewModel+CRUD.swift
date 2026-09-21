@@ -9,20 +9,11 @@ extension ExpenseViewModel {
     /// date after "Mark paid") can bail out when the save fails.
     @discardableResult
     func addExpense(_ expense: Expense) -> Bool {
-        // Ensure the expense uses the current selected currency
-        var newExpense = expense
-        newExpense.currency = selectedCurrency
-        
-        _ = ExpenseEntity.fromExpense(newExpense, context: viewContext)
-        // SAFETY: Only mirror the row in-memory if the save actually
-        // committed — otherwise the UI shows an expense that isn't on
-        // disk and it vanishes on the next reload. `saveContext()`
-        // already surfaced the failure via the save-error banner.
-        guard saveContext() else { return false }
-        // PERF: Skip the O(N) reload — sorted-insert the new row into
-        // the in-memory array instead. See the contract on
-        // `applyIncrementalInsert` for why this is safe (the entity
-        // was just persisted under the same id).
+        // Non-sheet callers (onboarding, mark-paid, intents) still
+        // persist + publish in one turn. The Add Expense sheet uses
+        // `persistNewExpenseDeferringPublish` so the dismiss spring
+        // does not overlap burst A.
+        guard let newExpense = persistNewExpenseToDisk(expense) else { return false }
         applyIncrementalInsert(newExpense)
         
         // Rating prompt trigger. Only trust the count once the full
@@ -32,6 +23,44 @@ extension ExpenseViewModel {
             totalExpenseCount: isFullyHydrated ? expenses.count : nil
         )
         return true
+    }
+
+    /// Write a new expense to Core Data immediately without publishing
+    /// `expenses`. Disk is consistent if the process is killed; the
+    /// Add Expense sheet follows with `publishPersistedInsert` from
+    /// `onDisappear`, scene-background, or a 500 ms fallback so Today /
+    /// Activity / the widget / the toast never see a stale list.
+    @discardableResult
+    func persistNewExpenseDeferringPublish(_ expense: Expense) -> Expense? {
+        guard let newExpense = persistNewExpenseToDisk(expense) else { return nil }
+        unpublishedPersistedInserts.append(newExpense)
+        // Record against the on-disk count now (the row is committed)
+        // so a killed sheet still counts toward the rating threshold.
+        ReviewPromptManager.shared.recordExpenseSaved(
+            totalExpenseCount: isFullyHydrated ? expenses.count + unpublishedPersistedCount : nil
+        )
+        return newExpense
+    }
+
+    /// In-memory insert + `@Published expenses` for a row already on
+    /// disk. Idempotent if hydration or a double-flush already applied
+    /// the same id.
+    func publishPersistedInsert(_ expense: Expense) {
+        unpublishedPersistedInserts.removeAll { $0.id == expense.id }
+        applyIncrementalInsert(expense)
+    }
+
+    /// Persist only. Caller is responsible for the in-memory mirror.
+    private func persistNewExpenseToDisk(_ expense: Expense) -> Expense? {
+        var newExpense = expense
+        newExpense.currency = selectedCurrency
+
+        _ = ExpenseEntity.fromExpense(newExpense, context: viewContext)
+        // SAFETY: Only return the row if the save committed —
+        // otherwise the UI must not treat it as saved.
+        // `saveContext()` already surfaced the failure via the banner.
+        guard saveContext() else { return nil }
+        return newExpense
     }
     
     func updateExpense(_ expense: Expense) {

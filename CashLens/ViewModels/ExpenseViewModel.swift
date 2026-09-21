@@ -49,6 +49,21 @@ class ExpenseViewModel: ObservableObject {
     /// `expenses` changes so autocomplete and filter strips stay fresh.
     @Published private(set) var tagStats: TagSuggestionProvider.Stats = .empty
 
+    /// Rows the Add Expense sheet has already written to Core Data
+    /// whose `expenses` publish is waiting for `onDisappear` (or the
+    /// 500 ms / scene-background fallback). Not `@Published` — observers
+    /// must not invalidate while the sheet spring is still running.
+    var unpublishedPersistedInserts: [Expense] = []
+
+    /// Count of deferred inserts that are on disk but not yet in
+    /// `expenses`. Used by the post-save paywall so the 10th-expense
+    /// crossing still fires when the publish is delayed until dismiss.
+    var unpublishedPersistedCount: Int {
+        unpublishedPersistedInserts.reduce(0) { partial, pending in
+            partial + (expenses.contains(where: { $0.id == pending.id }) ? 0 : 1)
+        }
+    }
+
     // Background task management for filtering. `totalsTask` is no
     // longer needed: totals are now computed inside the same detached
     // pass as filtering (see `scheduleFilterRecompute`), so there's a

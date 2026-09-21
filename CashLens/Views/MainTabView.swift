@@ -278,7 +278,7 @@ struct MainTabView: View {
         let defaults = UserDefaults.standard
         let trigger = PaywallTrigger(
             previousCount: previousCount,
-            currentCount: viewModel.expenses.count,
+            currentCount: viewModel.expenses.count + viewModel.unpublishedPersistedCount,
             isPro: proManager.isPro,
             hasAutoShownBefore: defaults.bool(forKey: UserDefaultsKeys.hasAutoShownPaywall),
             lastAutoShowDate: defaults.object(forKey: UserDefaultsKeys.lastAutoPaywallDate) as? Date
