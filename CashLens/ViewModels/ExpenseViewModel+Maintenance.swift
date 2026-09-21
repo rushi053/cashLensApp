@@ -4,9 +4,27 @@ import CoreData
 extension ExpenseViewModel {
     // MARK: - Maintenance / Health
     
+    /// Reload data on foreground / `scenePhase == .active`.
+    ///
+    /// PERF (round 1): Previously this called both `loadExpenses()`
+    /// **and** `updateFilteredExpenses()`. The second call did the
+    /// filter **synchronously on the main thread** — and the off-main
+    /// pipeline fired a moment later off the back of `loadExpenses()`'s
+    /// `$expenses` publish, doing the same filter again. We removed
+    /// the synchronous half.
+    ///
+    /// PERF (round 2): The remaining `loadExpenses()` still hit Core
+    /// Data + mapped every entity on the main thread on every
+    /// foreground — a 50–100 ms stall at scale for data that almost
+    /// never actually changes (the app is the sole writer of its
+    /// own SQLite store, so a foreground transition can't have made
+    /// the in-memory state stale). We now use `loadExpensesAsync()`
+    /// so the fetch + mapping happen on a background context; the
+    /// main-actor reassignment of `expenses` still fires the
+    /// downstream pipeline exactly once but doesn't block the
+    /// scene-phase transition.
     func refreshData() {
-        loadExpenses()
-        updateFilteredExpenses()
+        loadExpensesAsync()
     }
     
     func checkDataExists() -> String {
@@ -122,11 +140,41 @@ extension ExpenseViewModel {
             clearSuccessful = false
         }
         
-        // 4. Clear Deleted Default Categories from UserDefaults
+        // 4. Clear all Budgets — "Clear All Data" must mean all of it.
+        //    (This step was missing: budgets survived a clear-all and
+        //    kept tracking against an empty expense table.)
+        do {
+            let budgetFetchRequest: NSFetchRequest<NSFetchRequestResult> = BudgetEntity.fetchRequest()
+            let budgetBatchDeleteRequest = NSBatchDeleteRequest(fetchRequest: budgetFetchRequest)
+            budgetBatchDeleteRequest.resultType = .resultTypeObjectIDs
+            
+            let budgetResult = try viewContext.execute(budgetBatchDeleteRequest) as? NSBatchDeleteResult
+            if let objectIDs = budgetResult?.result as? [NSManagedObjectID] {
+                let changes = [NSDeletedObjectsKey: objectIDs]
+                NSManagedObjectContext.mergeChanges(fromRemoteContextSave: changes, into: [viewContext])
+            }
+            
+            print("✅ Cleared all budgets")
+        } catch {
+            print("❌ Error clearing budgets: \(error.localizedDescription)")
+            clearSuccessful = false
+        }
+        
+        // 5. Clear Deleted Default Categories from UserDefaults
         UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.deletedDefaultCategories)
         print("✅ Cleared deleted default categories list")
         
-        // 5. Save changes to Core Data
+        // 6. Delete every stored receipt image. The expense rows that
+        //    referenced them are gone; leaving the JPEGs behind would
+        //    keep the user's financial paper trail on disk after they
+        //    explicitly asked for everything to be erased. An empty
+        //    keep-set turns the orphan sweep into a full wipe. Off-main:
+        //    it's pure file I/O.
+        Task.detached(priority: .utility) {
+            ReceiptStorage.cleanupOrphans(keep: [])
+        }
+        
+        // 7. Save changes to Core Data
         if clearSuccessful {
             saveContext()
             NotificationCenter.default.post(name: .dataDidClear, object: nil)

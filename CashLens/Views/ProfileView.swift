@@ -3,1409 +3,1390 @@ import Foundation
 import StoreKit
 import UserNotifications
 
+/// Profile / Settings hub — the **You** tab root.
+///
+/// **Information architecture (top → bottom):**
+///   1. Compact profile header (avatar + tap-to-edit name).
+///   2. Pro card (active or upgrade).
+///   3. **Backup warning banner** — only shown when backup health is not `.good`.
+///   4. **General** — pure preferences (Currency / Default Time Frame / Siri).
+///   5. **Privacy & Security** — App Lock toggle + grace window + Privacy dashboard.
+///   6. **Personalization** — Theme & Appearance studio + App Icon (Pro).
+///   7. **Manage** — navigation rows to dedicated managers (Budgets / Categories /
+///      Subscriptions), each with a live count badge. Split off from General
+///      because these are screens-of-data, not set-and-forget values.
+///   8. **Notifications** — a single row presenting `NotificationsSettingsView` as a sheet.
+///   9. **Data** — Backup Health card + Export / Import / Clear.
+///  10. **About** — Support / Rate / Restore Purchases (free users) / About +
+///      community icon row + version footer.
+///
+/// **Design intent:** Each section has a single purpose so the page scans
+/// top-to-bottom in calm groups instead of 10+ rows of mixed concerns.
+/// Pickers use `Menu` rather than inline accordions for native, glitch-free
+/// dropdowns.
+///
+/// NOTE: no root `NavigationView`/`NavigationStack` — Privacy and
+/// Notifications are sheets (same as Budgets / Categories). A root
+/// nav controller under TabView caused permanent tab-switch stutter
+/// after the first visit to You.
 struct ProfileView: View {
-    @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var viewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
+    @EnvironmentObject var proManager: ProManager
+    @EnvironmentObject var budgetViewModel: BudgetViewModel
+    @EnvironmentObject var subscriptionViewModel: SubscriptionViewModel
+    @EnvironmentObject var themeStore: ThemeStore
+    @EnvironmentObject var appIconStore: AppIconStore
+    /// App Lock is app-global state (the overlay mounts in
+    /// `CashLensApp`), so Profile observes the shared manager rather
+    /// than owning any lock state itself.
+    @ObservedObject private var appLockManager = AppLockManager.shared
+
     @State private var isEditingName = false
+    @FocusState private var nameFieldFocused: Bool
     @State private var tempUserName = ""
+
+    @State private var showingPaywall = false
+    @State private var showingBudgetList = false
+    @State private var showingSubscriptions = false
+    @State private var showingCategories = false
     @State private var showingCurrencyPicker = false
-    @State private var showingAppearancePicker = false
-    @State private var showingDefaultTimeFramePicker = false
     @State private var showingAboutSheet = false
     @State private var showingExportSheet = false
     @State private var showingDonationSheet = false
     @State private var showingImportSheet = false
-    
-    // Weekly summary notifications (opt-in)
-    @AppStorage(UserDefaultsKeys.weeklySummaryEnabled) private var weeklySummaryEnabled: Bool = false
-    @AppStorage(UserDefaultsKeys.weeklySummaryWeekday) private var weeklySummaryWeekday: Int = 2 // Monday
-    @AppStorage(UserDefaultsKeys.weeklySummaryHour) private var weeklySummaryHour: Int = 9
-    @AppStorage(UserDefaultsKeys.weeklySummaryMinute) private var weeklySummaryMinute: Int = 0
-    
-    @State private var showingWeeklySummarySchedule = false
-    @State private var showingNotificationPermissionAlert = false
-    @State private var scheduleTempWeekday: Int = 2
-    @State private var scheduleTempTime: Date = Date()
+    @State private var showingThemePicker = false
+    @State private var showingAppIconPicker = false
+    @State private var showingSiriTips = false
+    @State private var showingPrivacy = false
+    @State private var showingNotifications = false
 
-    // Monthly digest (opt-in)
+    /// Shown when enabling App Lock fails its required authentication
+    /// (no passcode set, or the user cancelled the prompt).
+    @State private var showingAppLockEnableFailed = false
+
+    /// Cached badge / backup-card numbers. PERF: reading
+    /// `viewModel.expenses.count` / filtering budgets & subscriptions
+    /// inside `body` re-walked those arrays on every EnvironmentObject
+    /// invalidation — including while You was off-screen after the
+    /// first visit. Refresh only on appear + targeted publishes.
+    @State private var cachedExpenseCount: Int = 0
+    @State private var cachedActiveBudgetCount: Int = 0
+    @State private var cachedActiveSubCount: Int = 0
+    @State private var cachedCustomCategoryCount: Int = 0
+    /// Gates badge-cache refreshes while this view is on screen.
+    /// MainTabView also unmounts Profile when You isn't selected —
+    /// this is a second line of defense for sheet presentations.
+    @State private var isYouVisible = false
+
+    /// Restore Purchases (About section, free users only). The row is
+    /// the standard escape hatch for "I paid on my old phone" — it
+    /// used to exist only inside the paywall, which is exactly the
+    /// screen a previous purchaser doesn't want to open.
+    @State private var isRestoringPurchases = false
+    @State private var restoreResultMessage: String? = nil
+
+    // Reminder + Smart Insights state lives in `NotificationsSettingsView`
+    // (the pushed sub-page). We only need the four boolean toggles here
+    // to render the live "N active" badge on the Notifications row;
+    // `@AppStorage` keeps these values in sync with the sub-page via
+    // UserDefaults, so the badge updates the moment a toggle is flipped.
+    @AppStorage(UserDefaultsKeys.weeklySummaryEnabled) private var weeklySummaryEnabled: Bool = false
     @AppStorage(UserDefaultsKeys.monthlyDigestEnabled) private var monthlyDigestEnabled: Bool = false
-    @AppStorage(UserDefaultsKeys.monthlyDigestDayOfMonth) private var monthlyDigestDayOfMonth: Int = 1
-    @AppStorage(UserDefaultsKeys.monthlyDigestHour) private var monthlyDigestHour: Int = 9
-    @AppStorage(UserDefaultsKeys.monthlyDigestMinute) private var monthlyDigestMinute: Int = 0
-    @State private var showingMonthlyDigestSchedule = false
-    @State private var monthlyTempDayOfMonth: Int = 1
-    @State private var monthlyTempTime: Date = Date()
-    
-    // Backup reminder (opt-in)
     @AppStorage(UserDefaultsKeys.backupReminderEnabled) private var backupReminderEnabled: Bool = false
-    @AppStorage(UserDefaultsKeys.backupReminderDayOfMonth) private var backupReminderDayOfMonth: Int = 1
-    @AppStorage(UserDefaultsKeys.backupReminderHour) private var backupReminderHour: Int = 9
-    @AppStorage(UserDefaultsKeys.backupReminderMinute) private var backupReminderMinute: Int = 0
-    @State private var showingBackupReminderSchedule = false
-    @State private var backupTempDayOfMonth: Int = 1
-    @State private var backupTempTime: Date = Date()
+    @AppStorage(UserDefaultsKeys.smartInsightsEnabled) private var smartInsightsEnabled: Bool = false
+
+    /// Backup metadata is held in `@State` (not read inline from UserDefaults)
+    /// so SwiftUI knows to re-render the backup banner + Backup Health card
+    /// the moment a successful export writes new values. The two reload
+    /// triggers wired up in `body` (`.onChange(of: showingExportSheet)` and
+    /// `UserDefaults.didChangeNotification`) keep this in sync without
+    /// requiring the user to leave and re-enter Profile.
+    @State private var lastBackupDate: Date? = nil
+    @State private var totalBackupCount: Int = 0
 
     private enum ActiveAlert: Identifiable {
         case clearAllData
-        case notificationPermission
 
         var id: String {
             switch self {
             case .clearAllData: return "clearAllData"
-            case .notificationPermission: return "notificationPermission"
             }
         }
     }
 
     @State private var activeAlert: ActiveAlert?
-    
-    // Get version and build from Info.plist
-    private var versionString: String {
+
+    /// Regular width only (iPad, Duo inner display): two-column layout
+    /// in `ProfileView+LargeScreen.swift`. The compact branch is the
+    /// unchanged iPhone column. `verticalSizeClass` feeds the DEBUG-only
+    /// size-class readout in the Developer group.
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    @Environment(\.verticalSizeClass) var verticalSizeClass
+    /// Measured content width for the one-vs-two-column decision on
+    /// regular width. Never read on compact width.
+    @State var largeScreenMeasuredWidth: CGFloat = 0
+
+    /// Static — the bundle version can't change while the app runs, so
+    /// there's no reason to re-read the info dictionary on every redraw.
+    private static let versionString: String = {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "-"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "-"
         return "\(version) (\(build))"
-    }
-    
+    }()
+
+    // MARK: - Body
+
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Profile Header
-                    profileHeader
-                    
-                    // Settings Section
-                    settingsSection
-                    
-                    // Notifications Section
-                    notificationsSection
-                    
-                    // App Info Section
-                    appInfoSection
-                    
-                    // Community Section
-                    communitySection
-                    
-                    // Data Management Section
-                    dataManagementSection
-                    
-                    // Backup Health Section
-                    backupHealthSection
-                }
-                .padding()
-            }
-            .navigationTitle("Profile")
-            .navigationBarItems(
-                leading: Button(action: {
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.primary)
-                        .padding(8)
-                        .background(Color.secondarySystemBackground)
-                        .clipShape(Circle())
-                }
-            )
-            .background(Color.systemBackground)
-            .alert(item: $activeAlert) { alert in
-                switch alert {
-                case .clearAllData:
-                    return Alert(
-                        title: Text("Clear All Data"),
-                        message: Text("Are you sure you want to delete ALL your data? This includes expenses, subscriptions, custom categories, and deleted category preferences. This action cannot be undone."),
-                        primaryButton: .destructive(Text("Delete All")) {
-                            withAnimation {
-                                viewModel.clearAllData()
-                            }
-                            hapticFeedback(style: .heavy)
-                        },
-                        secondaryButton: .cancel()
-                    )
-                case .notificationPermission:
-                    return Alert(
-                        title: Text("Enable Notifications"),
-                        message: Text("Please enable notifications in Settings to receive weekly summaries."),
-                        dismissButton: .default(Text("OK"))
-                    )
-                }
-            }
-            .onAppear {
-                // Initialize the temporary user name with the current value
-                tempUserName = viewModel.userName
-                
-                // Initialize schedule editor state
-                scheduleTempWeekday = weeklySummaryWeekday
-                scheduleTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
-            }
-            .sheet(isPresented: $showingCurrencyPicker) {
-                CurrencyPickerView(viewModel: viewModel)
+        // PERF: NO root `NavigationView` / `NavigationStack`.
+        // TabView keeps visited tabs mounted for the session. A root
+        // nav controller on You stayed alive after the first visit and
+        // re-laid out on every later tab switch — the exact "smooth
+        // until I open You, then everything stutters" report. Privacy
+        // and Notifications are sheets (same pattern as Budgets /
+        // Categories / Subscriptions), so no UINavigationController
+        // lives under the tab bar. Matches Insights, which never had
+        // a nav wrapper for the same reason.
+        ScrollView {
+            if horizontalSizeClass == .regular {
+                // iPad / Duo inner display: identity + status column
+                // beside the preferences column. Same sections, same
+                // sheets; see `ProfileView+LargeScreen.swift`.
+                largeScreenContent
+            } else {
+                compactContent
             }
         }
+        .background(Color.systemBackground)
+        .alert(item: $activeAlert) { alert in
+            switch alert {
+            case .clearAllData:
+                return Alert(
+                    title: Text("Clear All Data"),
+                    message: Text("Are you sure you want to delete ALL your data? This includes expenses, subscriptions, custom categories, and deleted category preferences. This action cannot be undone."),
+                    primaryButton: .destructive(Text("Delete All")) {
+                        withAnimation {
+                            viewModel.clearAllData()
+                        }
+                        HapticManager.shared.heavyTap()
+                    },
+                    secondaryButton: .cancel()
+                )
+            }
+        }
+        .onAppear {
+            isYouVisible = true
+            tempUserName = viewModel.userName
+            reloadBackupMetadata()
+            refreshBadgeCaches()
+        }
+        .onDisappear {
+            isYouVisible = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .backupMetadataDidChange)) { _ in
+            reloadBackupMetadata()
+        }
+        // Keep Manage-row badges current without walking arrays inside
+        // `body`. Skip while You is off-screen so a save on Today
+        // doesn't re-diff the entire settings tree mid tab-switch.
+        .onReceive(viewModel.$expenses) { expenses in
+            guard isYouVisible else { return }
+            let count = expenses.count
+            if count != cachedExpenseCount { cachedExpenseCount = count }
+        }
+        .onReceive(budgetViewModel.$budgets) { _ in
+            guard isYouVisible else { return }
+            let count = budgetViewModel.activeBudgets.count
+            if count != cachedActiveBudgetCount { cachedActiveBudgetCount = count }
+        }
+        .onReceive(subscriptionViewModel.$subscriptions) { _ in
+            guard isYouVisible else { return }
+            let count = subscriptionViewModel.activeSubscriptionsCount
+            if count != cachedActiveSubCount { cachedActiveSubCount = count }
+        }
+        .onReceive(categoryViewModel.$customCategories) { cats in
+            guard isYouVisible else { return }
+            let count = cats.count
+            if count != cachedCustomCategoryCount { cachedCustomCategoryCount = count }
+        }
+        .sheet(isPresented: $showingCurrencyPicker) {
+            CurrencyPickerView(viewModel: viewModel)
+                // Regular width: form-sized cards (presenter's size
+                // class) instead of page sheets — applies to every
+                // sheet this tab presents.
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView()
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+        .sheet(isPresented: $showingThemePicker) {
+            AppearanceStudioView()
+                .environmentObject(themeStore)
+                .environmentObject(proManager)
+                .environmentObject(appIconStore)
+                .environmentObject(viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+        .sheet(isPresented: $showingAppIconPicker) {
+            AppIconPickerView()
+                .environmentObject(appIconStore)
+                .environmentObject(proManager)
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+        .sheet(isPresented: $showingPrivacy) {
+            PrivacyDashboardView()
+                .environmentObject(viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+        .sheet(isPresented: $showingNotifications) {
+            NotificationsSettingsView()
+                .environmentObject(viewModel)
+                .environmentObject(proManager)
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
     }
-    
+
+    /// Presenter-side size class for `largeScreenFormSheet`.
+    var isRegularWidth: Bool { horizontalSizeClass == .regular }
+
+    /// The iPhone (compact width) layout — unchanged single column.
+    private var compactContent: some View {
+        VStack(spacing: Theme.Spacing.xxl) {
+            HStack {
+                Text("You")
+                    .font(Theme.Typography.pageTitle)
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            .padding(.top, Theme.Spacing.sm)
+
+            profileHeader
+            proSection
+            backupBanner
+            generalSection
+            privacySection
+            personalizationSection
+            manageSection
+            notificationsSection
+            dataSection
+            aboutSection
+            #if DEBUG
+            developerSection
+            #endif
+            versionFooter
+        }
+        .padding()
+        .padding(.bottom, Theme.Spacing.xl)
+        // Regular width (iPad, Duo inner): settings groups stay a
+        // readable width instead of stretching edge to edge.
+        .readableColumn()
+    }
+
+    private func refreshBadgeCaches() {
+        cachedExpenseCount = viewModel.expenses.count
+        cachedActiveBudgetCount = budgetViewModel.activeBudgets.count
+        cachedActiveSubCount = subscriptionViewModel.activeSubscriptionsCount
+        cachedCustomCategoryCount = categoryViewModel.customCategories.count
+    }
+
+    /// Pulls the latest backup metadata into `@State` so the banner + Backup
+    /// Health card re-render. Called from `.onAppear` and whenever
+    /// `.backupMetadataDidChange` fires (posted by the backup exporter /
+    /// importer). Updates are gated to avoid a no-op state assignment that
+    /// would still invalidate the view tree.
+    private func reloadBackupMetadata() {
+        let newDate = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date
+        let newCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.totalBackupCount)
+        let priorCount = totalBackupCount
+        let dateChanged = newDate != lastBackupDate
+        let countChanged = newCount != totalBackupCount
+        guard dateChanged || countChanged else { return }
+        withAnimation(Theme.Motion.snappy) {
+            if dateChanged { lastBackupDate = newDate }
+            if countChanged { totalBackupCount = newCount }
+        }
+        if newCount > priorCount {
+            HapticManager.shared.success()
+        }
+    }
+
     // MARK: - Profile Header
-    private var profileHeader: some View {
-        VStack(spacing: 16) {
-            // Profile Image
+
+    /// Compact header: 72 pt avatar, tappable name with inline pencil chip.
+    /// In-place edit uses `@FocusState` so the keyboard auto-presents and a Done
+    /// chip replaces the pencil. No more "Edit Profile" pill — the name itself is
+    /// the affordance.
+    var profileHeader: some View {
+        // Compact horizontal treatment for the tab-root presentation
+        // — avatar left, name right. The old vertical "centered hero"
+        // shape was right when Profile was a sheet you opened
+        // intentionally; as a permanent tab you want fast scanning,
+        // not a portrait.
+        HStack(spacing: Theme.Spacing.md + 2) {
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 100, height: 100)
-                    .shadow(color: Color.appPrimary.opacity(0.3), radius: 10, x: 0, y: 5)
-                
-                Text(String(viewModel.userName.prefix(1)))
-                    .font(.system(size: 40, weight: .bold))
+                    .fill(Color.appPrimary)
+                    .frame(width: 54, height: 54)
+                Text(String(viewModel.userName.prefix(1)).uppercased())
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
             }
-            .padding(.bottom, 8)
-            
-            // User Name
+
             if isEditingName {
-                TextField("Your Name", text: $tempUserName)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .multilineTextAlignment(.center)
-                    .padding()
-                    .background(Color.secondarySystemBackground)
-                    .cornerRadius(10)
-                    .padding(.horizontal, 40)
-                    .onSubmit {
-                        saveName()
+                HStack(spacing: Theme.Spacing.sm) {
+                    TextField("Your Name", text: $tempUserName)
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .padding(.horizontal, Theme.Spacing.md)
+                        .padding(.vertical, Theme.Spacing.sm + 2)
+                        .background(Color.secondarySystemBackground)
+                        .clipShape(Capsule())
+                        .focused($nameFieldFocused)
+                        .submitLabel(.done)
+                        .onSubmit { saveName() }
+
+                    Button(action: saveName) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Color.appPrimary)
+                            .clipShape(Circle())
                     }
-                
-                // Save button
-                Button(action: saveName) {
-                    Text("Save")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 8)
-                        .background(
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .cornerRadius(16)
+                    .buttonStyle(ScaleButtonStyle())
                 }
-                .buttonStyle(ScaleButtonStyle())
-                .padding(.top, 8)
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
-                Text(viewModel.userName)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .onTapGesture {
-                        isEditingName = true
+                // Pencil glyph beside the name instead of the old
+                // "Tap to edit" caption line — the review called the
+                // caption noisy for a once-in-a-lifetime action; the
+                // glyph carries the affordance quietly.
+                Button(action: beginEditingName) {
+                    HStack(spacing: Theme.Spacing.sm) {
+                        Text(viewModel.userName)
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.secondary)
                     }
-                
-                // Edit Button
-                Button(action: {
-                    isEditingName = true
-                }) {
-                    Text("Edit Profile")
-                        .font(.subheadline)
-                        .foregroundColor(.appPrimary)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule()
-                                .stroke(Color.appPrimary, lineWidth: 1)
-                        )
                 }
-                .buttonStyle(ScaleButtonStyle())
+                .buttonStyle(.plain)
+                .transition(.opacity)
+                .accessibilityLabel("Edit name")
             }
+
+            Spacer(minLength: 0)
         }
-        .padding()
-        .cornerRadius(20)
+        .padding(.top, Theme.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(Theme.Motion.snappy, value: isEditingName)
     }
-    
-    // Save the user name
+
+    private func beginEditingName() {
+        HapticManager.shared.lightTap()
+        tempUserName = viewModel.userName
+        isEditingName = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            nameFieldFocused = true
+        }
+    }
+
     private func saveName() {
-        if !tempUserName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            viewModel.userName = tempUserName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = tempUserName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            viewModel.userName = trimmed
         } else {
-            // If empty, revert to the previous name
             tempUserName = viewModel.userName
         }
+        nameFieldFocused = false
         isEditingName = false
-        hapticFeedback(style: .medium)
+        HapticManager.shared.mediumTap()
     }
-    
-    // MARK: - Settings Section
-    private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Settings")
-                .font(.title3)
+
+    // MARK: - Pro Section
+
+    @ViewBuilder
+    var proSection: some View {
+        if proManager.isPro {
+            proActiveCard
+        } else {
+            proUpgradeCard
+        }
+    }
+
+    private var proActiveCard: some View {
+        HStack(spacing: Theme.Spacing.md + 2) {
+            ZStack {
+                Circle()
+                    .fill(Color.appPrimary.opacity(0.14))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.appPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("CashLens Pro")
+                    .font(Theme.Typography.rowTitle)
+                    .foregroundColor(.primary)
+                Text("All features unlocked")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Text("Active")
+                .font(.caption)
                 .fontWeight(.bold)
-                .padding(.bottom, 4)
-            
+                .foregroundColor(.appPrimary)
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.xs + 2)
+                .background(Color.appPrimary.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .padding()
+        .cardSurface(radius: Theme.Radius.hero)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.hero, style: .continuous)
+                .stroke(Color.appPrimary.opacity(0.30), lineWidth: 1)
+        )
+    }
+
+    private var proUpgradeCard: some View {
+        Button {
+            HapticManager.shared.mediumTap()
+            showingPaywall = true
+        } label: {
+            HStack(spacing: Theme.Spacing.md + 2) {
+                ZStack {
+                    Circle()
+                        .fill(Color.appPrimary.opacity(0.14))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.appPrimary)
+                }
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    Text("Upgrade to Pro")
+                        .font(Theme.Typography.rowTitle)
+                        .foregroundColor(.primary)
+                    Text("Budgets, receipt scanning, forecasts, PDF reports & more")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.appPrimary)
+            }
+            .padding()
+            .cardSurface(
+                radius: Theme.Radius.hero,
+                fill: Color.appPrimary.opacity(0.06)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.hero, style: .continuous)
+                    .stroke(Color.appPrimary.opacity(0.25), lineWidth: 1)
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+
+    // MARK: - Backup warning banner
+
+    /// Slim contextual banner shown only when backup health is not `.good`.
+    /// Surfaces the most critical signal at the top of Settings instead of
+    /// burying it at the bottom; tap → opens the export sheet directly.
+    @ViewBuilder
+    var backupBanner: some View {
+        let status = backupHealthStatus
+        if status != .good {
+            Button(action: {
+                HapticManager.shared.mediumTap()
+                showingExportSheet = true
+            }) {
+                HStack(spacing: Theme.Spacing.md) {
+                    ZStack {
+                        Circle()
+                            .fill(status.color.opacity(0.18))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: status.icon)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(status.color)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(status.title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text(status.subtitle)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Text("Backup")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(status.color)
+                        .clipShape(Capsule())
+                }
+                .padding(.horizontal, Theme.Spacing.md)
+                .padding(.vertical, Theme.Spacing.sm + 2)
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                        .fill(status.color.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous)
+                        .stroke(status.color.opacity(0.25), lineWidth: 1)
+                )
+            }
+            .buttonStyle(ScaleButtonStyle())
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    // MARK: - General
+
+    /// Pure preferences only — values the user sets once and the rest
+    /// of the app reads. Navigation-style rows (managers, sub-pages)
+    /// live in the dedicated `manageSection` below so this group
+    /// stays scannable.
+    var generalSection: some View {
+        // v2 polish: each settings section is now ONE elevated card
+        // with hairline-separated bare rows (the iOS Settings-app
+        // grouping). The old "every row is its own card" treatment
+        // produced ~12 stacked cards on the You tab — visually noisy
+        // and inconsistent with the rest of iOS.
+        SettingsGroup(title: "General") {
             currencyRow
-            
-            appearanceRow
-            appearancePicker // Appears directly below appearance row
-            
-            defaultTimeFrameRow
-            defaultTimeFramePicker // Appears directly below time frame row
-            
-            donationRow
+            timeFrameMenuRow
+            siriShortcutsRow
         }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
-        .sheet(isPresented: $showingDonationSheet) {
-            NavigationView {
-                DonationView()
-            }
+        .sheet(isPresented: $showingSiriTips) {
+            SiriShortcutsTipsView()
+                .largeScreenFormSheet(enabled: isRegularWidth)
         }
     }
-    
-    // MARK: - Notifications Section
-    private var notificationsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Notifications")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.bottom, 4)
-            
-            weeklySummaryToggleRow
-            if weeklySummaryEnabled {
-                weeklySummaryScheduleRow
-            }
-            
-            monthlyDigestToggleRow
-            if monthlyDigestEnabled {
-                monthlyDigestScheduleRow
-            }
-            
-            backupReminderToggleRow
-            if backupReminderEnabled {
-                backupReminderScheduleRow
-            }
-        }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
-        .sheet(isPresented: $showingWeeklySummarySchedule) {
-            weeklySummaryScheduleSheet
-        }
-        .sheet(isPresented: $showingMonthlyDigestSchedule) {
-            monthlyDigestScheduleSheet
-        }
-        .sheet(isPresented: $showingBackupReminderSchedule) {
-            backupReminderScheduleSheet
+
+    /// Discovery row for the zero-setup Siri phrases (`CashLensShortcuts`).
+    /// Free feature — capture is never paywalled.
+    private var siriShortcutsRow: some View {
+        SettingsRow(
+            icon: "waveform",
+            title: "Siri & Shortcuts",
+            subtitle: "\u{201C}Log an expense in CashLens\u{201D}",
+            style: .bare
+        )
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            showingSiriTips = true
         }
     }
-    
-    private var weeklySummaryToggleRow: some View {
-        HStack {
-            Image(systemName: "bell.badge.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Weekly Digest")
-                    .foregroundColor(.primary)
-                Text("A weekly spending summary. Tap to open your expenses for that week.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
+
+    // MARK: - Privacy & Security
+
+    /// App Lock (free — privacy features are a brand statement, not a
+    /// paywall) + the privacy dashboard. Sits right under General so
+    /// the app's core promise is visible without scrolling past the
+    /// feature managers.
+    var privacySection: some View {
+        SettingsGroup(title: "Privacy & Security") {
+            appLockToggleRow
+            if appLockManager.isEnabled {
+                appLockGraceRow
             }
-            
-            Spacer()
-            
+            privacyDashboardRow
+        }
+        // Attached here (not on the ScrollView) so it can't collide
+        // with the `alert(item:)` that owns the clear-all-data flow.
+        .alert("Couldn't Turn On App Lock", isPresented: $showingAppLockEnableFailed) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("CashLens needs \(AppLockManager.unlockMethodName) or a device passcode to lock the app. Verify once to turn it on.")
+        }
+        .animation(Theme.Motion.snappy, value: appLockManager.isEnabled)
+    }
+
+    /// Face ID / Touch ID / Optic ID naming is resolved from the
+    /// device's actual biometry; devices with no biometrics read
+    /// "Passcode". Enabling requires one successful authentication
+    /// first so nobody can lock themselves out.
+    private var appLockToggleRow: some View {
+        SettingsRow(
+            icon: AppLockManager.unlockMethodSymbol,
+            title: "App Lock",
+            subtitle: "Require \(AppLockManager.unlockMethodName) when you open CashLens.",
+            showsChevron: false,
+            style: .bare
+        ) {
             Toggle("", isOn: Binding(
-                get: { weeklySummaryEnabled },
+                get: { appLockManager.isEnabled },
                 set: { newValue in
-                    hapticFeedback(style: .light)
-                    Task {
-                        if newValue {
-                            let ok = await NotificationScheduler.ensureAuthorized()
-                            await MainActor.run {
-                                weeklySummaryEnabled = ok
-                                if !ok { activeAlert = .notificationPermission }
-                            }
-                        } else {
-                            await MainActor.run { weeklySummaryEnabled = false }
+                    HapticManager.shared.lightTap()
+                    if newValue {
+                        Task {
+                            let ok = await appLockManager.enableAfterAuthentication()
+                            if !ok { showingAppLockEnableFailed = true }
                         }
-                        
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
+                    } else {
+                        appLockManager.disable()
                     }
                 }
             ))
             .labelsHidden()
-            .tint(.mauve)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-    }
-    
-    private var weeklySummaryScheduleRow: some View {
-        let scheduleText = weeklySummaryScheduleText()
-        
-        return HStack {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Schedule")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(scheduleText)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .opacity(weeklySummaryEnabled ? 1.0 : 0.5)
-        .onTapGesture {
-            guard weeklySummaryEnabled else { return }
-            hapticFeedback(style: .light)
-            scheduleTempWeekday = weeklySummaryWeekday
-            scheduleTempTime = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
-            showingWeeklySummarySchedule = true
+            .tint(.appPrimary)
         }
     }
-    
-    private var weeklySummaryScheduleSheet: some View {
-        NavigationView {
-            Form {
-                Picker("Day", selection: $scheduleTempWeekday) {
-                    ForEach(1...7, id: \.self) { weekday in
-                        Text(weekdayName(weekday)).tag(weekday)
+
+    /// Grace window picker — how long a backgrounded app stays
+    /// unlocked. `Menu` for the native dropdown, same as Appearance.
+    private var appLockGraceRow: some View {
+        Menu {
+            ForEach(AppLockManager.GracePeriod.allCases) { period in
+                Button {
+                    HapticManager.shared.lightTap()
+                    appLockManager.gracePeriod = period
+                } label: {
+                    if appLockManager.gracePeriod == period {
+                        Label(period.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(period.displayName)
                     }
                 }
-                
-                DatePicker("Time", selection: $scheduleTempTime, displayedComponents: [.hourAndMinute])
             }
-            .navigationTitle("Weekly Digest")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showingWeeklySummarySchedule = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let comps = Calendar.current.dateComponents([.hour, .minute], from: scheduleTempTime)
-                        weeklySummaryWeekday = scheduleTempWeekday
-                        weeklySummaryHour = comps.hour ?? 9
-                        weeklySummaryMinute = comps.minute ?? 0
-                        showingWeeklySummarySchedule = false
-                        
-                        Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
-                        }
-                    }
+        } label: {
+            SettingsRow(icon: "clock.fill", title: "Require After", showsChevron: false, style: .bare) {
+                HStack(spacing: 4) {
+                    SettingsRowValue(text: appLockManager.gracePeriod.displayName)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
                 }
             }
         }
     }
 
-    private var monthlyDigestToggleRow: some View {
-        HStack {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Monthly Digest")
-                    .foregroundColor(.primary)
-                Text("A monthly recap. Tap to open your expenses for that month.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            
-            Spacer()
-            
-            Toggle("", isOn: Binding(
-                get: { monthlyDigestEnabled },
-                set: { newValue in
-                    hapticFeedback(style: .light)
-                    Task {
-                        if newValue {
-                            let ok = await NotificationScheduler.ensureAuthorized()
-                            await MainActor.run {
-                                monthlyDigestEnabled = ok
-                                if !ok { activeAlert = .notificationPermission }
-                            }
-                        } else {
-                            await MainActor.run { monthlyDigestEnabled = false }
-                        }
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
-                    }
-                }
-            ))
-            .labelsHidden()
-            .tint(.mauve)
+    private var privacyDashboardRow: some View {
+        SettingsRow(
+            icon: "hand.raised.fill",
+            title: "Privacy",
+            showsChevron: true,
+            style: .bare
+        ) {
+            SettingsRowValue(text: "On-device")
         }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-    }
-    
-    private var monthlyDigestScheduleRow: some View {
-        let scheduleText = monthlyDigestScheduleText()
-        
-        return HStack {
-            Image(systemName: "calendar")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Monthly Schedule")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(scheduleText)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .opacity(monthlyDigestEnabled ? 1.0 : 0.5)
         .onTapGesture {
-            guard monthlyDigestEnabled else { return }
-            hapticFeedback(style: .light)
-            monthlyTempDayOfMonth = monthlyDigestDayOfMonth
-            monthlyTempTime = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
-            showingMonthlyDigestSchedule = true
+            HapticManager.shared.lightTap()
+            showingPrivacy = true
         }
-    }
-    
-    private var monthlyDigestScheduleSheet: some View {
-        NavigationView {
-            Form {
-                Picker("Day of month", selection: $monthlyTempDayOfMonth) {
-                    ForEach(1...28, id: \.self) { d in
-                        Text("\(d)").tag(d)
-                    }
-                }
-                DatePicker("Time", selection: $monthlyTempTime, displayedComponents: [.hourAndMinute])
-            }
-            .navigationTitle("Monthly Digest")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showingMonthlyDigestSchedule = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let comps = Calendar.current.dateComponents([.hour, .minute], from: monthlyTempTime)
-                        monthlyDigestDayOfMonth = monthlyTempDayOfMonth
-                        monthlyDigestHour = comps.hour ?? 9
-                        monthlyDigestMinute = comps.minute ?? 0
-                        showingMonthlyDigestSchedule = false
-                        
-                        Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func monthlyDigestScheduleText() -> String {
-        let time = makeTimeDate(hour: monthlyDigestHour, minute: monthlyDigestMinute)
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return "Day \(max(1, min(28, monthlyDigestDayOfMonth))) • \(df.string(from: time))"
-    }
-    
-    private var backupReminderToggleRow: some View {
-        HStack {
-            Image(systemName: "externaldrive.fill.badge.timemachine")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Backup Reminder")
-                    .foregroundColor(.primary)
-                Text("A monthly reminder to export your data to Files.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            
-            Spacer()
-            
-            Toggle("", isOn: Binding(
-                get: { backupReminderEnabled },
-                set: { newValue in
-                    hapticFeedback(style: .light)
-                    Task {
-                        if newValue {
-                            let ok = await NotificationScheduler.ensureAuthorized()
-                            await MainActor.run {
-                                backupReminderEnabled = ok
-                                if !ok { activeAlert = .notificationPermission }
-                            }
-                        } else {
-                            await MainActor.run { backupReminderEnabled = false }
-                        }
-                        await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
-                    }
-                }
-            ))
-            .labelsHidden()
-            .tint(.mauve)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-    }
-    
-    private var backupReminderScheduleRow: some View {
-        let scheduleText = backupReminderScheduleText()
-        
-        return HStack {
-            Image(systemName: "clock")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Backup Schedule")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(scheduleText)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .opacity(backupReminderEnabled ? 1.0 : 0.5)
-        .onTapGesture {
-            guard backupReminderEnabled else { return }
-            hapticFeedback(style: .light)
-            backupTempDayOfMonth = backupReminderDayOfMonth
-            backupTempTime = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
-            showingBackupReminderSchedule = true
-        }
-    }
-    
-    private var backupReminderScheduleSheet: some View {
-        NavigationView {
-            Form {
-                Picker("Day of month", selection: $backupTempDayOfMonth) {
-                    ForEach(1...28, id: \.self) { d in
-                        Text("\(d)").tag(d)
-                    }
-                }
-                DatePicker("Time", selection: $backupTempTime, displayedComponents: [.hourAndMinute])
-            }
-            .navigationTitle("Backup Reminder")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showingBackupReminderSchedule = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let comps = Calendar.current.dateComponents([.hour, .minute], from: backupTempTime)
-                        backupReminderDayOfMonth = backupTempDayOfMonth
-                        backupReminderHour = comps.hour ?? 9
-                        backupReminderMinute = comps.minute ?? 0
-                        showingBackupReminderSchedule = false
-                        
-                        Task {
-                            await NotificationScheduler.refreshScheduledNotificationsIfNeeded(viewModel: viewModel)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func backupReminderScheduleText() -> String {
-        let time = makeTimeDate(hour: backupReminderHour, minute: backupReminderMinute)
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return "Day \(max(1, min(28, backupReminderDayOfMonth))) • \(df.string(from: time))"
-    }
-    
-    private func weeklySummaryScheduleText() -> String {
-        let time = makeTimeDate(hour: weeklySummaryHour, minute: weeklySummaryMinute)
-        let df = DateFormatter()
-        df.timeStyle = .short
-        return "\(weekdayName(weeklySummaryWeekday)) • \(df.string(from: time))"
-    }
-    
-    private func weekdayName(_ weekday: Int) -> String {
-        // Calendar weekday: 1=Sunday...7=Saturday
-        let symbols = Calendar.current.weekdaySymbols
-        let index = max(1, min(7, weekday)) - 1
-        return symbols[index]
-    }
-    
-    private func makeTimeDate(hour: Int, minute: Int) -> Date {
-        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        comps.hour = hour
-        comps.minute = minute
-        return Calendar.current.date(from: comps) ?? Date()
     }
 
-    // MARK: - Settings Subviews (kept separate to avoid type-check timeouts)
-    
+    // MARK: - Manage
+
+    /// Navigation-style rows that open dedicated managers for the
+    /// app's three first-class collections. Surfacing `Manage
+    /// Categories` here closes a real discoverability gap — it used
+    /// to be reachable only by drilling into the category picker
+    /// inside Add Expense.
+    var manageSection: some View {
+        SettingsGroup(title: "Manage") {
+            budgetManagementRow
+            categoriesRow
+            subscriptionsRow
+        }
+        .sheet(isPresented: $showingBudgetList) {
+            BudgetListView()
+                .environmentObject(budgetViewModel)
+                .environmentObject(viewModel)
+                .environmentObject(categoryViewModel)
+                .environmentObject(proManager)
+        }
+        .sheet(isPresented: $showingCategories) {
+            ManageCategoriesView()
+                .environmentObject(categoryViewModel)
+                .environmentObject(viewModel)
+        }
+        .sheet(isPresented: $showingSubscriptions) {
+            // No NavigationView wrapper — `SubscriptionsView` ships
+            // its own custom page header and presents its own
+            // Add/Edit sheets internally. Wrapping it would just
+            // stack an empty nav-bar shelf above the title.
+            SubscriptionsView()
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    /// v2: Subscriptions used to be a top-level tab. After the IA
+    /// audit it's been demoted — most users glance at recurring bills
+    /// weekly, not daily, so it doesn't earn 25% of the tab bar.
+    /// It now lives under "You → Subscriptions" (manage list) and
+    /// is also reachable as a filter chip inside the Activity tab.
+    private var subscriptionsRow: some View {
+        SettingsRow(icon: "creditcard.and.123", title: "Subscriptions", style: .bare) {
+            // Live count badge — matches the Budgets ("N active") and
+            // Categories ("N custom") rows so all three Manage rows
+            // answer "is there anything in here?" without a tap.
+            if cachedActiveSubCount > 0 {
+                Text("\(cachedActiveSubCount) active")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            showingSubscriptions = true
+        }
+    }
+
+    /// Categories management — newly surfaced from Settings (the screen
+    /// itself has always existed; it was just buried inside the Add
+    /// Expense category picker). Default + custom categories, with the
+    /// existing swipe-to-delete + restore flow.
+    private var categoriesRow: some View {
+        SettingsRow(icon: "square.grid.2x2.fill", title: "Categories", style: .bare) {
+            if cachedCustomCategoryCount > 0 {
+                Text("\(cachedCustomCategoryCount) custom")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            showingCategories = true
+        }
+    }
+
     private var currencyRow: some View {
-        HStack {
-            Image(systemName: "dollarsign.circle.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Default Currency")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text("\(viewModel.selectedCurrency.symbol) \(viewModel.selectedCurrency.rawValue)")
-                .foregroundColor(.secondary)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
+        SettingsRow(icon: "dollarsign.circle.fill", title: "Default Currency", style: .bare) {
+            SettingsRowValue(text: "\(viewModel.selectedCurrency.symbol) \(viewModel.selectedCurrency.rawValue)")
         }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
         .onTapGesture {
-            hapticFeedback(style: .light)
+            HapticManager.shared.lightTap()
             showingCurrencyPicker.toggle()
         }
     }
-    
-    private var appearanceRow: some View {
-        HStack {
-            Image(systemName: "moon.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Appearance")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(viewModel.appearanceMode.rawValue)
-                .foregroundColor(.secondary)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            hapticFeedback(style: .light)
-            showingAppearancePicker.toggle()
-        }
-    }
-    
-    private var defaultTimeFrameRow: some View {
-        HStack {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 22))
-                .foregroundColor(.appPrimary)
-                .frame(width: 30)
-            
-            Text("Default Time Frame")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Text(viewModel.defaultHomeTimeFrame.rawValue)
-                .foregroundColor(.secondary)
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            hapticFeedback(style: .light)
-            showingDefaultTimeFramePicker.toggle()
-        }
-    }
-    
-    private var donationRow: some View {
-        HStack {
-            Image(systemName: "heart.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.pink)
-                .frame(width: 30)
-            
-            Text("Support the App")
-                .foregroundColor(.primary)
-            
-            Spacer()
-            
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(10)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            hapticFeedback(style: .light)
-            showingDonationSheet = true
-        }
-    }
-    
-    @ViewBuilder
-    private var appearancePicker: some View {
-        if showingAppearancePicker {
-            VStack(spacing: 0) {
-                ForEach(ExpenseViewModel.AppearanceMode.allCases, id: \.self) { mode in
-                    HStack {
-                        Text(mode.rawValue)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        if viewModel.appearanceMode == mode {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.appPrimary)
-                        }
-                    }
-                    .padding()
-                    .background(
-                        viewModel.appearanceMode == mode ?
-                        Color.appPrimary.opacity(0.1) :
-                        Color.clear
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        hapticFeedback(style: .medium)
-                        withAnimation(.spring()) {
-                            viewModel.appearanceMode = mode
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showingAppearancePicker = false
-                            }
-                        }
-                    }
-                    
-                    if mode != ExpenseViewModel.AppearanceMode.allCases.last {
-                        Divider()
-                            .padding(.horizontal)
-                    }
-                }
-            }
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.mauve.opacity(0.3), lineWidth: 1)
-            )
-            .padding(.top, -8) // Reduce spacing to appear connected to the row above
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
-        }
-    }
-    
-    @ViewBuilder
-    private var defaultTimeFramePicker: some View {
-        if showingDefaultTimeFramePicker {
-            VStack(spacing: 0) {
-                ForEach(ExpenseViewModel.TimeFrame.allCases, id: \.self) { timeFrame in
-                    HStack {
+
+    /// Default time frame picker via `Menu` so iOS owns the dropdown.
+    private var timeFrameMenuRow: some View {
+        Menu {
+            ForEach(ExpenseViewModel.TimeFrame.allCases, id: \.self) { timeFrame in
+                Button {
+                    HapticManager.shared.lightTap()
+                    viewModel.defaultHomeTimeFrame = timeFrame
+                } label: {
+                    if viewModel.defaultHomeTimeFrame == timeFrame {
+                        Label(timeFrame.rawValue, systemImage: "checkmark")
+                    } else {
                         Text(timeFrame.rawValue)
-                            .foregroundColor(.primary)
-                        
-                        Spacer()
-                        
-                        if viewModel.defaultHomeTimeFrame == timeFrame {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.appPrimary)
-                        }
-                    }
-                    .padding()
-                    .background(
-                        viewModel.defaultHomeTimeFrame == timeFrame ?
-                        Color.appPrimary.opacity(0.1) :
-                        Color.clear
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        hapticFeedback(style: .medium)
-                        withAnimation(.spring()) {
-                            viewModel.defaultHomeTimeFrame = timeFrame
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                showingDefaultTimeFramePicker = false
-                            }
-                        }
-                    }
-                    
-                    if timeFrame != ExpenseViewModel.TimeFrame.allCases.last {
-                        Divider()
-                            .padding(.horizontal)
                     }
                 }
             }
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.mauve.opacity(0.3), lineWidth: 1)
-            )
-            .padding(.top, -8) // Reduce spacing to appear connected to the row above
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
-        }
-    }
-    
-    // MARK: - App Info Section
-    private var appInfoSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("App Info")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.bottom, 4)
-            
-            // Version Info
-            HStack {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.appPrimary)
-                    .frame(width: 30)
-                
-                Text("Version")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Text(versionString)
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            
-            // About
-            HStack {
-                Image(systemName: "doc.text.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.appPrimary)
-                    .frame(width: 30)
-                
-                Text("About CashLens")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .light)
-                showingAboutSheet = true
-            }
-            .sheet(isPresented: $showingAboutSheet) {
-                AboutView()
+        } label: {
+            SettingsRow(icon: "calendar.badge.clock", title: "Default Time Frame", showsChevron: false, style: .bare) {
+                HStack(spacing: 4) {
+                    SettingsRowValue(text: viewModel.defaultHomeTimeFrame.rawValue)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
             }
         }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
     }
-    
-    // MARK: - Community Section
-    private var communitySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Community")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                
-                Text("Join our community for tips, feedback, and updates!")
+
+    private var budgetManagementRow: some View {
+        SettingsRow(icon: "target", title: "Manage Budgets", style: .bare) {
+            if cachedActiveBudgetCount > 0 {
+                Text("\(cachedActiveBudgetCount) active")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            // One overall budget is free — the list itself handles
+            // the "add another" Pro lock, so everyone gets in.
+            showingBudgetList = true
+        }
+    }
+
+    // MARK: - Personalization
+
+    /// Personalization controls. The Theme & Appearance row opens the
+    /// unified Appearance studio (mode + accent theme + matching icon);
+    /// the App Icon row keeps its dedicated full-catalog picker. The old
+    /// standalone light/dark Menu row in General was folded into the
+    /// studio so "how the app looks" lives in exactly one place.
+    var personalizationSection: some View {
+        SettingsGroup(title: "Personalization") {
+            themeAppearanceRow
+            appIconRow
+        }
+    }
+
+    /// Theme & Appearance row. Trailing slot shows a duotone swatch in the
+    /// active theme's color pair plus the theme name so the user can see
+    /// what's applied at a glance. No Pro chip here — the mode selector
+    /// inside is free for everyone, and theme gating happens on Apply.
+    private var themeAppearanceRow: some View {
+        SettingsRow(icon: "paintpalette.fill", title: "Theme & Appearance", showsChevron: true, style: .bare) {
+            HStack(spacing: Theme.Spacing.sm) {
+                Text(themeStore.currentTheme.displayName)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 4)
-            
-            // Social Media Buttons
-            VStack(spacing: 12) {
-                // Instagram
-                Button(action: {
-                    hapticFeedback(style: .light)
-                    openSocialMedia(.instagram)
-                }) {
-                    HStack {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white)
-                            .frame(width: 30)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Instagram")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            Text("Daily tips & app updates")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(
-                        LinearGradient(
-                            colors: [Color.pink, Color.purple],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                Circle()
+                    .fill(themeStore.currentTheme.heroGradient)
+                    .frame(width: 18, height: 18)
+                    .overlay(
+                        Circle().stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
                     )
-                    .cornerRadius(12)
-                }
-                .buttonStyle(ScaleButtonStyle())
-                
-                // X (Twitter)
-                Button(action: {
-                    hapticFeedback(style: .light)
-                    openSocialMedia(.twitter)
-                }) {
-                    HStack {
-                        Image(systemName: "bird.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white)
-                            .frame(width: 30)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("X (Twitter)")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            Text("Quick updates & announcements")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(Color.black)
-                    .cornerRadius(12)
-                }
-                .buttonStyle(ScaleButtonStyle())
-                
-                // Reddit
-                Button(action: {
-                    hapticFeedback(style: .light)
-                    openSocialMedia(.reddit)
-                }) {
-                    HStack {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white)
-                            .frame(width: 30)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Reddit")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            Text("Community discussions & support")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 16))
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(
-                        LinearGradient(
-                            colors: [Color.orange, Color.red],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .cornerRadius(12)
-                }
-                .buttonStyle(ScaleButtonStyle())
             }
         }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            HapticManager.shared.lightTap()
+            // Open the studio for everyone — free users can switch mode,
+            // preview themes, and discover the Pro upsell from inside,
+            // which is a higher-converting moment than dropping them
+            // straight into the paywall.
+            showingThemePicker = true
+        }
     }
-    
-    // MARK: - Social Media Handling
+
+    /// App Icon row. Trailing slot shows a tiny rounded preview of the active
+    /// icon plus its name so the user can spot-check at a glance. Hidden
+    /// entirely on devices that don't support alternate icons (vanishingly
+    /// rare, but `supportsAlternateIcons` is the official guard).
+    @ViewBuilder
+    private var appIconRow: some View {
+        if UIApplication.shared.supportsAlternateIcons {
+            SettingsRow(icon: "app.badge.fill", title: "App Icon", showsChevron: true, style: .bare) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    if proManager.isPro {
+                        Text(appIconStore.currentIcon.displayName)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Image(appIconStore.currentIcon.previewAssetName)
+                            .resizable()
+                            .interpolation(.high)
+                            .frame(width: 22, height: 22)
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                            )
+                    } else {
+                        proLockChip
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                HapticManager.shared.lightTap()
+                showingAppIconPicker = true
+            }
+        }
+    }
+
+    /// Reusable Pro lock chip used by both Personalization rows so the
+    /// non-Pro state stays visually consistent.
+    private var proLockChip: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 10, weight: .bold))
+            Text("Pro")
+                .font(.system(size: 11, weight: .bold))
+        }
+        .foregroundColor(.appPrimary)
+        .padding(.horizontal, Theme.Spacing.sm)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(Color.appPrimary.opacity(0.14)))
+    }
+
+    // MARK: - Notifications
+
+    /// Single nav row that hides the 4–9 reminder + insight rows
+    /// behind a focused sub-page. The trailing value shows the live
+    /// "N active" count so the state is glanceable without opening
+    /// the sub-page; tapping presents the dedicated
+    /// `NotificationsSettingsView` sheet (no root nav push — see
+    /// the body PERF note).
+    var notificationsSection: some View {
+        SettingsGroup(title: "Notifications") {
+            SettingsRow(
+                icon: "bell.fill",
+                title: "Reminders & Insights",
+                showsChevron: true,
+                style: .bare
+            ) {
+                SettingsRowValue(text: activeNotificationsLabel)
+            }
+            .onTapGesture {
+                HapticManager.shared.lightTap()
+                showingNotifications = true
+            }
+        }
+    }
+
+    /// "Off" when nothing's enabled, "1 active" / "3 active" otherwise.
+    /// Driven by the four `@AppStorage` booleans that `NotificationsSettingsView`
+    /// also writes to, so this stays live without notification glue.
+    private var activeNotificationsLabel: String {
+        let count = [
+            weeklySummaryEnabled,
+            monthlyDigestEnabled,
+            backupReminderEnabled,
+            smartInsightsEnabled
+        ].filter { $0 }.count
+
+        if count == 0 { return "Off" }
+        return "\(count) active"
+    }
+
+    // MARK: - Data section
+
+    /// Combines export / import / clear-all + the full Backup Health card +
+    /// info note. Backup-related settings now live together in one place
+    /// instead of being split across two sections.
+    var dataSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            // Section title + backup-health badge ride above the
+            // grouped card so the page-level "Data" header has the
+            // same hierarchy as Preferences / Reminders / About.
+            HStack {
+                Text("DATA")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(0.8)
+                    .foregroundColor(.secondary)
+                Spacer()
+                backupHealthBadge
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+
+            backupHealthCard
+
+            VStack(spacing: 0) {
+                SettingsRow(icon: "square.and.arrow.up.fill", title: "Export Data", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        showingExportSheet = true
+                    }
+                Divider().padding(.leading, Theme.Spacing.lg + 30 + Theme.Spacing.md)
+                SettingsRow(icon: "square.and.arrow.down.fill", title: "Import Data", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        showingImportSheet = true
+                    }
+                Divider().padding(.leading, Theme.Spacing.lg + 30 + Theme.Spacing.md)
+                SettingsRowDestructive(icon: "trash.fill", title: "Clear All Data", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.mediumTap()
+                        activeAlert = .clearAllData
+                    }
+            }
+            .cardSurface()
+
+            HStack(alignment: .top, spacing: Theme.Spacing.sm + 2) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+
+                Text("Your data lives only on this device. Regular exports keep your history safe.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, Theme.Spacing.md)
+            .padding(.top, Theme.Spacing.xs)
+        }
+        .sheet(isPresented: $showingExportSheet) {
+            ExportDataView()
+                .environmentObject(viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+        .sheet(isPresented: $showingImportSheet) {
+            ImportDataView()
+                .environmentObject(viewModel)
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+    }
+
+    // MARK: - About section
+
+    /// Bottom-of-page about: support / about / community as a single-row icon
+    /// strip. Replaces the previous 3 full-width social tiles which dominated
+    /// the screen, and absorbs the "Support the App" row that previously lived
+    /// in Settings.
+    var aboutSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            SettingsGroup(title: "About") {
+                SettingsRow(icon: "star.fill", iconTint: .yellow, title: "Rate CashLens", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        openWriteReview()
+                    }
+
+                SettingsRow(icon: "heart.fill", iconTint: .pink, title: "Support the App", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        showingDonationSheet = true
+                    }
+
+                // Always visible (Guideline 3.1.1): even a user who is
+                // currently Pro via a donor grant may need to restore a
+                // real StoreKit purchase — e.g. after moving devices.
+                restorePurchasesRow
+
+                SettingsRow(icon: "doc.text.fill", title: "About CashLens", style: .bare)
+                    .onTapGesture {
+                        HapticManager.shared.lightTap()
+                        showingAboutSheet = true
+                    }
+            }
+
+            communityIconRow
+                .padding(.top, Theme.Spacing.md)
+        }
+        .sheet(isPresented: $showingAboutSheet) {
+            AboutView()
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+        .sheet(isPresented: $showingDonationSheet) {
+            NavigationStack { DonationView() }
+                .largeScreenFormSheet(enabled: isRegularWidth)
+        }
+        // Attached here (not on the ScrollView) so it can't collide
+        // with the `alert(item:)` that owns the clear-all-data flow.
+        .alert("Restore Purchases", isPresented: Binding(
+            get: { restoreResultMessage != nil },
+            set: { if !$0 { restoreResultMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { restoreResultMessage = nil }
+        } message: {
+            Text(restoreResultMessage ?? "")
+        }
+    }
+
+    #if DEBUG
+    // MARK: - Developer (debug builds only)
+
+    @State private var showingDiagnostics = false
+
+    /// The only entry point to `DiagnosticsView` (itself `#if DEBUG`):
+    /// stress seeder, smoke checks, review-prompt reset. Nothing here
+    /// is compiled into Release.
+    var developerSection: some View {
+        SettingsGroup(title: "Developer (debug builds only)") {
+            SettingsRow(
+                icon: "wrench.and.screwdriver.fill",
+                title: "Diagnostics",
+                subtitle: "Stress-test seeder, smoke checks",
+                style: .bare
+            )
+            .onTapGesture {
+                HapticManager.shared.lightTap()
+                showingDiagnostics = true
+            }
+
+            // Live size classes of this tab root (not of a sheet, which
+            // would report compact on iPad). The large-screen layouts
+            // key off regular width; this row is how to confirm what
+            // the Duo inner display and Split View actually report.
+            SettingsRow(
+                icon: "rectangle.split.2x1",
+                title: "Size classes",
+                subtitle: "\(sizeClassName(horizontalSizeClass)) width · \(sizeClassName(verticalSizeClass)) height · \(Int(largeScreenMeasuredWidth))pt measured",
+                showsChevron: false,
+                style: .bare
+            )
+        }
+        .sheet(isPresented: $showingDiagnostics) {
+            DiagnosticsView()
+                .environmentObject(viewModel)
+        }
+    }
+
+    private func sizeClassName(_ sizeClass: UserInterfaceSizeClass?) -> String {
+        switch sizeClass {
+        case .regular: return "regular"
+        case .compact: return "compact"
+        default: return "unknown"
+        }
+    }
+    #endif
+
+    private var restorePurchasesRow: some View {
+        SettingsRow(
+            icon: "arrow.clockwise",
+            title: "Restore Purchases",
+            subtitle: proManager.isPro ? nil : "Already Pro on another device?",
+            showsChevron: false,
+            style: .bare
+        ) {
+            if isRestoringPurchases {
+                ProgressView()
+            }
+        }
+        .onTapGesture {
+            guard !isRestoringPurchases else { return }
+            HapticManager.shared.lightTap()
+            isRestoringPurchases = true
+            let wasProBefore = proManager.isPro
+            Task {
+                await proManager.restorePurchases()
+                isRestoringPurchases = false
+                if proManager.isPro {
+                    HapticManager.shared.success()
+                    restoreResultMessage = wasProBefore
+                        ? "Your purchases are up to date — Pro is active."
+                        : "Pro is back — everything is unlocked."
+                } else {
+                    restoreResultMessage = "No previous purchases were found for this Apple ID."
+                }
+            }
+        }
+    }
+
+    private func openWriteReview() {
+        // Same App Store ID used by the in-app feedback flow.
+        guard let url = URL(string: "https://apps.apple.com/app/id6743153951?action=write-review") else { return }
+        UIApplication.shared.open(url)
+    }
+
+    /// Compact 3-up community icon row. Way less visual real estate than the
+    /// previous stacked tiles, but still discoverable + brand-tinted.
+    private var communityIconRow: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("Join the community")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, Theme.Spacing.xs)
+
+            HStack(spacing: Theme.Spacing.md) {
+                communityCircleButton(
+                    icon: "camera.fill",
+                    title: "Instagram",
+                    background: AnyShapeStyle(Color.pink)
+                ) { openSocialMedia(.instagram) }
+
+                communityCircleButton(
+                    icon: "bird.fill",
+                    title: "X",
+                    background: AnyShapeStyle(Color.black)
+                ) { openSocialMedia(.twitter) }
+
+                communityCircleButton(
+                    icon: "bubble.left.and.bubble.right.fill",
+                    title: "Reddit",
+                    background: AnyShapeStyle(Color.orange)
+                ) { openSocialMedia(.reddit) }
+            }
+        }
+    }
+
+    private func communityCircleButton(
+        icon: String,
+        title: String,
+        background: AnyShapeStyle,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: {
+            HapticManager.shared.lightTap()
+            action()
+        }) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(background)
+                        .frame(width: 52, height: 52)
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+
     enum SocialPlatform {
         case instagram, twitter, reddit
     }
-    
+
     private func openSocialMedia(_ platform: SocialPlatform) {
         let urlString: String
-        
         switch platform {
-        case .instagram:
-            urlString = "https://instagram.com/cashlensapp"
-        case .twitter:
-            urlString = "https://x.com/cashlensapp"
-        case .reddit:
-            urlString = "https://www.reddit.com/r/cashlens/s/Z36oUPfZ3j"
+        case .instagram: urlString = "https://instagram.com/cashlensapp"
+        case .twitter:   urlString = "https://x.com/cashlensapp"
+        case .reddit:    urlString = "https://www.reddit.com/r/cashlens/s/Z36oUPfZ3j"
         }
-        
+
         if let url = URL(string: urlString) {
             UIApplication.shared.open(url)
         }
     }
-    
-    // MARK: - Data Management Section
-    private var dataManagementSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Data Management")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.bottom, 4)
-            
-            // Export Data
-            HStack {
-                Image(systemName: "square.and.arrow.up.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.appPrimary)
-                    .frame(width: 30)
-                
-                Text("Export Data")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .light)
-                showingExportSheet = true
-            }
-            .sheet(isPresented: $showingExportSheet) {
-                ExportDataView()
-                    .environmentObject(viewModel)
-            }
-            
-            // Import Data
-            HStack {
-                Image(systemName: "square.and.arrow.down.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.appPrimary)
-                    .frame(width: 30)
-                
-                Text("Import Data")
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .light)
-                showingImportSheet = true
-            }
-            .sheet(isPresented: $showingImportSheet) {
-                ImportDataView()
-                    .environmentObject(viewModel)
-            }
-            
-            // Clear Data
-            HStack {
-                Image(systemName: "trash.fill")
-                    .font(.system(size: 22))
-                    .foregroundColor(.red)
-                    .frame(width: 30)
-                
-                Text("Clear All Data")
-                    .foregroundColor(.red)
-                
-                Spacer()
-            }
-            .padding()
-            .background(Color.secondarySystemBackground)
-            .cornerRadius(10)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                hapticFeedback(style: .medium)
-                activeAlert = .clearAllData
-            }
+
+    // MARK: - Version footer
+
+    /// Tiny footer text — replaces the previous full "Version" settings row which
+    /// wasted a tappable-row slot on a non-tappable label.
+    var versionFooter: some View {
+        HStack {
+            Spacer()
+            Text("CashLens · v\(Self.versionString)")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.7))
+            Spacer()
         }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
+        .padding(.top, Theme.Spacing.sm)
     }
-    
-    // MARK: - Backup Health Section
-    private var backupHealthSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Backup Health")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                // Health status badge
-                backupHealthBadge
-            }
-            .padding(.bottom, 4)
-            
-            // Main health card
-            backupHealthCard
-            
-            // Info note
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "info.circle.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-                
-                Text("Your data is stored only on this device. Regular backups ensure you never lose your financial history.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 4)
-        }
-        .padding()
-        .background(Color.secondarySystemBackground.opacity(0.5))
-        .cornerRadius(20)
-    }
-    
+
+    // MARK: - Backup Health card
+
     private var backupHealthBadge: some View {
         let status = backupHealthStatus
-        
-        return HStack(spacing: 4) {
+
+        return HStack(spacing: Theme.Spacing.xs) {
             Circle()
                 .fill(status.color)
                 .frame(width: 8, height: 8)
-            
+
             Text(status.label)
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundColor(status.color)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, Theme.Spacing.sm + 2)
+        .padding(.vertical, Theme.Spacing.xs + 1)
         .background(status.color.opacity(0.15))
-        .cornerRadius(12)
+        .clipShape(Capsule())
     }
-    
+
     private var backupHealthCard: some View {
         let status = backupHealthStatus
-        let lastBackup = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date
-        let backupCount = UserDefaults.standard.integer(forKey: UserDefaultsKeys.totalBackupCount)
-        
-        return VStack(spacing: 16) {
-            // Visual indicator
-            HStack(spacing: 20) {
-                // Icon with status ring
+        let lastBackup = lastBackupDate
+        let backupCount = totalBackupCount
+
+        return VStack(spacing: Theme.Spacing.lg) {
+            HStack(spacing: Theme.Spacing.xl) {
                 ZStack {
                     Circle()
                         .stroke(status.color.opacity(0.3), lineWidth: 4)
                         .frame(width: 60, height: 60)
-                    
+
                     Circle()
                         .trim(from: 0, to: status.ringProgress)
                         .stroke(status.color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                         .frame(width: 60, height: 60)
                         .rotationEffect(.degrees(-90))
-                    
+
                     Image(systemName: status.icon)
                         .font(.system(size: 24))
                         .foregroundColor(status.color)
                 }
-                
-                VStack(alignment: .leading, spacing: 6) {
+
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs + 2) {
                     Text(status.title)
                         .font(.headline)
                         .foregroundColor(.primary)
-                    
+
                     Text(status.subtitle)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .lineLimit(2)
                 }
-                
+
                 Spacer()
             }
-            
+
             Divider()
-            
-            // Stats row
+
             HStack(spacing: 0) {
-                // Last backup
-                VStack(spacing: 4) {
-                    Text("Last Backup")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    if let date = lastBackup {
-                        Text(formatBackupDate(date))
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-                    } else {
-                        Text("Never")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.red)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 1, height: 30)
-                
-                // Total backups
-                VStack(spacing: 4) {
-                    Text("Total Backups")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    Text("\(backupCount)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                }
-                .frame(maxWidth: .infinity)
-                
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 1, height: 30)
-                
-                // Data count
-                VStack(spacing: 4) {
-                    Text("Expenses")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-                    
-                    Text("\(viewModel.expenses.count)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                }
-                .frame(maxWidth: .infinity)
+                backupStatCell(
+                    title: "Last Backup",
+                    value: lastBackup.map(formatBackupDate) ?? "Never",
+                    isCritical: lastBackup == nil
+                )
+
+                backupStatDivider
+
+                backupStatCell(title: "Total Backups", value: "\(backupCount)")
+
+                backupStatDivider
+
+                backupStatCell(title: "Expenses", value: "\(cachedExpenseCount)")
             }
-            
-            // Backup now button (shown when status is not good)
+
             if status != .good {
                 Button(action: {
-                    hapticFeedback(style: .medium)
+                    HapticManager.shared.mediumTap()
                     showingExportSheet = true
                 }) {
                     HStack {
                         Image(systemName: "arrow.clockwise.icloud")
                             .font(.system(size: 16, weight: .semibold))
-                        
+
                         Text("Backup Now")
                             .font(.subheadline)
                             .fontWeight(.semibold)
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.appPrimary, Color.appSecondary]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(12)
+                    .padding(.horizontal, Theme.Spacing.xl)
+                    .padding(.vertical, Theme.Spacing.sm + 2)
+                    .background(Color.appPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous))
                 }
                 .buttonStyle(ScaleButtonStyle())
             }
         }
         .padding()
-        .background(Color.secondarySystemBackground)
-        .cornerRadius(12)
+        .cardSurface(radius: Theme.Radius.chip)
     }
-    
+
+    private func backupStatCell(title: String, value: String, isCritical: Bool = false) -> some View {
+        VStack(spacing: Theme.Spacing.xs) {
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
+
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(isCritical ? .red : .primary)
+                .contentTransition(.numericText())
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var backupStatDivider: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.3))
+            .frame(width: 1, height: 30)
+    }
+
     // MARK: - Backup Health Status
+
     private enum BackupHealthStatus: Equatable {
         case good
         case okay
         case needsAttention
         case critical
-        
+
         var label: String {
             switch self {
             case .good: return "Good"
@@ -1414,16 +1395,15 @@ struct ProfileView: View {
             case .critical: return "Critical"
             }
         }
-        
+
         var color: Color {
             switch self {
             case .good: return .green
-            case .okay: return .orange
-            case .needsAttention: return .orange
+            case .okay, .needsAttention: return .orange
             case .critical: return .red
             }
         }
-        
+
         var icon: String {
             switch self {
             case .good: return "checkmark.shield.fill"
@@ -1432,7 +1412,7 @@ struct ProfileView: View {
             case .critical: return "xmark.shield.fill"
             }
         }
-        
+
         var title: String {
             switch self {
             case .good: return "Your data is safe"
@@ -1441,7 +1421,7 @@ struct ProfileView: View {
             case .critical: return "No backup found"
             }
         }
-        
+
         var subtitle: String {
             switch self {
             case .good: return "You've backed up recently. Great job!"
@@ -1450,7 +1430,7 @@ struct ProfileView: View {
             case .critical: return "Your data exists only on this device. Please backup!"
             }
         }
-        
+
         var ringProgress: CGFloat {
             switch self {
             case .good: return 1.0
@@ -1460,30 +1440,34 @@ struct ProfileView: View {
             }
         }
     }
-    
+
     private var backupHealthStatus: BackupHealthStatus {
-        guard let lastBackup = UserDefaults.standard.object(forKey: UserDefaultsKeys.lastBackupDate) as? Date else {
+        guard let lastBackup = lastBackupDate else {
             return .critical
         }
-        
+
         let daysSinceBackup = Calendar.current.dateComponents([.day], from: lastBackup, to: Date()).day ?? Int.max
-        
+
         switch daysSinceBackup {
-        case 0...7:
-            return .good
-        case 8...14:
-            return .okay
-        case 15...30:
-            return .needsAttention
-        default:
-            return .critical
+        case 0...7:   return .good
+        case 8...14:  return .okay
+        case 15...30: return .needsAttention
+        default:      return .critical
         }
     }
-    
+
+    /// Hoisted so the backup card doesn't allocate a fresh formatter on
+    /// every render. Medium date style is locale-stable; main-actor only.
+    private static let backupDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f
+    }()
+
     private func formatBackupDate(_ date: Date) -> String {
         let calendar = Calendar.current
         let now = Date()
-        
+
         if calendar.isDateInToday(date) {
             return "Today"
         } else if calendar.isDateInYesterday(date) {
@@ -1493,23 +1477,21 @@ struct ProfileView: View {
             if days < 7 {
                 return "\(days) days ago"
             } else {
-                let formatter = DateFormatter()
-                formatter.dateStyle = .medium
-                return formatter.string(from: date)
+                return Self.backupDateFormatter.string(from: date)
             }
         }
     }
-    
-    // MARK: - Haptic Feedback
-    private func hapticFeedback(style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        let generator = UIImpactFeedbackGenerator(style: style)
-        generator.impactOccurred()
-    }
 }
+
+// MARK: - Preview
 
 struct ProfileView_Previews: PreviewProvider {
     static var previews: some View {
         ProfileView()
             .environmentObject(ExpenseViewModel())
+            .environmentObject(ProManager.shared)
+            .environmentObject(BudgetViewModel())
+            .environmentObject(SubscriptionViewModel())
+            .environmentObject(CategoryViewModel())
     }
-} 
+}

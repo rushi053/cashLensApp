@@ -1,34 +1,315 @@
 import SwiftUI
+import Charts
 
+/// The Insights "Over time" trend line.
+///
+/// v2 Swift Charts migration: this used to be ~350 lines of
+/// GeometryReader + Path with hand-placed dots and density-managed
+/// static tooltips. The `Chart` version preserves the visual style
+/// (category-tinted 3pt line, 15%-opacity area fill, hairline grid,
+/// per-timeframe x labels) and gains what the hand-rolled version
+/// couldn't do:
+///   • scrubbing — drag anywhere for a lollipop cursor with the exact
+///     bucket amount (replaces the static tooltip clutter)
+///   • a dashed average `RuleMark`
+///   • animated interpolation when the timeframe/filter changes
+///   • audio-graph / VoiceOver chart descriptions for free
+///
+/// The data pipeline is unchanged: `chartDates`/`chartValues` are
+/// pre-bucketed off-main in `recomputeStatsNow` (Swift Charts renders
+/// on the main thread, so keeping aggregation out of it still
+/// matters).
 struct ExpenseTrendChart: View {
-    let expenses: [Expense]
+    /// Pre-bucketed dates (one per chart x-tick).
+    let chartDates: [Date]
+    /// Pre-bucketed values aligned to `chartDates`.
+    let chartValues: [Double]
     let timeFrame: ExpenseViewModel.TimeFrame
     let categoryColor: Color
-    @EnvironmentObject var viewModel: ExpenseViewModel
-    
-    // Computed property to check for iPad
-    private var isIPad: Bool {
-        return UIDevice.current.userInterfaceIdiom == .pad
+    /// The active currency symbol, passed in by the owner. PERF: this
+    /// view used to observe the whole `ExpenseViewModel` just for this
+    /// one string, so every publish (2–3 per save) re-evaluated the
+    /// chart and re-laid out Swift Charts. Now it only re-renders when
+    /// its inputs change.
+    let currencySymbol: String
+
+    /// Raw scrub position from `chartXSelection`; snapped to the
+    /// nearest bucket in `selectedPoint`.
+    @State private var rawSelectedDate: Date? = nil
+
+    /// Regular width (iPad, Duo inner) gets denser axis labels and a
+    /// roomier empty state. Size class, never device idiom.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    private var isWide: Bool { horizontalSizeClass == .regular }
+
+    /// Height clamps, shared by the chart and its empty state so the
+    /// card doesn't jump when data arrives. Height follows width (see
+    /// `adaptiveHeight`), so iPad / landscape / SE each get their own.
+    private static let heightRatio: CGFloat = 0.55
+    private static let minHeight: CGFloat = 180
+    private static let maxHeight: CGFloat = 320
+
+    private var hasData: Bool {
+        chartValues.contains { $0 > 0 }
     }
-    
-    // MARK: - Chart Data (Performance Optimized)
-    // Pre-grouped expense data for O(n) instead of O(n×m) complexity
-    
-    private var chartData: (dates: [Date], values: [Double]) {
+
+    private var average: Double {
+        let nonZero = chartValues.filter { $0 > 0 }
+        return nonZero.isEmpty ? 0 : nonZero.reduce(0, +) / Double(nonZero.count)
+    }
+
+    /// The bucket nearest to the scrub position, or `nil` when idle.
+    private var selectedPoint: (date: Date, value: Double)? {
+        guard let raw = rawSelectedDate, !chartDates.isEmpty else { return nil }
+        var bestIndex = 0
+        var bestDistance = TimeInterval.greatestFiniteMagnitude
+        for (i, d) in chartDates.enumerated() {
+            let distance = abs(d.timeIntervalSince(raw))
+            if distance < bestDistance {
+                bestDistance = distance
+                bestIndex = i
+            }
+        }
+        return (chartDates[bestIndex], chartValues[bestIndex])
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if hasData {
+                chart
+                    .adaptiveHeight(ratio: Self.heightRatio, min: Self.minHeight, max: Self.maxHeight)
+            } else {
+                emptyState
+            }
+        }
+    }
+
+    // MARK: - Chart
+
+    private var chart: some View {
+        Chart {
+            ForEach(Array(zip(chartDates, chartValues).enumerated()), id: \.offset) { _, point in
+                // Area fill first so the line renders on top of it.
+                AreaMark(
+                    x: .value("Date", point.0),
+                    y: .value("Spent", point.1)
+                )
+                .interpolationMethod(.linear)
+                .foregroundStyle(categoryColor.opacity(0.15))
+
+                LineMark(
+                    x: .value("Date", point.0),
+                    y: .value("Spent", point.1)
+                )
+                .interpolationMethod(.linear)
+                .foregroundStyle(categoryColor)
+                .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+            }
+
+            // Dashed average line — quieter than the data line so it
+            // reads as context, not another series.
+            if average > 0 {
+                RuleMark(y: .value("Average", average))
+                    .foregroundStyle(Color.secondary.opacity(0.45))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text("avg \(formatCurrency(average))")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+            }
+
+            // Scrub lollipop: hairline cursor + highlighted dot +
+            // amount/date callout pinned to the top of the plot.
+            if let selected = selectedPoint {
+                RuleMark(x: .value("Selected", selected.date))
+                    .foregroundStyle(Color.secondary.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .annotation(
+                        position: .top,
+                        spacing: 4,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                    ) {
+                        VStack(spacing: 1) {
+                            Text(formatCurrency(selected.value))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundColor(.primary)
+                            Text(formatDate(selected.date))
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, Theme.Spacing.sm)
+                        .padding(.vertical, Theme.Spacing.xs)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.systemBackground)
+                                .shadow(color: Theme.Shadow.elevatedColor, radius: 4, y: 2)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(categoryColor.opacity(0.35), lineWidth: Theme.Stroke.thin)
+                        )
+                    }
+
+                PointMark(
+                    x: .value("Selected", selected.date),
+                    y: .value("Spent", selected.value)
+                )
+                .symbolSize(90)
+                .foregroundStyle(categoryColor)
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: isWide ? 10 : 6)) { value in
+                AxisValueLabel {
+                    if let date = value.as(Date.self) {
+                        Text(formatDate(date))
+                            .font(isWide ? .caption : .caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            // Hairline grid only — mirrors the old hand-drawn dividers;
+            // exact values live in the scrub lollipop, so y labels
+            // would just add noise at this card size.
+            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                AxisGridLine()
+                    .foregroundStyle(Color.secondary.opacity(0.2))
+            }
+        }
+        .chartXSelection(value: $rawSelectedDate)
+        .onChange(of: selectedPoint?.date) { old, new in
+            if old != nil, new != nil, old != new {
+                HapticManager.shared.selectionChanged()
+            }
+        }
+        .animation(Theme.Motion.emphasized, value: chartValues)
+    }
+
+    // MARK: - Empty state
+
+    private var emptyState: some View {
+        VStack(spacing: isWide ? 20 : 14) {
+            Image(systemName: "chart.xyaxis.line")
+                .font(.system(size: isWide ? 44 : 32, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.tertiary)
+
+            VStack(spacing: isWide ? 8 : 4) {
+                Text("No trend data yet")
+                    .font(isWide ? .title3.weight(.semibold) : Theme.Typography.rowTitle)
+                    .foregroundColor(.primary)
+
+                Text("Add more expenses to see your spending trends.")
+                    .font(isWide ? .subheadline : .footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, isWide ? 24 : 0)
+            }
+        }
+        .adaptiveHeight(ratio: Self.heightRatio, min: Self.minHeight, max: Self.maxHeight)
+        .background(Color.secondarySystemBackground.opacity(0.5))
+        .cornerRadius(16)
+    }
+
+    // MARK: - Formatting
+
+    private func formatDate(_ date: Date) -> String {
+        switch timeFrame {
+        case .day:          return Self.hourFormatter.string(from: date)
+        case .week, .month: return Self.dayMonthFormatter.string(from: date)
+        case .year, .all:   return Self.monthFormatter.string(from: date)
+        }
+    }
+
+    private static let hourFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "ha"
+        return f
+    }()
+    private static let dayMonthFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d MMM"
+        return f
+    }()
+    private static let monthFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM"
+        return f
+    }()
+
+    /// Shared cached formatter — allocating a NumberFormatter per call
+    /// was measurable on the axis-label hot path. The currency symbol
+    /// is user-changeable, so it's (re)applied per call; that's a cheap
+    /// property write, unlike the allocation.
+    private static let currencyFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = 0 // No decimals — better readability in small space
+        return formatter
+    }()
+
+    private func formatCurrency(_ value: Double) -> String {
+        let formatter = Self.currencyFormatter
+        formatter.currencySymbol = currencySymbol
+        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+    }
+}
+
+// MARK: - Pre-aggregation helper
+//
+// Static helper that does the bucket math the view body used to do per
+// redraw. `nonisolated` so the StatisticsView recompute can call it from
+// `Task.detached` and hand the result into the new pre-built initializer.
+
+extension ExpenseTrendChart {
+    /// Convenience initializer that pre-builds the chart series eagerly.
+    /// Use this in previews and any path where the caller doesn't have
+    /// pre-aggregated data — production paths in StatisticsView should
+    /// compute the series off-main and use the primary initializer.
+    init(
+        expenses: [Expense],
+        timeFrame: ExpenseViewModel.TimeFrame,
+        categoryColor: Color,
+        currencySymbol: String
+    ) {
+        let series = ExpenseTrendChart.buildChartData(
+            expenses: expenses,
+            timeFrame: timeFrame,
+            referenceDate: Date()
+        )
+        self.init(
+            chartDates: series.dates,
+            chartValues: series.values,
+            timeFrame: timeFrame,
+            categoryColor: categoryColor,
+            currencySymbol: currencySymbol
+        )
+    }
+
+    /// Pure value-type bucket-builder. Safe to call from any context — the
+    /// audit flagged the old body-side computation as P1 because it ran
+    /// every time the parent invalidated. Now `recomputeStatsNow` calls
+    /// this once per recompute on the background task.
+    nonisolated static func buildChartData(
+        expenses: [Expense],
+        timeFrame: ExpenseViewModel.TimeFrame,
+        referenceDate: Date
+    ) -> (dates: [Date], values: [Double]) {
         let calendar = Calendar.current
-        let now = Date()
-        
-        // First, pre-group all expenses by their bucket key (single pass through expenses)
+        let now = referenceDate
+
+        // Single-pass bucket aggregation.
         var groupedAmounts: [String: Double] = [:]
-        
         for expense in expenses {
             let key = bucketKey(for: expense.date, timeFrame: timeFrame, calendar: calendar)
-            groupedAmounts[key, default: 0] += expense.amount
+            groupedAmounts[key, default: 0] += expense.signedAmount
         }
-        
-        // Generate date range
+
         var dates: [Date] = []
-        
         switch timeFrame {
         case .day:
             let startOfDay = calendar.startOfDay(for: now)
@@ -64,7 +345,7 @@ struct ExpenseTrendChart: View {
             if let oldestExpense = expenses.min(by: { $0.date < $1.date })?.date {
                 var current = calendar.date(from: calendar.dateComponents([.year, .month], from: oldestExpense)) ?? calendar.startOfDay(for: oldestExpense)
                 let endDate = calendar.startOfDay(for: now)
-                
+
                 while current <= endDate {
                     dates.append(current)
                     if let nextMonth = calendar.date(byAdding: .month, value: 1, to: current) {
@@ -75,18 +356,20 @@ struct ExpenseTrendChart: View {
                 }
             }
         }
-        
-        // Map dates to values using pre-grouped data (O(1) lookup per date)
+
         let values = dates.map { date -> Double in
             let key = bucketKey(for: date, timeFrame: timeFrame, calendar: calendar)
             return groupedAmounts[key, default: 0]
         }
-        
         return (dates, values)
     }
-    
-    /// Generate a unique bucket key for grouping expenses
-    private func bucketKey(for date: Date, timeFrame: ExpenseViewModel.TimeFrame, calendar: Calendar) -> String {
+
+    /// Generate a unique bucket key for grouping expenses.
+    nonisolated private static func bucketKey(
+        for date: Date,
+        timeFrame: ExpenseViewModel.TimeFrame,
+        calendar: Calendar
+    ) -> String {
         switch timeFrame {
         case .day:
             let day = calendar.component(.day, from: date)
@@ -102,294 +385,6 @@ struct ExpenseTrendChart: View {
             return "\(year)-\(month)"
         }
     }
-    
-    private var dateRange: [Date] {
-        chartData.dates
-    }
-    
-    private var dataPoints: [Double] {
-        chartData.values
-    }
-    
-    private var maxValue: Double {
-        dataPoints.max() ?? 0
-    }
-    
-    private var hasData: Bool {
-        return !expenses.isEmpty && dataPoints.contains { $0 > 0 }
-    }
-    
-    private var average: Double {
-        let nonZeroPoints = dataPoints.filter { $0 > 0 }
-        return nonZeroPoints.isEmpty ? 0 : nonZeroPoints.reduce(0, +) / Double(nonZeroPoints.count)
-    }
-    
-    private var trend: TrendDirection {
-        if dataPoints.count < 2 {
-            return .neutral
-        }
-        
-        // Calculate a simple trend by comparing first and last points
-        let nonZeroPoints = dataPoints.filter { $0 > 0 }
-        if nonZeroPoints.count < 2 {
-            return .neutral
-        }
-        
-        let firstHalf = Array(nonZeroPoints.prefix(nonZeroPoints.count / 2))
-        let secondHalf = Array(nonZeroPoints.suffix(nonZeroPoints.count / 2))
-        
-        let firstAvg = firstHalf.reduce(0, +) / Double(firstHalf.count)
-        let secondAvg = secondHalf.reduce(0, +) / Double(secondHalf.count)
-        
-        if secondAvg > firstAvg * 1.05 {
-            return .increasing
-        } else if secondAvg < firstAvg * 0.95 {
-            return .decreasing
-        } else {
-            return .neutral
-        }
-    }
-    
-    enum TrendDirection {
-        case increasing, decreasing, neutral
-        
-        var icon: String {
-            switch self {
-            case .increasing: return "arrow.up.right"
-            case .decreasing: return "arrow.down.right"
-            case .neutral: return "arrow.right"
-            }
-        }
-        
-        var color: Color {
-            switch self {
-            case .increasing: return .red
-            case .decreasing: return .green
-            case .neutral: return .orange
-            }
-        }
-        
-        var description: String {
-            switch self {
-            case .increasing: return "Up"
-            case .decreasing: return "Down"
-            case .neutral: return "Stable"
-            }
-        }
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if hasData {
-                // Chart
-                GeometryReader { geometry in
-                    ZStack(alignment: .bottom) {
-                        // Background grid
-                        VStack(spacing: 0) {
-                            ForEach(0..<3) { i in
-                                Divider()
-                                    .background(Color.secondary.opacity(0.2))
-                                
-                                Spacer()
-                                    .frame(height: geometry.size.height / 3)
-                            }
-                            Divider()
-                                .background(Color.secondary.opacity(0.2))
-                        }
-                        
-                        // Fill area under the curve
-                        Path { path in
-                            let width = geometry.size.width
-                            let height = geometry.size.height
-                            let stepWidth = width / CGFloat(dataPoints.count - 1)
-                            
-                            // Start at the bottom left
-                            path.move(to: CGPoint(x: 0, y: height))
-                            
-                            // Add first data point connecting to bottom
-                            let firstX = 0
-                            let firstY = height - (CGFloat(dataPoints.first ?? 0) / CGFloat(maxValue) * height)
-                            path.addLine(to: CGPoint(x: CGFloat(firstX), y: firstY))
-                            
-                            // Add lines for each data point
-                            for i in 1..<dataPoints.count {
-                                let x = stepWidth * CGFloat(i)
-                                let y = height - (CGFloat(dataPoints[i]) / CGFloat(maxValue) * height)
-                                path.addLine(to: CGPoint(x: x, y: y))
-                            }
-                            
-                            // Close the path by adding a line to the bottom right and then bottom left
-                            path.addLine(to: CGPoint(x: width, y: height))
-                            path.addLine(to: CGPoint(x: 0, y: height))
-                        }
-                        .fill(categoryColor.opacity(0.15))
-                        
-                        // Line chart
-                        Path { path in
-                            let width = geometry.size.width
-                            let height = geometry.size.height
-                            let stepWidth = width / CGFloat(dataPoints.count - 1)
-                            
-                            for (index, point) in dataPoints.enumerated() {
-                                let x = stepWidth * CGFloat(index)
-                                let y = height - (CGFloat(point) / CGFloat(maxValue) * height)
-                                
-                                if index == 0 {
-                                    path.move(to: CGPoint(x: x, y: y))
-                                } else {
-                                    path.addLine(to: CGPoint(x: x, y: y))
-                                }
-                            }
-                        }
-                        .trim(from: 0, to: 1)
-                        .stroke(
-                            LinearGradient(
-                                gradient: Gradient(colors: [categoryColor.opacity(0.7), categoryColor]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
-                        )
-                        .shadow(color: categoryColor.opacity(0.3), radius: 4, x: 0, y: 2)
-                        
-                        // Data points with value indicators for significant points - enhanced for iPad
-                        ForEach(0..<dataPoints.count, id: \.self) { index in
-                            let point = dataPoints[index]
-                            let width = geometry.size.width
-                            let height = geometry.size.height
-                            let stepWidth = width / CGFloat(dataPoints.count - 1)
-                            let x = stepWidth * CGFloat(index)
-                            let y = height - (CGFloat(point) / CGFloat(maxValue) * height)
-                            
-                            // Limit tooltip density to prevent overlap
-                            let shouldShowTooltip: Bool = {
-                                if isIPad {
-                                    // On iPad, show fewer tooltips - only max, min, and every 3rd significant point
-                                    return (point == maxValue || 
-                                           (point > 0 && index == dataPoints.count - 1) || 
-                                           index % 3 == 0) && point > average * 0.8
-                                } else {
-                                    // On iPhone, be even more restrictive
-                                    let dataPointCount = dataPoints.count
-                                    if dataPointCount <= 7 {
-                                        // For small datasets, show max and last non-zero
-                                        return point == maxValue || (point > 0 && index == dataPoints.count - 1)
-                                    } else {
-                                        // For larger datasets, only show max value and a few key points
-                                        return point == maxValue || 
-                                               (index == dataPoints.count - 1 && point > 0) ||
-                                               (index % (dataPointCount / 3) == 0 && point > average * 1.5)
-                                    }
-                                }
-                            }()
-                            
-                            // Only show tooltip for significant points that meet spacing requirements
-                            let isSignificant = maxValue > 0 && (
-                                point == maxValue || 
-                                (point > 0 && index == dataPoints.count - 1) || // Last non-zero point
-                                point > average * 1.5 // Only very high points
-                            )
-                            
-                            ZStack {
-                                // Point - larger on iPad
-                                Circle()
-                                    .fill(categoryColor)
-                                    .frame(width: isIPad ? (isSignificant ? 10 : 8) : (isSignificant ? 8 : 6), 
-                                           height: isIPad ? (isSignificant ? 10 : 8) : (isSignificant ? 8 : 6))
-                                
-                                // Only show tooltip for significant points with density control
-                                if isSignificant && shouldShowTooltip {
-                                    // Tooltip - larger and more readable on iPad
-                                    Text(formatCurrency(point))
-                                        .font(.system(size: isIPad ? 10 : 8))
-                                        .padding(.horizontal, isIPad ? 6 : 4)
-                                        .padding(.vertical, isIPad ? 4 : 2)
-                                        .background(Color.white.opacity(0.95))
-                                        .cornerRadius(isIPad ? 6 : 4)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: isIPad ? 6 : 4)
-                                                .stroke(categoryColor, lineWidth: isIPad ? 1.5 : 1)
-                                        )
-                                        .offset(y: isIPad ? -22 : -16) // Move higher on iPad for better spacing
-                                        .shadow(color: Color.black.opacity(0.1), radius: 1, x: 0, y: 1)
-                                }
-                            }
-                            .position(x: x, y: y)
-                        }
-                    }
-                }
-                .frame(height: isIPad ? 300 : 200)
-                
-                // X-axis labels with adaptive spacing for different screen sizes
-                HStack(spacing: 0) {
-                    // Show more labels on iPad
-                    let maxLabels = isIPad ? 12 : 7
-                    let step = max(1, dateRange.count / maxLabels)
-                    
-                    ForEach(0..<min(dateRange.count, maxLabels), id: \.self) { index in
-                        let labelIndex = index * step
-                        
-                        if labelIndex < dateRange.count {
-                            Text(formatDate(dateRange[labelIndex]))
-                                .font(isIPad ? .caption : .caption2)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                }
-                .padding(.horizontal, isIPad ? 16 : 8)
-                .padding(.top, 8) // Extra space between chart and labels
-            } else {
-                // No data view with more informative message - enhanced for iPad
-                VStack(spacing: isIPad ? 24 : 16) {
-                    Image(systemName: "chart.line.downtrend.xyaxis")
-                        .font(.system(size: isIPad ? 60 : 40))
-                        .foregroundColor(.secondary.opacity(0.5))
-                    
-                    VStack(spacing: isIPad ? 8 : 4) {
-                        Text("No trend data available")
-                            .font(isIPad ? .title3 : .headline)
-                            .foregroundColor(.secondary)
-                        
-                        Text("Add more expenses to see your spending trends")
-                            .font(isIPad ? .subheadline : .caption)
-                            .foregroundColor(.secondary.opacity(0.7))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, isIPad ? 24 : 0)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: isIPad ? 300 : 200)
-                .background(Color.secondarySystemBackground.opacity(0.5))
-                .cornerRadius(16)
-            }
-        }
-    }
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        
-        switch timeFrame {
-        case .day:
-            formatter.dateFormat = "ha"
-        case .week, .month:
-            formatter.dateFormat = "d MMM"
-        case .year, .all:
-            formatter.dateFormat = "MMM"
-        }
-        
-        return formatter.string(from: date)
-    }
-    
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = viewModel.currencySymbol
-        formatter.maximumFractionDigits = 0 // No decimal places for better readability in small space
-        
-        return formatter.string(from: NSNumber(value: value)) ?? "$0"
-    }
 }
 
 struct ExpenseTrendChart_Previews: PreviewProvider {
@@ -398,7 +393,8 @@ struct ExpenseTrendChart_Previews: PreviewProvider {
             ExpenseTrendChart(
                 expenses: Expense.sampleData,
                 timeFrame: .month,
-                categoryColor: .appPrimary
+                categoryColor: .appPrimary,
+                currencySymbol: "$"
             )
             .padding()
             .background(Color.systemBackground)

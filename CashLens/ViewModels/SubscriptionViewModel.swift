@@ -1,43 +1,39 @@
 import Foundation
 import SwiftUI
 import Combine
-import CoreData
+@preconcurrency import CoreData
 import UserNotifications
 
 @MainActor
 class SubscriptionViewModel: NSObject, ObservableObject {
     @Published var subscriptions: [Subscription] = []
-    @Published var dueSubscriptions: [Subscription] = []
     @Published var filteredSubscriptions: [Subscription] = []
     @Published var activeFilter: SubscriptionFilter = .all
-    
+
     enum SubscriptionFilter: CaseIterable {
         case all
         case dueSoon
         case active
-        case paused
-        
+
         var title: String {
             switch self {
             case .all: return "All Subscriptions"
             case .dueSoon: return "Due Soon"
             case .active: return "Active"
-            case .paused: return "Paused"
             }
         }
-        
+
         var icon: String {
             switch self {
             case .all: return "list.bullet"
             case .dueSoon: return "clock.fill"
             case .active: return "checkmark.circle.fill"
-            case .paused: return "pause.circle.fill"
             }
         }
     }
     
     private var cancellables = Set<AnyCancellable>()
-    private let viewContext: NSManagedObjectContext
+    nonisolated private let viewContext: NSManagedObjectContext
     private weak var expenseViewModel: ExpenseViewModel?
     private var fetchedResultsController: NSFetchedResultsController<SubscriptionEntity>?
     
@@ -46,7 +42,6 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         self.expenseViewModel = expenseViewModel
         super.init()
         setupFetchedResultsController()
-        setupDueSubscriptionsFiltering()
         setupSubscriptionFiltering()
         setupCurrencyUpdateListener()
     }
@@ -71,12 +66,9 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         
         viewContext.performAndWait {
             _ = SubscriptionEntity.fromSubscription(subscription, context: viewContext)
-            saveContext()
+            persistIfNeeded()
         }
         syncNotification(for: subscription)
-        
-        // Track successful action for feedback request
-        FeedbackManager.shared.incrementSuccessfulAction()
     }
     
     func updateSubscription(_ subscription: Subscription) async {
@@ -98,7 +90,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
                 let results = try viewContext.fetch(fetchRequest)
                 if let entity = results.first {
                     entity.updateFromSubscription(subscription)
-                    saveContext()
+                    persistIfNeeded()
                 }
             } catch {
                 print("Error updating subscription: \(error.localizedDescription)")
@@ -117,7 +109,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
                 for entity in results {
                     viewContext.delete(entity)
                 }
-                saveContext()
+                persistIfNeeded()
             } catch {
                 print("Error deleting subscription: \(error.localizedDescription)")
             }
@@ -131,13 +123,19 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         await updateSubscription(updatedSubscription)
     }
     
-    private func saveContext() {
+    /// Nonisolated Core Data save helper. Safe to invoke from inside
+    /// `performAndWait` closures without crossing actor boundaries.
+    /// Assumes the enclosing `performAndWait` serializes access to `viewContext`.
+    private nonisolated func persistIfNeeded() {
         do {
             if viewContext.hasChanges {
                 try viewContext.save()
             }
         } catch {
-            print("Error saving subscription context: \(error.localizedDescription)")
+            // Surface to the global save-error banner so a silent
+            // failure on add/update/delete doesn't leave the UI
+            // showing the operation as successful.
+            SaveErrorReporter.report(operation: "saving subscription", error: error)
         }
     }
     
@@ -170,23 +168,23 @@ class SubscriptionViewModel: NSObject, ObservableObject {
     
     private func updateFromFetchedResults() {
         let entities = fetchedResultsController?.fetchedObjects ?? []
-        
+
         // Repair legacy/bad data: some older records may have a missing UUID id.
         // Without a stable id, edits won't persist (update fetch can't find the entity),
         // and notification identifiers become unstable.
+        // viewContext is main-queue bound, and this method is main-actor isolated,
+        // so we can operate on entities directly without a nested perform block.
         var repairedMissingIDs = false
-        viewContext.performAndWait {
-            for entity in entities where entity.id == nil {
-                entity.id = UUID()
-                repairedMissingIDs = true
-            }
-            if repairedMissingIDs {
-                saveContext()
-            }
+        for entity in entities where entity.id == nil {
+            entity.id = UUID()
+            repairedMissingIDs = true
         }
-        
+        if repairedMissingIDs {
+            persistIfNeeded()
+        }
+
         subscriptions = entities.map { $0.toSubscription() }
-        
+
         if repairedMissingIDs {
             resyncAllSubscriptionNotifications()
         }
@@ -213,41 +211,6 @@ class SubscriptionViewModel: NSObject, ObservableObject {
                 }
             }
         }
-    }
-    
-    // MARK: - Due Subscriptions Management
-    
-    private func setupDueSubscriptionsFiltering() {
-        $subscriptions
-            .map { subscriptions in
-                subscriptions.filter { $0.isDue }
-            }
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.dueSubscriptions, on: self)
-            .store(in: &cancellables)
-    }
-    
-    func checkAndProcessDueSubscriptions() {
-        for subscription in dueSubscriptions {
-            processSubscription(subscription)
-        }
-    }
-    
-    private func processSubscription(_ subscription: Subscription) {
-        // Create expense from subscription
-        var expense = subscription.toExpense()
-        expense.isFromSubscription = true
-        expense.subscriptionId = subscription.id
-        
-        // Add expense through the expense view model
-        expenseViewModel?.addExpense(expense)
-        
-        // Update subscription's next due date
-        var updatedSubscription = subscription
-        updatedSubscription.updateNextDueDate()
-        updateSubscriptionInternal(updatedSubscription)
-        
-        print("Processed subscription: \(subscription.name) - Next due: \(updatedSubscription.formattedNextDueDate)")
     }
     
     // MARK: - Statistics
@@ -359,9 +322,9 @@ class SubscriptionViewModel: NSObject, ObservableObject {
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {
                     print("Error scheduling notification: \(error.localizedDescription)")
-                } else {
-                    print("Successfully scheduled notification for \(subscription.name)")
                 }
+                // No success log — it printed the subscription name
+                // (user financial data) into the device console.
             }
         }
     }
@@ -398,29 +361,69 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         let formatted = formatter.string(from: NSNumber(value: totalMonthlyAmount)) ?? "0.00"
         return "\(currency.symbol)\(formatted)"
     }
-    
-    // Manual trigger for testing
-    func manuallyProcessDueSubscriptions() {
-        checkAndProcessDueSubscriptions()
-    }
-    
+
     // MARK: - Manual Payment Processing
     
     func markSubscriptionAsPaid(_ subscription: Subscription) async {
+        // Fail atomically: without the expense pipeline we'd advance the
+        // due date while silently dropping the payment record — the cycle
+        // would look paid with no expense to show for it. The dependency
+        // is wired in `CashLensApp.init` so this should never be nil; the
+        // guard is the last line of defense.
+        guard let expenseViewModel else {
+            print("markSubscriptionAsPaid: expenseViewModel is nil — refusing to advance due date")
+            return
+        }
+        
         // Create expense from subscription
         var expense = subscription.toExpense()
         expense.isFromSubscription = true
         expense.subscriptionId = subscription.id
         
-        // Add expense through the expense view model
-        expenseViewModel?.addExpense(expense)
+        // SAFETY: only advance the due date when the payment record
+        // actually persisted. Advancing after a failed save would make
+        // the cycle look paid with no expense to show for it.
+        guard expenseViewModel.addExpense(expense) else {
+            print("markSubscriptionAsPaid: expense save failed — due date not advanced")
+            return
+        }
         
-        // Update subscription's next due date
+        // Update subscription's next due date (anchor-based; see
+        // `Subscription.updateNextDueDate`)
         var updatedSubscription = subscription
         updatedSubscription.updateNextDueDate()
         await updateSubscription(updatedSubscription)
-        
-        print("Marked subscription as paid: \(subscription.name) - Next due: \(updatedSubscription.formattedNextDueDate)")
+    }
+    
+    // MARK: - Foreground Reconciliation
+    
+    /// Roll every active subscription whose due date has passed forward to
+    /// its next **future** startDate-anchored occurrence, persist it, and
+    /// re-arm its reminder. Called from the scenePhase-active handler in
+    /// `CashLensApp` — without this, nothing ever advances a past-due
+    /// `nextDueDate` except a manual "mark as paid", so overdue rows sit
+    /// with negative `daysUntilNext` forever and reminders (scheduled as
+    /// one-shot notifications) die after a single cycle.
+    ///
+    /// Deliberately does NOT auto-log expenses for missed cycles — we
+    /// can't know whether the user actually paid; we only fix the date.
+    ///
+    /// A subscription due *today* is left alone so the user can still see
+    /// it as due and mark it paid; only dates before today's start roll.
+    /// Re-scheduling goes through `updateSubscriptionInternal` →
+    /// `syncNotification`, which cancels before scheduling, so repeated
+    /// foregrounds can't stack duplicate reminders.
+    func reconcileOverdueSubscriptions() {
+        let startOfToday = Calendar.current.startOfDay(for: Date())
+        for subscription in subscriptions where subscription.isActive && subscription.nextDueDate < startOfToday {
+            var updated = subscription
+            updated.nextDueDate = Subscription.nextOccurrence(
+                after: Date(),
+                anchor: updated.startDate,
+                frequency: updated.frequency
+            )
+            updateSubscriptionInternal(updated)
+        }
     }
     
     // Setup listener for currency updates
@@ -467,8 +470,6 @@ class SubscriptionViewModel: NSObject, ObservableObject {
             return subscriptions.filter { $0.isActive && $0.daysUntilNext <= 7 }
         case .active:
             return subscriptions.filter { $0.isActive }
-        case .paused:
-            return subscriptions.filter { !$0.isActive }
         }
     }
     
@@ -482,7 +483,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
 } 
 
 extension SubscriptionViewModel: NSFetchedResultsControllerDelegate {
-    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+    nonisolated func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
         Task { @MainActor in
             self.updateFromFetchedResults()
         }

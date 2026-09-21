@@ -7,18 +7,28 @@ struct SpendingHeatmap: View {
         let amount: Double
         let intensity: Double
     }
-    
-    let expenses: [Expense]
+
+    /// Pre-aggregated day → net total map (refund-aware, floored at 0). The
+    /// caller is expected to do this aggregation **once** (typically on the
+    /// background recompute task in StatisticsView) so the heatmap doesn't
+    /// re-walk the full expense array on every body redraw — the audit
+    /// flagged the prior `expenses: [Expense]` shape as a P0 hot path.
+    let dailyTotals: [Date: Double]
     let startDate: Date
     let endDate: Date
     let accentColor: Color
     let formattedAmount: (Double) -> String
-    
+
     /// Safety cap so extremely large ranges (e.g. "All Time" = distantPast) don't freeze the UI.
     /// Shows the *most recent* `maxDaysToRender` days of the selected range.
     let maxDaysToRender: Int = 365
     
     @State private var selectedCell: DayCell?
+
+    /// Day cell edge. Scales with Dynamic Type (against `.caption2`,
+    /// the weekday label style) so the grid and its labels stay aligned
+    /// and the 18pt tap target isn't frozen at Large text on an AX size.
+    @ScaledMetric(relativeTo: .caption2) private var cellSize: CGFloat = 18
     
     private var calendar: Calendar { .current }
     
@@ -58,24 +68,21 @@ struct SpendingHeatmap: View {
         let end = renderRange.end
         guard start <= end else { return [] }
 
-        var totalsByDay: [Date: Double] = [:]
-        for expense in expenses {
-            let key = calendar.startOfDay(for: expense.date)
-            totalsByDay[key, default: 0] += expense.amount
-        }
-        
+        // No O(N) grouping pass here anymore — the caller hands us the
+        // already-aggregated map. We only walk the calendar-day range,
+        // which is bounded by `maxDaysToRender`.
         var dates: [Date] = []
         var cursor = start
         while cursor <= end {
             dates.append(cursor)
             cursor = calendar.date(byAdding: .day, value: 1, to: cursor) ?? cursor.addingTimeInterval(86400)
         }
-        
-        let values = dates.map { totalsByDay[$0, default: 0] }
+
+        let values = dates.map { dailyTotals[$0, default: 0] }
         let maxValue = values.max() ?? 0
-        
+
         return dates.map { date in
-            let amount = totalsByDay[date, default: 0]
+            let amount = dailyTotals[date, default: 0]
             let intensity = maxValue > 0 ? (amount / maxValue) : 0
             return DayCell(
                 id: isoDayId(for: date),
@@ -149,19 +156,19 @@ struct SpendingHeatmap: View {
                         Text(day)
                             .font(.caption2)
                             .foregroundColor(.secondary)
-                            .frame(height: 18)
+                            .frame(height: cellSize)
                     }
                 }
                 .padding(.top, 2)
                 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    let rows = Array(repeating: GridItem(.fixed(18), spacing: 8), count: 7)
+                    let rows = Array(repeating: GridItem(.fixed(cellSize), spacing: 8), count: 7)
                     LazyHGrid(rows: rows, spacing: 8) {
                         ForEach(Array(gridCellsRowMajor.enumerated()), id: \.offset) { _, cell in
                             if let cell {
                                 RoundedRectangle(cornerRadius: 5)
                                     .fill(accentColor.opacity(0.12 + (0.78 * cell.intensity)))
-                                    .frame(width: 18, height: 18)
+                                    .frame(width: cellSize, height: cellSize)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 5)
                                             .stroke(selectedCell?.id == cell.id ? accentColor.opacity(0.9) : Color.clear, lineWidth: 2)
@@ -173,17 +180,17 @@ struct SpendingHeatmap: View {
                                     }
                             } else {
                                 Color.clear
-                                    .frame(width: 18, height: 18)
+                                    .frame(width: cellSize, height: cellSize)
                             }
                         }
                     }
                     .padding(.vertical, 2)
                 }
             }
-            .onChange(of: startDate) { _ in
+            .onChange(of: startDate) {
                 selectedCell = nil
             }
-            .onChange(of: endDate) { _ in
+            .onChange(of: endDate) {
                 selectedCell = nil
             }
             

@@ -36,6 +36,32 @@ struct PersistenceController {
 
     let container: NSPersistentContainer
 
+    /// Set when `loadPersistentStores` fails (e.g. a model-version hash
+    /// mismatch after a bad update, or store corruption). The store files
+    /// on disk are NEVER deleted — `CashLensApp` observes this and shows
+    /// `StoreRecoveryView` instead of the normal UI, which offers a raw
+    /// export of the store files so the user's data is always retrievable.
+    /// Populated synchronously during `init` (the default store load is
+    /// synchronous), so it's safe to read immediately after construction.
+    private(set) var storeLoadError: NSError?
+
+    var storeLoadFailed: Bool { storeLoadError != nil }
+
+    /// The on-disk files backing the SQLite store that currently exist:
+    /// the main `.sqlite` plus its `-wal` / `-shm` sidecars. Used by the
+    /// recovery flow's "export my data" share sheet. Empty for in-memory
+    /// stores or if the store URL is unknown.
+    var storeFileURLs: [URL] {
+        guard let storeURL = container.persistentStoreDescriptions.first?.url,
+              storeURL.isFileURL, storeURL.path != "/dev/null" else { return [] }
+        let candidates = [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path + "-wal"),
+            URL(fileURLWithPath: storeURL.path + "-shm")
+        ]
+        return candidates.filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
     init(inMemory: Bool = false) {
         container = NSPersistentContainer(name: "CashLens")
         
@@ -52,14 +78,27 @@ struct PersistenceController {
                 "synchronous": "NORMAL"      // Less synchronization (still safe for most cases)
             ]
             description?.setOption(pragmas as NSDictionary, forKey: NSSQLitePragmasOption)
+
+            // Lightweight migration. These are the framework defaults, but
+            // they're spelled out because they are load-bearing: the model
+            // is now versioned (CashLens → CashLens 2) and every future
+            // schema change must migrate 3k+ production stores in place.
+            description?.shouldMigrateStoreAutomatically = true
+            description?.shouldInferMappingModelAutomatically = true
         }
         
+        var loadError: NSError?
         container.loadPersistentStores(completionHandler: { (storeDescription, error) in
             if let error = error as NSError? {
-                // Log the error with more detailed information for debugging
-                fatalError("Persistent store failed to load: \(error), \(error.userInfo)")
+                // NEVER crash and NEVER delete the store here. The user's
+                // financial history is irreplaceable; a load failure flips
+                // `storeLoadError` and the app presents a recovery screen
+                // that keeps the data exportable.
+                print("Persistent store failed to load: \(error), \(error.userInfo)")
+                loadError = error
             }
         })
+        storeLoadError = loadError
         
         // Configure container settings for better performance
         container.viewContext.automaticallyMergesChangesFromParent = true
