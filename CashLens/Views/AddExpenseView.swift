@@ -4,7 +4,16 @@ import PhotosUI
 struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @ObservedObject var viewModel: ExpenseViewModel
+    /// Held as a plain reference so `@Published` bursts on `expenses` /
+    /// totals do not rebuild this form. Body only reads `currencySymbol`
+    /// and `tagStats` (passed as values); CRUD still goes through here.
+    let viewModel: ExpenseViewModel
+    /// Live currency glyph. Parent snapshots this from the VM so a
+    /// currency change while the sheet is open still updates the hero.
+    let currencySymbol: String
+    /// Tag autocomplete snapshot. Value-typed so unrelated VM publishes
+    /// do not invalidate the form.
+    let tagStats: TagSuggestionProvider.Stats
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @ObservedObject private var templateStore = ExpenseTemplateStore.shared
     /// Pro gate for the Receipt Scanner section. Read via the
@@ -244,6 +253,8 @@ struct AddExpenseView: View {
     // empty for one frame then populates, which feels instant.
     init(viewModel: ExpenseViewModel) {
         self.viewModel = viewModel
+        self.currencySymbol = viewModel.currencySymbol
+        self.tagStats = viewModel.tagStats
         self.isEditing = false
         self.onSave = nil
 
@@ -290,6 +301,8 @@ struct AddExpenseView: View {
         onSave: @escaping (String, Double, Date, Expense.Category, UUID?, String?, [String]?, Bool, PaymentMethod?, String?) -> Void
     ) {
         self.viewModel = viewModel
+        self.currencySymbol = viewModel.currencySymbol
+        self.tagStats = viewModel.tagStats
         self.isEditing = isEditing
         self.onSave = onSave
         self.expenseId = expenseId
@@ -793,7 +806,7 @@ struct AddExpenseView: View {
 
             // Visible display — symbol + digit + ghost-symbol mirror.
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(viewModel.selectedCurrency.symbol)
+                Text(currencySymbol)
                     .font(.system(size: 44, weight: .bold, design: .rounded))
                     .foregroundColor(isRefund ? .green : .appPrimary)
 
@@ -807,7 +820,7 @@ struct AddExpenseView: View {
 
                 // Ghost mirror — same font/size as the leading currency
                 // symbol but invisible. Optically centres the digit.
-                Text(viewModel.selectedCurrency.symbol)
+                Text(currencySymbol)
                     .font(.system(size: 44, weight: .bold, design: .rounded))
                     .foregroundColor(.clear)
                     .accessibilityHidden(true)
@@ -2715,7 +2728,7 @@ struct AddExpenseView: View {
 
             TagInputField(
                 tags: $tags,
-                suggestionStats: viewModel.tagStats
+                suggestionStats: tagStats
             )
         }
         .animation(Theme.Motion.snappy, value: tags.count)
@@ -3802,7 +3815,18 @@ struct AddExpenseView: View {
     }
 }
 
-extension AddExpenseView {
+extension AddExpenseView: Equatable {
+    /// Identity for `.equatable()` at every call site. Closures
+    /// (`onSave`, `onDismissRequest`) and the VM class reference are
+    /// excluded — they would never compare equal across parent
+    /// rebuilds and would defeat the isolation.
+    static func == (lhs: AddExpenseView, rhs: AddExpenseView) -> Bool {
+        lhs.currencySymbol == rhs.currencySymbol
+            && lhs.tagStats == rhs.tagStats
+            && lhs.isEditing == rhs.isEditing
+            && lhs.expenseId == rhs.expenseId
+    }
+
     /// Overrides the environment `dismiss` for hosts where it would be a
     /// no-op (see `onDismissRequest`).
     func onDismissRequest(_ action: @escaping () -> Void) -> AddExpenseView {
@@ -3864,5 +3888,6 @@ private struct ReceiptSourcePickerModifier: ViewModifier {
 struct AddExpenseView_Previews: PreviewProvider {
     static var previews: some View {
         AddExpenseView(viewModel: ExpenseViewModel())
+            .equatable()
     }
 } 

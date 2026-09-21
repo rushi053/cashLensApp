@@ -441,6 +441,7 @@ struct MainTabView: View {
         }
         .sheet(isPresented: $showingAddExpense) {
             AddExpenseView(viewModel: viewModel)
+                .equatable()
                 .environmentObject(categoryViewModel)
                 // Regular width: a form-sized card instead of a page
                 // sheet. `isRegularWidth` is the presenter's size class.
@@ -621,6 +622,7 @@ struct MainTabView: View {
             .ignoresSafeArea(.all, edges: .bottom)
             .sheet(isPresented: $showingAddExpense) {
                 AddExpenseView(viewModel: viewModel)
+                    .equatable()
                     .environmentObject(categoryViewModel)
                     .largeScreenFormSheet(enabled: isRegularWidth)
             }

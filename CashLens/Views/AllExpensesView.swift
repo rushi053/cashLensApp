@@ -925,6 +925,7 @@ struct AllExpensesView: View {
         if let expense = selectedExpense {
             expenseEditor(for: expense)
                 .onDismissRequest { selectedExpense = nil }
+                .equatable()
                 // Fresh editor state per expense — the `@State`
                 // fields are seeded in `init`, which only reruns on
                 // an identity change.
@@ -1198,6 +1199,7 @@ struct AllExpensesView: View {
         }
         .sheet(item: editorSheetItem) { expense in
             expenseEditor(for: expense)
+                .equatable()
                 .environmentObject(categoryViewModel)
         }
         .sheet(isPresented: $showingDateRangePicker) {

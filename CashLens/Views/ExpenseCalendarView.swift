@@ -137,6 +137,7 @@ struct ExpenseCalendarView: View {
                     viewModel.updateExpense(updated)
                 }
             )
+            .equatable()
             .environmentObject(categoryViewModel)
         }
     }

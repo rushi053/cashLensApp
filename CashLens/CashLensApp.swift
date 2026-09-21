@@ -160,6 +160,7 @@ struct CashLensApp: App {
                             // Quick Log widget "+" button → straight
                             // into the add-expense sheet.
                             AddExpenseView(viewModel: viewModel)
+                                .equatable()
                                 .environmentObject(categoryViewModel)
                         }
                     }

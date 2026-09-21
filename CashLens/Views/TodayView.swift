@@ -296,6 +296,7 @@ struct TodayView: View {
                     viewModel.updateExpense(updated)
                 }
             )
+            .equatable()
             .environmentObject(categoryViewModel)
             // Regular width: form-sized card (presenter's size class).
             .largeScreenFormSheet(enabled: horizontalSizeClass == .regular)

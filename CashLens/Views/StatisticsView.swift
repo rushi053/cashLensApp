@@ -228,6 +228,7 @@ struct StatisticsView: View {
             // AddExpenseView requires CategoryViewModel and relying on
             // implicit sheet-environment inheritance is fragile.
             AddExpenseView(viewModel: viewModel)
+                .equatable()
                 .environmentObject(categoryViewModel)
                 // Regular width: form-sized card (presenter's size class).
                 .largeScreenFormSheet(enabled: isWideLayout)

@@ -193,6 +193,7 @@ struct QuickSearchView: View {
                     // edit against the stale snapshot first.
                 }
             )
+            .equatable()
             .environmentObject(categoryViewModel)
         }
     }
