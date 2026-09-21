@@ -1957,7 +1957,12 @@ struct AllExpensesView: View {
         // as one cohesive day (instead of N visually-elevated tiles
         // stacked on each other). No background here — the parent
         // `.cardSurface()` provides it.
-        VStack(spacing: 0) {
+        //
+        // PERF: `LazyVStack` so a fat day (seed / date-only CSV) does
+        // not instantiate every `ExpenseCard` in one layout pass.
+        // ForEach identity is still `expense.id` (stable UUID). Shared
+        // by compact sheet and regular-width two-pane — same builder.
+        LazyVStack(spacing: 0) {
             ForEach(Array(expenses.enumerated()), id: \.element.id) { expenseIndex, expense in
                 expenseRowView(expense: expense, groupIndex: groupIndex, expenseIndex: expenseIndex)
                 if expenseIndex < expenses.count - 1 {
