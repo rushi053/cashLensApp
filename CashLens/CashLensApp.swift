@@ -79,6 +79,12 @@ struct CashLensApp: App {
             DebugExpenseSeeder.seedFromLaunchArgumentsIfRequested(
                 container: PersistenceController.shared.container
             )
+            // Screenshot suite only: `-CLSeedBackupFile <path>` replaces
+            // the store with the marketing demo backup. Compiled out of
+            // Release.
+            DebugExpenseSeeder.restoreBackupFromLaunchArgumentsIfRequested(
+                container: PersistenceController.shared.container
+            )
             #endif
         }
 

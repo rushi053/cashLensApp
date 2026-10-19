@@ -16,9 +16,16 @@
 #   Scripts/screenshots.sh --os 27.0             # pin a runtime when names are ambiguous
 #   Scripts/screenshots.sh --skip-build          # reuse the last build-for-testing output
 #   Scripts/screenshots.sh --out ~/Desktop/cl-shots
+#   Scripts/screenshots.sh --seed /tmp/CashLens-Screenshot-Demo.cashlens.json
+#                                                # Debug builds replace the store with
+#                                                # this backup before the first frame
 #
 # Requirements: Xcode 27 (release) with the iOS 27 simulator runtime.
-# The Duo simulators need Xcode 27.1; see the commented lines below.
+# The Duo simulator needs Xcode 27.1; see the Duo notes below.
+#
+# Demo data: regenerate Marketing/ScreenshotSampleData/generate_screenshot_data.py
+# (dates are relative to the day it runs) into a scratch folder and pass the
+# JSON with --seed. Without it the suite logs four expenses through the UI.
 #
 # Simulator names differ between Xcode releases. If a destination fails
 # with "Unable to find a device matching", run `--list` (or
@@ -38,6 +45,7 @@ OUT_DIR="$ROOT/build/screenshots/$STAMP"
 OS_VERSION=""
 SKIP_BUILD=0
 CLEAN_STATUS_BAR=1
+SEED_FILE=""
 
 # --- Device matrix ---------------------------------------------------------
 # iPhone SE (3rd generation) is the smallest supported iPhone; the two 18 Pro
@@ -51,13 +59,16 @@ DEVICES=(
   "iPad Pro 13-inch (M5)"
 )
 
-# iPhone Duo — requires the Xcode 27.1 simulator runtime. Names below are
-# the expected simctl names; confirm with `xcrun simctl list devices available`
-# after installing 27.1 and adjust if Apple ships different labels. The
-# "outer" display behaves like a compact-width iPhone, the "inner" display
-# is regular/regular. Uncomment to enable:
-# DEVICES+=( "iPhone Duo (Outer Display)" )
-# DEVICES+=( "iPhone Duo (Inner Display)" )
+# iPhone Duo — one simulator, "iPhone Duo", in the iOS 27.1 runtime. There
+# is no simctl pose command: set the pose with the Device Hub window's
+# "Closed / Partially Open / Open" buttons, then run this script once per
+# pose (`--devices "iPhone Duo" --orientations portrait --os 27.1`). The
+# suite writes one PNG per display (`-screen1` is the inner display); the
+# inactive display captures black. Inner-display files come out 2006×2852
+# portrait with landscape content — rotate 90° and pad one pixel to App
+# Store Connect's 2853×2007 before uploading; the outer display is exactly
+# 1398×2034. Not in the default matrix because of the manual pose step:
+# DEVICES+=( "iPhone Duo" )
 
 ORIENTATIONS=( portrait landscape )
 
@@ -79,6 +90,8 @@ while [[ $# -gt 0 ]]; do
       OUT_DIR="$2"; shift 2 ;;
     --skip-build)
       SKIP_BUILD=1; shift ;;
+    --seed)
+      SEED_FILE="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
     --no-status-bar)
       CLEAN_STATUS_BAR=0; shift ;;
     -h|--help)
@@ -159,6 +172,7 @@ for device in "${DEVICES[@]}"; do
     if TEST_RUNNER_CL_DEVICE_SLUG="$device_slug" \
        TEST_RUNNER_CL_ORIENTATION="$orientation" \
        TEST_RUNNER_CL_SCREENSHOT_DIR="$PNG_DIR" \
+       TEST_RUNNER_CL_SEED_FILE="$SEED_FILE" \
        xcodebuild test-without-building \
          -project "$PROJECT" \
          -scheme "$SCHEME" \
