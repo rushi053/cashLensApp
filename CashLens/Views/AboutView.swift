@@ -58,11 +58,13 @@ struct AboutView: View {
 
                     sectionCard(title: whatsNewTitle) {
                         VStack(alignment: .leading, spacing: Theme.Spacing.sm + 2) {
-                            featureRow(icon: "sparkles", text: "Redesigned Today, Activity, Insights, and You tabs")
-                            featureRow(icon: "rectangle.stack.fill", text: "New elevated card system across the app")
-                            featureRow(icon: "doc.text.image.fill", text: "Receipt photos with full archive backup")
-                            featureRow(icon: "creditcard.fill", text: "Payment method tracking and donut chart")
-                            featureRow(icon: "bell.badge.fill", text: "Proactive smart insight notifications (Pro)")
+                            // Keep in step with the App Store release notes for
+                            // the version `whatsNewTitle` reads from the bundle.
+                            featureRow(icon: "ipad.landscape", text: "Made for iPad: multi-column Today, Insights and You, split-view Activity")
+                            featureRow(icon: "iphone.gen3", text: "iPhone Duo support — layouts that respect the fold in every pose")
+                            featureRow(icon: "keyboard", text: "Hardware keyboard shortcuts and pointer hover effects")
+                            featureRow(icon: "bolt.fill", text: "Faster Activity and Add Expense with large histories")
+                            featureRow(icon: "paintbrush.pointed.fill", text: "Dozens of small polish fixes across every screen")
                         }
 
                         Text("Built around clarity, consistency, and respect for your attention.")

@@ -346,7 +346,7 @@ struct ManageCategoriesView: View {
             }
             .padding(.horizontal, Theme.Spacing.xxl)
             .padding(.top, Theme.Spacing.lg)
-            .padding(.bottom, Theme.Spacing.xxl)
+            .stickyCTABottomPadding()
             .background(Color(uiColor: .systemBackground))
         }
     }

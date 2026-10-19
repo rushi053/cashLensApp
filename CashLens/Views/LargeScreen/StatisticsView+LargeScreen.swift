@@ -12,17 +12,16 @@ import SwiftUI
 //   │ └────────────────────────┘ └────────────────────────┘ │
 //   │ ┌ Trend (full width, range picker anchored above) ──┐ │
 //   │ ┌ Where It Goes ─────────┐ ┌ Payment Methods ───────┐ │
-//   │ ┌ Spending Pattern ──────┐ ┌ Forecast ──────────────┐ │
+//   │ │ (donut + legend +      │ ┌ Spending Pattern ──────┐ │
+//   │ │  category rows)        │ ┌ Forecast ──────────────┐ │
+//   │ └────────────────────────┘ └────────────────────────┘ │
 //   │ ┌ Highlights (2-col grid) ───────────────────────────┐ │
 //   │ ┌ Monthly Recap ─────────────────────────────────────┐ │
 //
 // Even pairs everywhere so a Duo fold in book pose runs down the gutter,
 // never through a chart. Below `LargeScreenLayout.twoColumnMinimumWidth`
 // (`usesTwoColumns == false`) or at accessibility Dynamic Type the pairs
-// stack in the iPhone order. The trend section keeps its
-// `DuoArrangement` wrapper (an `ArrangementView(.split)` candidate on
-// iOS 27.1) so the pager tabs and the chart can land on opposite halves
-// of a partially folded display.
+// stack in the iPhone order.
 //
 // Only reached from `StatisticsView.body` when `isWideLayout`. State,
 // recompute pipeline and sheets are unchanged and shared.
@@ -106,46 +105,31 @@ extension StatisticsView {
                     .modifier(SectionEntrance(order: 2, animate: animateCards))
                     .sectionScrollTransition()
 
-                if showsPaymentMethodsSection {
-                    // Row 3: composition — two donuts side by side.
-                    LargeScreenColumns(twoColumns: usesTwoColumns) {
-                        whereItGoesSection
-                            .modifier(SectionEntrance(order: 3, animate: animateCards))
-                            .sectionScrollTransition()
-                    } trailing: {
-                        paymentMethodsSection
-                            .modifier(SectionEntrance(order: 4, animate: animateCards))
-                            .sectionScrollTransition()
-                    }
+                // Row 3: Where It Goes is the tallest tile (donut +
+                // legend + one row per category), so it takes the whole
+                // leading column while the trailing column stacks the
+                // shorter composition cards against it. Pairing it with a
+                // single short card left ~600pt of blank column on iPad.
+                LargeScreenColumns(twoColumns: usesTwoColumns) {
+                    whereItGoesSection
+                        .modifier(SectionEntrance(order: 3, animate: animateCards))
+                        .sectionScrollTransition()
+                } trailing: {
+                    VStack(spacing: Theme.Spacing.xxl) {
+                        if showsPaymentMethodsSection {
+                            paymentMethodsSection
+                                .modifier(SectionEntrance(order: 4, animate: animateCards))
+                                .sectionScrollTransition()
+                        }
 
-                    // Row 4: pattern (past) beside forecast (future).
-                    LargeScreenColumns(twoColumns: usesTwoColumns) {
                         spendingPatternSection
                             .modifier(SectionEntrance(order: 5, animate: animateCards))
                             .sectionScrollTransition()
-                    } trailing: {
+
                         forecastBlock
                             .modifier(SectionEntrance(order: 6, animate: animateCards))
                             .sectionScrollTransition()
                     }
-                } else {
-                    // No payment-method data (free user, nothing tagged):
-                    // the section is empty, so pair the donut with the
-                    // heatmap instead of leaving it beside a blank half,
-                    // and give the forecast the full width.
-                    LargeScreenColumns(twoColumns: usesTwoColumns) {
-                        whereItGoesSection
-                            .modifier(SectionEntrance(order: 3, animate: animateCards))
-                            .sectionScrollTransition()
-                    } trailing: {
-                        spendingPatternSection
-                            .modifier(SectionEntrance(order: 4, animate: animateCards))
-                            .sectionScrollTransition()
-                    }
-
-                    forecastBlock
-                        .modifier(SectionEntrance(order: 5, animate: animateCards))
-                        .sectionScrollTransition()
                 }
             } else {
                 // Nothing in the filtered window: the forecast still

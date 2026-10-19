@@ -2,6 +2,7 @@ import SwiftUI
 import StoreKit
 
 struct DonationView: View {
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var donationManager = DonationManager.shared
     @State private var isProcessing = false
     @State private var errorMessage: String?
@@ -54,6 +55,15 @@ struct DonationView: View {
             }
             .navigationTitle("Support")
             .navigationBarTitleDisplayMode(.inline)
+            // Explicit way out, matching Export / Import / Siri. The
+            // sheet was swipe-only, which is a dead end for an iPad
+            // form sheet and for anyone who doesn't know the gesture.
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .disabled(isProcessing)
+                }
+            }
             .alert("Error", isPresented: $showError, presenting: errorMessage) { _ in
                 Button("OK", role: .cancel) {}
             } message: { message in
@@ -113,13 +123,17 @@ struct DonationCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(product.displayName)
+                    // Trimmed: the product names carried a trailing "\n"
+                    // (local StoreKit config; possibly App Store Connect
+                    // too), which rendered as a blank line in every row.
+                    Text(product.displayName.trimmingCharacters(in: .whitespacesAndNewlines))
                         .font(Theme.Typography.rowTitle)
                         .foregroundColor(.primary)
-                    Text(product.description)
+                    Text(product.description.trimmingCharacters(in: .whitespacesAndNewlines))
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: Theme.Spacing.sm)
                 Text(product.displayPrice)

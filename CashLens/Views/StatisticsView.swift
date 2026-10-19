@@ -28,6 +28,14 @@ struct StatisticsView: View {
     @State private var cachedTrendData: [(date: Date, amount: Double)] = []
     @State private var cachedHeatmapData: [Date: Double] = [:]
     @State private var statsRecomputeTask: Task<Void, Never>?
+    /// PERF: the heavy detached pass in `recomputeStatsNow` used to be
+    /// fire-and-forget. During a save burst or a bulk edit, `immediate`
+    /// passes and debounced passes overlapped and a *slower, staler*
+    /// pass could land after a fresher one. The handle lets us cancel
+    /// the previous pass; the generation stamp guarantees only the
+    /// newest result is ever committed.
+    @State private var statsWorkTask: Task<Void, Never>?
+    @State private var statsGeneration: Int = 0
     @State private var didInitializeRange = false
 
     /// PERF: TabView keeps Statistics permanently mounted, so this view
@@ -171,6 +179,7 @@ struct StatisticsView: View {
                 measuredContentWidth = newWidth
             }
             .background(Color.systemBackground)
+            .statusBarScrim()
             .onAppear {
                 isStatsTabVisible = true
                 // Guarded: the entrance cascade should only ever run on
@@ -533,7 +542,7 @@ struct StatisticsView: View {
                 .padding(.vertical, Theme.Spacing.sm + 2)
                 .frame(maxWidth: .infinity)
                 .background(
-                    Capsule().fill(Color.tertiarySystemBackground)
+                    Capsule().fill(Color.chipFill)
                 )
             }
             .buttonStyle(ScaleButtonStyle())
@@ -608,7 +617,7 @@ struct StatisticsView: View {
                 .foregroundColor(enabled ? .appPrimary : .secondary.opacity(0.4))
                 .frame(width: 34, height: 34)
                 .background(
-                    Circle().fill(enabled ? Color.appPrimary.opacity(0.12) : Color.tertiarySystemBackground)
+                    Circle().fill(enabled ? Color.appPrimary.opacity(0.12) : Color.chipFill)
                 )
         }
         .buttonStyle(ScaleButtonStyle())
@@ -772,7 +781,9 @@ struct StatisticsView: View {
             return
         }
         statsRecomputeTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 220_000_000)
+            // A cancelled debounce must not fall through into a full
+            // pass — `try?` on a cancelled sleep returns immediately.
+            guard (try? await Task.sleep(nanoseconds: 220_000_000)) != nil else { return }
             recomputeStatsNow()
         }
     }
@@ -795,8 +806,12 @@ struct StatisticsView: View {
         if expensesSnapshot.count > 500 {
             isRecomputingStats = true
         }
-        
-        Task.detached(priority: .userInitiated) {
+
+        statsWorkTask?.cancel()
+        statsGeneration &+= 1
+        let generation = statsGeneration
+
+        statsWorkTask = Task.detached(priority: .userInitiated) {
             let currentFiltered = ExpenseFilter.apply(
                 expenses: expensesSnapshot,
                 category: selectedCat,
@@ -805,7 +820,9 @@ struct StatisticsView: View {
                 dateRangeStart: start,
                 dateRangeEnd: end
             )
-            
+            // Superseded already? Skip the expensive aggregation below.
+            guard !Task.isCancelled else { return }
+
             let calendar = Calendar.current
             let startDay = calendar.startOfDay(for: start)
             let endExclusive = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end)) ?? end
@@ -927,9 +944,11 @@ struct StatisticsView: View {
                 rangeStart: startDay,
                 rangeEnd: end
             )
+            // Eight so the taller iPad / Duo trend page can show more
+            // than the phone's five; `TrendChartPager` trims to what fits.
             let topDays = StatisticsCalculator.topSpendingDays(
                 filteredExpenses: currentFiltered,
-                limit: 5
+                limit: 8
             )
 
             // Payment-method donut (Pro). Single O(n) pass; we lean on the
@@ -972,7 +991,12 @@ struct StatisticsView: View {
             let finalTrendChartDates = trendChartSeries.dates
             let finalTrendChartValues = trendChartSeries.values
 
+            // A newer pass has been scheduled — drop this result rather
+            // than overwrite fresher numbers with stale ones.
+            guard !Task.isCancelled else { return }
+
             await MainActor.run {
+                guard generation == self.statsGeneration else { return }
                 self.cachedFilteredCount = filteredCount
                 self.cachedInsights = computedInsights
                 self.cachedTotalSpent = finalTotal
@@ -1249,13 +1273,13 @@ struct StatisticsView: View {
     /// stale numbers for that window).
     var heroSkeleton: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            RoundedRectangle(cornerRadius: 6).fill(Color.tertiarySystemBackground).frame(width: 90, height: 12)
-            RoundedRectangle(cornerRadius: 10).fill(Color.tertiarySystemBackground).frame(width: 200, height: 40)
-            RoundedRectangle(cornerRadius: 8).fill(Color.tertiarySystemBackground).frame(width: 150, height: 18)
+            RoundedRectangle(cornerRadius: 6).fill(Color.chipFill).frame(width: 90, height: 12)
+            RoundedRectangle(cornerRadius: 10).fill(Color.chipFill).frame(width: 200, height: 40)
+            RoundedRectangle(cornerRadius: 8).fill(Color.chipFill).frame(width: 150, height: 18)
             Divider().padding(.vertical, Theme.Spacing.sm).opacity(0.5)
             HStack(spacing: Theme.Spacing.xl) {
                 ForEach(0..<3, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 6).fill(Color.tertiarySystemBackground).frame(height: 30)
+                    RoundedRectangle(cornerRadius: 6).fill(Color.chipFill).frame(height: 30)
                 }
             }
         }
@@ -1454,6 +1478,7 @@ struct StatisticsView: View {
                         slices: slices,
                         total: slicesTotal,
                         selectedId: donutSelectedId,
+                        formattedTotal: viewModel.formattedAmount(slicesTotal),
                         onSelect: { slice in
                             withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.85)) {
                                 donutSelectedId = slice?.id
@@ -1540,7 +1565,7 @@ struct StatisticsView: View {
             .foregroundColor(.secondary)
             .padding(.horizontal, Theme.Spacing.sm + 2)
             .padding(.vertical, Theme.Spacing.xs)
-            .background(Color.tertiarySystemBackground)
+            .background(Color.chipFill)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Spacing.sm, style: .continuous))
     }
     
@@ -1656,6 +1681,7 @@ struct StatisticsView: View {
                     slices: paymentMethodDonutSlices(breakdown),
                     total: breakdown.slices.reduce(0) { $0 + $1.amount },
                     selectedId: paymentDonutSelectedId,
+                    formattedTotal: viewModel.formattedAmount(breakdown.slices.reduce(0) { $0 + $1.amount }),
                     onSelect: { slice in
                         withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.85)) {
                             paymentDonutSelectedId = slice?.id
@@ -1785,7 +1811,7 @@ struct StatisticsView: View {
             .padding(.horizontal, Theme.Spacing.lg)
             .background(
                 RoundedRectangle(cornerRadius: Theme.Spacing.lg, style: .continuous)
-                    .fill(Color.tertiarySystemBackground)
+                    .fill(Color.chipFill)
             )
         }
         .buttonStyle(.plain)
@@ -1935,7 +1961,7 @@ struct StatisticsView: View {
                             .foregroundColor(.secondary)
                             .padding(.horizontal, Theme.Spacing.sm + 2)
                             .padding(.vertical, Theme.Spacing.xs + 2)
-                            .background(Capsule().fill(Color.tertiarySystemBackground))
+                            .background(Capsule().fill(Color.chipFill))
                     }
                     InsightInfoButton(info: .trend)
                 }
@@ -1999,7 +2025,7 @@ struct StatisticsView: View {
             .padding(.vertical, Theme.Spacing.sm)
             .background(
                 Capsule()
-                    .fill(isSelected ? Color.forCategory(category.color) : Color.tertiarySystemBackground)
+                    .fill(isSelected ? Color.forCategory(category.color) : Color.chipFill)
             )
             .foregroundColor(isSelected ? .white : .primary)
         }
@@ -2031,7 +2057,7 @@ struct StatisticsView: View {
             .padding(.vertical, Theme.Spacing.sm)
             .background(
                 Capsule()
-                    .fill(isSelected ? Color.forCategory(category.colorName) : Color.tertiarySystemBackground)
+                    .fill(isSelected ? Color.forCategory(category.colorName) : Color.chipFill)
             )
             .foregroundColor(isSelected ? .white : .primary)
         }
@@ -2124,7 +2150,7 @@ struct StatisticsView: View {
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.tertiarySystemBackground)
+                            .fill(Color.chipFill)
                             .frame(height: 6)
 
                         Capsule()
@@ -2378,7 +2404,6 @@ struct StatisticsView: View {
         }
         
         let expenseCount = cachedFilteredCount
-        let totalAmount = totalExpenses()
         // For `.all`, the literal `rangeStartDate` is `Date.distantPast`, which
         // formats as a meaningless "Jan 1, 1". Anchor the visible label to the
         // user's earliest expense instead so the subtitle reads "Since Dec 15,
@@ -2393,7 +2418,15 @@ struct StatisticsView: View {
                 rangeLabel = "All time"
             }
         } else {
-            rangeLabel = "\(Self.formatterMediumDate.string(from: rangeStartDate)) – \(Self.formatterMediumDate.string(from: rangeEndDate))"
+            // Interval formatting collapses shared parts — "1 – 31 Oct 2026",
+            // "1 Jan – 31 Dec 2026", or just "14 Oct 2026" for a single day —
+            // instead of repeating two full dates, which wrapped the header
+            // subtitle onto a second line on iPhone (and read as
+            // "14 Oct 2026 – 14 Oct 2026" for Today).
+            let lower = min(rangeStartDate, rangeEndDate)
+            let upper = max(rangeStartDate, rangeEndDate)
+            rangeLabel = (lower..<upper)
+                .formatted(Date.IntervalFormatStyle(date: .abbreviated, time: .omitted))
         }
         
         if selectedCategory != nil {
@@ -2409,8 +2442,11 @@ struct StatisticsView: View {
                 return "\(expenseCount) \(selectedCategory!.rawValue.lowercased()) expense\(expenseCount == 1 ? "" : "s") • \(rangeLabel)"
             }
         } else {
-            // When no category is selected
-            return "\(expenseCount) expense\(expenseCount == 1 ? "" : "s") • \(rangeLabel) • \(viewModel.formattedAmount(totalAmount))"
+            // When no category is selected. The total used to trail here
+            // too, but it wrapped onto its own line for year ranges on
+            // iPhone and the Total Spent card directly below already
+            // carries it.
+            return "\(expenseCount) expense\(expenseCount == 1 ? "" : "s") • \(rangeLabel)"
         }
     }
 }

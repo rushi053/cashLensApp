@@ -10,6 +10,7 @@ struct SubscriptionsView: View {
     /// dependency is wired by the app's onAppear via
     /// `setExpenseViewModel`, same way the budget view model is.
     @EnvironmentObject var subscriptionViewModel: SubscriptionViewModel
+    @Environment(\.dismiss) private var dismiss
     @State private var showingAddSubscription = false
     @State private var selectedSubscription: Subscription?
     @State private var showingMonthlyBreakdown = false
@@ -48,27 +49,27 @@ struct SubscriptionsView: View {
     // MARK: - Body
 
     var body: some View {
-        // No NavigationView here. v2: Subscriptions is only ever
-        // presented as a sheet from Today/Profile, both of which
-        // already wrap us in their own container, AND the screen
-        // ships its own custom header (page title + Add button).
-        // The legacy `NavigationView` was rendering an empty 50pt
-        // nav-bar shelf above our custom header — the "big gap" the
-        // user was seeing — without contributing anything else.
-        ScrollView {
-            VStack(spacing: 0) {
-                headerSection
+        // No NavigationView here. Subscriptions is only ever presented
+        // as a sheet from Today/Profile and ships the shared
+        // `SheetHeader` pinned above its own scroll view (same shape
+        // as Budgets). The legacy `NavigationView` used to render an
+        // empty 50pt nav-bar shelf above the header.
+        VStack(spacing: 0) {
+            header
 
+            ScrollView {
                 VStack(spacing: Theme.Spacing.xl) {
                     heroCard
                     filterStrip
                     listSection
                 }
                 .padding(.horizontal, Theme.Spacing.xxl)
+                .padding(.top, Theme.Spacing.xl)
                 .padding(.bottom, Theme.Spacing.xxxl)
             }
         }
         .background(Color.systemBackground)
+        .presentationDragIndicator(.visible)
         .sheet(isPresented: $showingAddSubscription) {
             AddSubscriptionView(subscriptionViewModel: subscriptionViewModel)
                 .environmentObject(expenseViewModel)
@@ -98,36 +99,25 @@ struct SubscriptionsView: View {
         .onDisappear { statsTask?.cancel() }
     }
 
-    // MARK: - Header
+    // MARK: - Header (shared SheetHeader convention)
 
-    private var headerSection: some View {
-        // Sheet presentation already gives us a top safe-area inset
-        // and a drag-indicator from `.presentationDragIndicator`, so
-        // a small `.lg` top padding is all we need — no more 32pt
-        // `Color.clear` spacer that used to sit underneath the now-
-        // removed NavigationView's nav-bar shelf.
-        HStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("Subscriptions")
-                    .font(Theme.Typography.pageTitle)
-                    .foregroundColor(.primary)
-
-                Text(activeCountLabel)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .contentTransition(.numericText())
-            }
-
-            Spacer()
-
+    /// Same chrome as Budgets / Categories' siblings under "Manage":
+    /// eyebrow + centred title, leading close disc, trailing "+" disc.
+    /// Replaces the page-title + "Add" pill header that was the one
+    /// sheet in the app still using its own header language.
+    private var header: some View {
+        SheetHeader(
+            eyebrow: "Manage",
+            title: "Subscriptions",
+            subtitle: activeCountLabel,
+            // Esc belongs to the add/edit sheet or breakdown while one is up.
+            escapeClosesSheet: !showingAddSubscription
+                && selectedSubscription == nil
+                && !showingMonthlyBreakdown,
+            onClose: { dismiss() }
+        ) {
             addButton
         }
-        .padding(.horizontal, Theme.Spacing.xxl)
-        // `xl` top — matches the sheet-header convention's clear-air
-        // gap below the grab handle (was `lg`).
-        .padding(.top, Theme.Spacing.xl)
-        .padding(.bottom, Theme.Spacing.xl)
-        .background(Color.systemBackground)
     }
 
     private var activeCountLabel: String {
@@ -140,20 +130,14 @@ struct SubscriptionsView: View {
             HapticManager.shared.lightTap()
             showingAddSubscription = true
         } label: {
-            HStack(spacing: Theme.Spacing.xs + 2) {
-                Image(systemName: "plus")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("Add")
-                    .font(.system(size: 16, weight: .semibold))
-            }
-            .foregroundColor(.white)
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.sm + 2)
-            .background(Color.appPrimary)
-            .clipShape(Capsule())
-            .primaryGlow()
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.appPrimary))
         }
         .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel("Add subscription")
     }
 
     // MARK: - Hero

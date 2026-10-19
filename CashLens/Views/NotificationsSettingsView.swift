@@ -134,6 +134,7 @@ struct NotificationsSettingsView: View {
             }
         }
         .background(Color.systemBackground)
+        .presentationDragIndicator(.visible)
         .sheet(isPresented: $showingWeeklySchedule) {
             weeklyScheduleSheet
         }

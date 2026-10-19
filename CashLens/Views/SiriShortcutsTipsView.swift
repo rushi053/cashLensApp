@@ -138,6 +138,9 @@ struct SiriShortcutsTipsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        // Fill the column: on wide sheets (iPad, Duo open) the text wraps
+        // short and the card otherwise ended narrower than the ones above.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Theme.Spacing.lg)
         .cardSurface()
     }

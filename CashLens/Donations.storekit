@@ -21,7 +21,7 @@
       "localizations" : [
         {
           "description" : "Help fuel development with a coffee!",
-          "displayName" : "Coffee for the Coder\n",
+          "displayName" : "Coffee for the Coder",
           "locale" : "en_US"
         }
       ],
@@ -36,7 +36,7 @@
       "localizations" : [
         {
           "description" : "Helps power new features and timely updates.",
-          "displayName" : "Lunch for the Library\n",
+          "displayName" : "Lunch for the Library",
           "locale" : "en_US"
         }
       ],
@@ -51,7 +51,7 @@
       "localizations" : [
         {
           "description" : "You're propelling CashLens to new heights :)",
-          "displayName" : "Fuel the Feature Rocket\n",
+          "displayName" : "Fuel the Feature Rocket",
           "locale" : "en_US"
         }
       ],

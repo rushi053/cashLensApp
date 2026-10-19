@@ -370,33 +370,7 @@ enum BackupImporter {
 
         context.perform {
             do {
-                // ATOMICITY: `wipeStore` marks deletions *in this
-                // context* (it deliberately avoids NSBatchDeleteRequest,
-                // which writes straight to the SQLite file the moment it
-                // executes). The wipe and the import below therefore
-                // commit — or fail — together in the single
-                // `context.save()`: an import error after the wipe can
-                // never leave the user with an empty store.
-                if mode == .replace {
-                    try wipeStore(context: context)
-                }
-
-                try importCustomCategories(preview.bundle.data.customCategories, context: context, summary: &summary)
-                try importExpenses(preview.bundle.data.expenses, context: context, summary: &summary)
-                try importSubscriptions(preview.bundle.data.subscriptions, context: context, summary: &summary)
-                try importBudgets(preview.bundle.data.budgets, context: context, summary: &summary)
-
-                if context.hasChanges {
-                    try context.save()
-                }
-
-                // Preference writes only after the data commit — same
-                // ordering rationale as the wipe above.
-                if mode == .replace {
-                    wipePreferences()
-                }
-                applyDeletedDefaults(preview.bundle.data.deletedDefaultCategories, summary: &summary)
-                applyPreferences(preview.bundle.preferences, summary: &summary)
+                try applyOnContext(preview, mode: mode, context: context, summary: &summary)
 
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .backupImportDidComplete, object: summary)
@@ -408,6 +382,46 @@ enum BackupImporter {
                 }
             }
         }
+    }
+
+    /// The store + preference work of `apply`, run on the caller's
+    /// context queue (`perform` / `performAndWait`). Factored out so
+    /// the Debug-only launch seeder can restore a demo backup
+    /// synchronously before the view models hydrate; `apply` is the
+    /// only production caller.
+    static func applyOnContext(
+        _ preview: Preview,
+        mode: Mode,
+        context: NSManagedObjectContext,
+        summary: inout ImportSummary
+    ) throws {
+        // ATOMICITY: `wipeStore` marks deletions *in this
+        // context* (it deliberately avoids NSBatchDeleteRequest,
+        // which writes straight to the SQLite file the moment it
+        // executes). The wipe and the import below therefore
+        // commit — or fail — together in the single
+        // `context.save()`: an import error after the wipe can
+        // never leave the user with an empty store.
+        if mode == .replace {
+            try wipeStore(context: context)
+        }
+
+        try importCustomCategories(preview.bundle.data.customCategories, context: context, summary: &summary)
+        try importExpenses(preview.bundle.data.expenses, context: context, summary: &summary)
+        try importSubscriptions(preview.bundle.data.subscriptions, context: context, summary: &summary)
+        try importBudgets(preview.bundle.data.budgets, context: context, summary: &summary)
+
+        if context.hasChanges {
+            try context.save()
+        }
+
+        // Preference writes only after the data commit — same
+        // ordering rationale as the wipe above.
+        if mode == .replace {
+            wipePreferences()
+        }
+        applyDeletedDefaults(preview.bundle.data.deletedDefaultCategories, summary: &summary)
+        applyPreferences(preview.bundle.preferences, summary: &summary)
     }
 
     // MARK: - Receipt restore (archive only)
