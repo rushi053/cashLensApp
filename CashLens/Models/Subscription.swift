@@ -62,7 +62,18 @@ struct Subscription: Identifiable, Codable, Equatable {
         self.category = category
         self.customCategoryId = customCategoryId
         self.notes = notes
-        self.nextDueDate = Self.calculateNextDueDate(from: startDate, frequency: frequency)
+        self.nextDueDate = Self.firstDueDate(startDate: startDate, frequency: frequency)
+    }
+
+    /// Due date for a newly added subscription. The start date counts as
+    /// the first payment, so a start today or later bills one cycle after
+    /// it. A start in the past ("Netflix since January") is due on its
+    /// first anchored occurrence from today on, instead of arriving
+    /// months overdue.
+    static func firstDueDate(startDate: Date, frequency: Frequency, now: Date = Date(), calendar: Calendar = .current) -> Date {
+        let startOfToday = calendar.startOfDay(for: now)
+        let reference = max(startDate, startOfToday.addingTimeInterval(-1))
+        return nextOccurrence(after: reference, anchor: startDate, frequency: frequency, calendar: calendar)
     }
     
     // Calculate the next due date based on frequency
@@ -126,13 +137,11 @@ struct Subscription: Identifiable, Codable, Equatable {
     }
     
     /// Advance to the next due date after a payment. Anchor-based (see
-    /// `nextOccurrence`): the result is the first startDate-anchored
-    /// occurrence strictly after both the current due date and now, so
-    /// paying early advances exactly one cycle and paying an overdue
-    /// bill skips straight past all missed cycles to the next future one.
+    /// `nextOccurrence`): exactly one cycle per payment, so a bill that
+    /// missed two cycles stays overdue (with Mark paid) until each missed
+    /// cycle is paid.
     mutating func updateNextDueDate() {
-        let reference = max(Date(), nextDueDate)
-        self.nextDueDate = Self.nextOccurrence(after: reference, anchor: startDate, frequency: frequency)
+        self.nextDueDate = Self.nextOccurrence(after: nextDueDate, anchor: startDate, frequency: frequency)
     }
     
     // Check if the subscription is due
@@ -148,24 +157,33 @@ struct Subscription: Identifiable, Codable, Equatable {
         return Date() >= reminderDate && Date() < nextDueDate
     }
     
-    // Convert to Expense when due
-    func toExpense() -> Expense {
+    /// The payment for the current cycle. An overdue cycle is logged on
+    /// its due date so it lands in the month it was charged.
+    func toExpense(now: Date = Date()) -> Expense {
         return Expense(
             title: name,
             amount: amount,
             currency: currency,
-            date: Date(), // Use current date when creating the expense
+            date: min(now, nextDueDate),
             category: category,
             notes: notes,
             customCategoryId: customCategoryId
         )
     }
     
-    // Days until next payment (can be negative for overdue)
+    /// Calendar days until the next payment: 0 on the due day, negative
+    /// once overdue, independent of the time of day stored with the date.
     var daysUntilNext: Int {
         let calendar = Calendar.current
-        let components = calendar.dateComponents([.day], from: Date(), to: nextDueDate)
+        let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: nextDueDate))
         return components.day ?? 0
+    }
+
+    /// The renewal a reminder should point at. An overdue cycle has no
+    /// future reminder of its own, so reminders follow the next anchored
+    /// renewal instead of stopping after one cycle.
+    func reminderTargetDate(now: Date = Date()) -> Date {
+        nextDueDate > now ? nextDueDate : Self.nextOccurrence(after: now, anchor: startDate, frequency: frequency)
     }
     
     // PERF: Both of these formatters used to be allocated fresh on

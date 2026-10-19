@@ -9,7 +9,7 @@ import SwiftUI
 ///   monthly (otherwise it repeats the amount).
 /// - Mark-as-Paid is a compact inline action, not a full-row button — the row
 ///   rhythm stays tight whether the sub is due or not.
-/// - Long-press context menu provides pause / resume / mark-paid / delete.
+/// - Long-press context menu provides pause / resume / mark-paid / skip / delete.
 ///   (No `.swipeActions` — rows live in a `LazyVStack`, not a `List`, so
 ///   swipe actions silently never render there.)
 struct SubscriptionRow: View {
@@ -18,6 +18,7 @@ struct SubscriptionRow: View {
     let onToggle: () -> Void
     let onEdit: () -> Void
     let onMarkPaid: (() -> Void)?
+    var onSkip: (() -> Void)? = nil
     let onDelete: (() -> Void)?
 
     // MARK: - Derived
@@ -243,6 +244,12 @@ struct SubscriptionRow: View {
         if subscription.isActive && subscription.daysUntilNext <= 0, let onMarkPaid {
             Button(action: onMarkPaid) {
                 Label("Mark as Paid", systemImage: "checkmark.circle")
+            }
+        }
+
+        if subscription.isActive && subscription.daysUntilNext <= 0, let onSkip {
+            Button(action: onSkip) {
+                Label("Skip This Payment", systemImage: "forward.end")
             }
         }
 
