@@ -68,6 +68,7 @@ struct AppearanceStudioView: View {
             .background(Color.systemBackground)
         }
         .background(Color.systemBackground)
+        .presentationDragIndicator(.visible)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomActionBar
         }
@@ -517,7 +518,7 @@ struct AppearanceStudioView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
-                .foregroundColor(.white)
+                .foregroundColor(isInteractive ? .white : .secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, Theme.Spacing.lg)
                 .background(
@@ -539,13 +540,17 @@ struct AppearanceStudioView: View {
             .padding(.top, Theme.Spacing.md)
             .padding(.bottom, Theme.Spacing.sm)
         }
-        .background(.ultraThinMaterial)
+        // Regular (not ultra-thin) so the swatch grid scrolling under
+        // the bar doesn't bleed colour into it on wide sheets.
+        .background(.regularMaterial)
     }
 
     private func barFill(isLocked: Bool, hasChange: Bool) -> AnyShapeStyle {
         if isLocked { return AnyShapeStyle(LinearGradient.appDuotone) }
         if hasChange { return AnyShapeStyle(previewTheme.heroGradient) }
-        return AnyShapeStyle(Color.gray.opacity(0.35))
+        // Idle: opaque neutral so it reads as a quiet status chip rather
+        // than a washed-out button over whatever scrolls beneath it.
+        return AnyShapeStyle(Color.chipFill)
     }
 
     // MARK: - Tap handling

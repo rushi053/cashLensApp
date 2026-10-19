@@ -158,6 +158,7 @@ struct ProfileView: View {
             }
         }
         .background(Color.systemBackground)
+        .statusBarScrim()
         .alert(item: $activeAlert) { alert in
             switch alert {
             case .clearAllData:
@@ -720,11 +721,9 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showingSubscriptions) {
             // No NavigationView wrapper — `SubscriptionsView` ships
-            // its own custom page header and presents its own
-            // Add/Edit sheets internally. Wrapping it would just
-            // stack an empty nav-bar shelf above the title.
+            // the shared `SheetHeader` (same as Budgets) and presents
+            // its own Add/Edit sheets internally.
             SubscriptionsView()
-                .presentationDragIndicator(.visible)
         }
     }
 
@@ -1005,6 +1004,7 @@ struct ProfileView: View {
                 Text("Your data lives only on this device. Regular exports keep your history safe.")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, Theme.Spacing.md)
             .padding(.top, Theme.Spacing.xs)
@@ -1308,6 +1308,10 @@ struct ProfileView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .lineLimit(2)
+                        // Wrap at the final width: beside the ring and a
+                        // Spacer the text was measured one line tall and
+                        // truncated ("…device….") in a ~430pt column.
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()

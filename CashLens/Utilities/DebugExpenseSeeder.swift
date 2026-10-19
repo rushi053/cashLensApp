@@ -76,6 +76,45 @@ enum DebugExpenseSeeder {
         print("DebugExpenseSeeder: launch-argument seed inserted \(summary.insertedExpenses) expenses in \(String(format: "%.2f", summary.elapsed))s.")
     }
 
+    /// `-CLSeedBackupFile <path>` (argument-domain `UserDefaults` key).
+    static let backupFileLaunchArgumentKey = "CLSeedBackupFile"
+
+    /// Screenshot-suite hook: replace the store and preferences with the
+    /// `.cashlens.json` backup at `path` — normally
+    /// `Marketing/ScreenshotSampleData/CashLens-Screenshot-Demo.cashlens.json`
+    /// regenerated for today — so the App Store captures show the real
+    /// demo dataset instead of rows logged through the UI. Simulator
+    /// processes read host paths directly, so the file never has to be
+    /// bundled. Synchronous (`performAndWait`) for the same reason as
+    /// the stress seeder: the view models hydrate right after this.
+    /// Always replaces, so every launch with the argument is identical.
+    static func restoreBackupFromLaunchArgumentsIfRequested(container: NSPersistentContainer) {
+        guard let path = UserDefaults.standard.string(forKey: backupFileLaunchArgumentKey),
+              !path.isEmpty else { return }
+        let started = Date()
+        do {
+            let preview = try BackupImporter.preview(
+                url: URL(fileURLWithPath: path),
+                fallbackCurrency: .usd
+            )
+            let context = container.newBackgroundContext()
+            context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+            var summary = BackupImporter.ImportSummary(mode: .replace, format: preview.format)
+            var failure: Error?
+            context.performAndWait {
+                do {
+                    try BackupImporter.applyOnContext(preview, mode: .replace, context: context, summary: &summary)
+                } catch {
+                    failure = error
+                }
+            }
+            if let failure { throw failure }
+            print("DebugExpenseSeeder: restored demo backup (\(preview.bundle.data.expenses.count) expenses, \(preview.bundle.data.budgets.count) budgets, \(preview.bundle.data.subscriptions.count) subscriptions) in \(String(format: "%.2f", Date().timeIntervalSince(started)))s.")
+        } catch {
+            print("DebugExpenseSeeder: demo backup restore failed — \(error)")
+        }
+    }
+
     /// Diagnostics entry point. Work happens on a background context;
     /// `completion` is delivered on the main queue after the view
     /// context has merged the inserts and the reload notification has

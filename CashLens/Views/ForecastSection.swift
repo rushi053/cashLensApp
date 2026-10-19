@@ -143,7 +143,7 @@ struct ForecastSection: View {
         }
         .padding(4)
         .background(
-            Capsule().fill(Color.tertiarySystemBackground)
+            Capsule().fill(Color.chipFill)
         )
         .overlay(
             Capsule().stroke(Color.secondary.opacity(0.12), lineWidth: 1)
@@ -171,7 +171,7 @@ struct ForecastSection: View {
                     .padding(.horizontal, Theme.Spacing.sm)
                     .padding(.vertical, 3)
                     .background(
-                        Capsule().fill(Color.tertiarySystemBackground)
+                        Capsule().fill(Color.chipFill)
                     )
             }
 
@@ -446,8 +446,10 @@ struct ForecastSection: View {
     }
 
     private var teaserPreviewRow: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            teaserPreviewPill(icon: "calendar", label: "30 / 60 / 90d")
+        // Flow layout: three pills don't fit one row at iPhone width and
+        // were truncating to "Subs inc…" / "Confide…".
+        ChipFlowLayout(spacing: Theme.Spacing.sm, rowSpacing: Theme.Spacing.sm) {
+            teaserPreviewPill(icon: "calendar", label: "30 / 60 / 90 days")
             teaserPreviewPill(icon: "arrow.triangle.2.circlepath", label: "Subs included")
             teaserPreviewPill(icon: "scope", label: "Confidence band")
         }

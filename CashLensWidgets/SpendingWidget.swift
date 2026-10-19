@@ -143,9 +143,17 @@ struct SpendingWidget: Widget {
         }
         .configurationDisplayName("Spending Snapshot")
         .description("Your CashLens spend at a glance.")
-        // `.systemExtraLarge` is iPad-only; WidgetKit simply never offers
-        // it on iPhone, so listing it here is safe for a universal binary.
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
+        // WidgetKit only offers the extra-large families on devices with
+        // room for them, so listing them is safe for a universal binary.
+        .supportedFamilies(Self.families)
+    }
+
+    private static var families: [WidgetFamily] {
+        var families: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge]
+        if #available(iOS 27.0, *) {
+            families.append(.systemExtraLargePortrait)
+        }
+        return families
     }
 }
 
@@ -164,7 +172,12 @@ struct SpendingEntryView: View {
         case .systemMedium:     SpendingMediumView(entry: entry)
         case .systemLarge:      SpendingLargeView(entry: entry)
         case .systemExtraLarge: SpendingExtraLargeView(entry: entry)
-        default:                SpendingSmallView(entry: entry)
+        default:
+            if #available(iOS 27.0, *), family == .systemExtraLargePortrait {
+                SpendingExtraLargeView(entry: entry, isPortrait: true)
+            } else {
+                SpendingSmallView(entry: entry)
+            }
         }
     }
 }
@@ -538,9 +551,9 @@ struct SpendingLargeView: View {
     }
 }
 
-// MARK: - Extra Large (iPad)
+// MARK: - Extra Large (iPad, iPhone Duo inner display)
 
-/// iPad-only 4×2 surface. A genuine two-column design rather than a
+/// 4×2 surface. A genuine two-column design rather than a
 /// stretched Large:
 ///
 ///   ┌────────────────────────┬────────────────────────────────┐
@@ -555,9 +568,13 @@ struct SpendingLargeView: View {
 ///
 /// The two columns split the width evenly (each is roughly one Large
 /// widget wide), so nothing depends on a fixed point size.
+///
+/// `isPortrait` (Extra Large Portrait) stacks the same two halves:
+/// hero and sparkline on top, categories below.
 struct SpendingExtraLargeView: View {
     @Environment(\.colorScheme) private var scheme
     let entry: SpendingEntry
+    var isPortrait = false
 
     var body: some View {
         let theme = WidgetTheme.resolve(id: entry.snapshot.activeThemeId)
@@ -569,91 +586,110 @@ struct SpendingExtraLargeView: View {
         // percentages add up to ~100% even when a refund makes `agg.net`
         // smaller than the biggest single category.
         let shareBase = max(1, agg.topCategories.reduce(0) { $0 + abs($1.total) })
+        if isPortrait {
+            VStack(alignment: .leading, spacing: 16) {
+                summaryColumn(agg: agg, primary: primary)
+                Divider().opacity(0.22)
+                categoryColumn(agg: agg, primary: primary, peak: peak, shareBase: shareBase, theme: theme)
+            }
+        } else {
+            HStack(alignment: .top, spacing: 20) {
+                summaryColumn(agg: agg, primary: primary)
+                Divider().opacity(0.22)
+                categoryColumn(agg: agg, primary: primary, peak: peak, shareBase: shareBase, theme: theme)
+            }
+        }
+    }
 
-        HStack(alignment: .top, spacing: 20) {
-            // Left column: hero total + 7-day sparkline + footer.
-            VStack(alignment: .leading, spacing: 10) {
+    /// Hero total + 7-day sparkline + footer.
+    private func summaryColumn(agg: WidgetSnapshot.TimeframeAggregate, primary: Color) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            WidgetSectionHeader(
+                icon: "creditcard.fill",
+                label: entry.timeframe.label,
+                color: primary
+            )
+
+            Text(WidgetMoneyFormatter.full(agg.net, currencyCode: entry.snapshot.currencyCode))
+                .font(.system(size: 40, weight: .bold, design: .rounded))
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+
+            HStack(spacing: 6) {
+                WidgetDeltaPill(current: agg.net, previous: agg.previousNet, compact: false)
+                Text(entry.timeframe.previousLabel)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 6)
+
+            WidgetSectionHeader(
+                icon: "chart.bar.fill",
+                label: "Last 7 days",
+                color: primary
+            )
+
+            SpendingSparkline(
+                days: entry.snapshot.dailyNetLast7Days ?? [],
+                accent: primary,
+                currencyCode: entry.snapshot.currencyCode
+            )
+            .frame(maxHeight: .infinity)
+
+            HStack(spacing: 5) {
+                Image(systemName: "creditcard.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("\(agg.expenseCount) \(agg.expenseCount == 1 ? "expense" : "expenses") · Updated ")
+                    + Text(entry.snapshot.generatedAt, style: .relative)
+            }
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Full category breakdown.
+    private func categoryColumn(
+        agg: WidgetSnapshot.TimeframeAggregate,
+        primary: Color,
+        peak: Double,
+        shareBase: Double,
+        theme: WidgetTheme
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
                 WidgetSectionHeader(
-                    icon: "creditcard.fill",
-                    label: entry.timeframe.label,
+                    icon: "square.grid.2x2.fill",
+                    label: "Categories",
                     color: primary
                 )
-
-                Text(WidgetMoneyFormatter.full(agg.net, currencyCode: entry.snapshot.currencyCode))
-                    .font(.system(size: 40, weight: .bold, design: .rounded))
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    WidgetDeltaPill(current: agg.net, previous: agg.previousNet, compact: false)
-                    Text(entry.timeframe.previousLabel)
+                Spacer(minLength: 0)
+                if !agg.topCategories.isEmpty {
+                    Text("\(agg.topCategories.count) shown")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 6)
-
-                WidgetSectionHeader(
-                    icon: "chart.bar.fill",
-                    label: "Last 7 days",
-                    color: primary
-                )
-
-                SpendingSparkline(
-                    days: entry.snapshot.dailyNetLast7Days ?? [],
-                    accent: primary,
-                    currencyCode: entry.snapshot.currencyCode
-                )
-                .frame(maxHeight: .infinity)
-
-                HStack(spacing: 5) {
-                    Image(systemName: "creditcard.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text("\(agg.expenseCount) \(agg.expenseCount == 1 ? "expense" : "expenses") · Updated ")
-                        + Text(entry.snapshot.generatedAt, style: .relative)
-                }
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(.tertiary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Divider().opacity(0.22)
-
-            // Right column: full category breakdown.
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline) {
-                    WidgetSectionHeader(
-                        icon: "square.grid.2x2.fill",
-                        label: "Categories",
-                        color: primary
-                    )
-                    Spacer(minLength: 0)
-                    if !agg.topCategories.isEmpty {
-                        Text("\(agg.topCategories.count) shown")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if agg.topCategories.isEmpty {
-                    Spacer(minLength: 0)
-                    Text("No expenses in \(entry.timeframe.label.lowercased()).")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text("Open CashLens to log one.")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                    Spacer(minLength: 0)
-                } else {
-                    ForEach(Array(agg.topCategories.prefix(6).enumerated()), id: \.offset) { _, slice in
-                        categoryRow(slice: slice, peak: peak, shareBase: shareBase, theme: theme)
-                    }
-                    Spacer(minLength: 0)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if agg.topCategories.isEmpty {
+                Spacer(minLength: 0)
+                Text("No expenses in \(entry.timeframe.label.lowercased()).")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text("Open CashLens to log one.")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            } else {
+                ForEach(Array(agg.topCategories.prefix(6).enumerated()), id: \.offset) { _, slice in
+                    categoryRow(slice: slice, peak: peak, shareBase: shareBase, theme: theme)
+                }
+                Spacer(minLength: 0)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

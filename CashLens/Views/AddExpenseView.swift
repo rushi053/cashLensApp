@@ -377,9 +377,6 @@ struct AddExpenseView: View {
             }
         }
         .navigationBarHidden(true)
-        // Duo 27.1: single-Close sheet keeps a horizontal bar on the
-        // outer display. No-op on today's SDK.
-        .duoHorizontalToolbar()
         // App-wide sheet convention: visible grab handle on every
         // custom-chrome sheet, with the header giving it clear air.
         .presentationDragIndicator(.visible)
@@ -992,20 +989,36 @@ struct AddExpenseView: View {
                 .buttonStyle(.plain)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Theme.Spacing.md + 2) {
-                    ForEach(categoryEntries) { entry in
-                        switch entry {
-                        case .defaultCat(let category):
-                            categoryGridCell(category).frame(width: 70)
-                        case .customCat(let category):
-                            customCategoryGridCell(category).frame(width: 70)
+            ScrollViewReader { scrollProxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Theme.Spacing.md + 2) {
+                        ForEach(categoryEntries) { entry in
+                            switch entry {
+                            case .defaultCat(let category):
+                                categoryGridCell(category).frame(width: 70).id(entry.id)
+                            case .customCat(let category):
+                                customCategoryGridCell(category).frame(width: 70).id(entry.id)
+                            }
                         }
+                        browseCategoriesTile.frame(width: 70)
                     }
-                    browseCategoriesTile.frame(width: 70)
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, Theme.Spacing.xs)
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, Theme.Spacing.xs)
+                // Editing an existing expense: bring its category into
+                // view. The row is ordered by usage, so a less-used
+                // category (the one the row is highlighting) often sat
+                // off screen and the editor looked like nothing was
+                // selected. One-shot, after the entries have been laid out.
+                // No anchor: scroll the minimum needed. Centering a category
+                // that is already on screen nudged the row a few points and
+                // left the first cell's label clipped at the leading edge.
+                .onChange(of: categoryEntries.count, initial: true) { _, _ in
+                    guard isEditing, let id = selectedCategoryEntryId else { return }
+                    DispatchQueue.main.async {
+                        scrollProxy.scrollTo(id)
+                    }
+                }
             }
         }
         // PERF: recompute the memoized entries only when the category
@@ -1042,6 +1055,16 @@ struct AddExpenseView: View {
             case .customCat(let c):  return "c_\(c.id.uuidString)"
             }
         }
+    }
+
+    /// `CategoryEntry.id` of the current selection, for the
+    /// scroll-into-view on edit above.
+    private var selectedCategoryEntryId: String? {
+        if selectedCategory == .custom {
+            guard let id = selectedCustomCategoryId else { return nil }
+            return "c_\(id.uuidString)"
+        }
+        return "d_\(selectedCategory.rawValue)"
     }
 
     /// Categories ordered by recent usage frequency (descending).
@@ -3404,7 +3427,7 @@ struct AddExpenseView: View {
             .disabled(!isFormValid || isSaving)
             .padding(.horizontal, Theme.Spacing.xxl)
             .padding(.top, Theme.Spacing.lg)
-            .padding(.bottom, 40)
+            .stickyCTABottomPadding()
             .background(Color(uiColor: .systemBackground))
         }
     }

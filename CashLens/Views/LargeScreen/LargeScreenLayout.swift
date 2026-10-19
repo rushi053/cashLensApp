@@ -61,6 +61,14 @@ enum LargeScreenLayout {
 /// Two equal-width columns when there is room, one column otherwise.
 /// Collapses to a single column at accessibility Dynamic Type sizes
 /// regardless of width — a 300pt column cannot hold AX5 text.
+///
+/// On a partially folded iPhone Duo (book pose) the hinge runs down the
+/// middle of the *screen*, but the vertical system bar on the trailing
+/// edge shifts the content area off-centre, so equal columns would put
+/// the right column's first ~30pt under the fold. When an active
+/// vertical division crosses this view the gutter is placed on the
+/// hinge instead (`DuoLayoutSupport.columnSplit`); everywhere else the
+/// columns stay equal.
 struct LargeScreenColumns<Leading: View, Trailing: View>: View {
     let twoColumns: Bool
     let spacing: CGFloat
@@ -68,6 +76,7 @@ struct LargeScreenColumns<Leading: View, Trailing: View>: View {
     @ViewBuilder let trailing: () -> Trailing
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var split = DuoLayoutSupport.ColumnSplit.equal
 
     init(
         twoColumns: Bool,
@@ -87,11 +96,17 @@ struct LargeScreenColumns<Leading: View, Trailing: View>: View {
 
     var body: some View {
         if showsTwoColumns {
-            HStack(alignment: .top, spacing: spacing) {
+            HStack(alignment: .top, spacing: split.gutter ?? spacing) {
                 leading()
                     .frame(maxWidth: .infinity, alignment: .top)
+                    .frame(width: split.leadingWidth)
                 trailing()
                     .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .onGeometryChange(for: DuoLayoutSupport.ColumnSplit.self) { proxy in
+                DuoLayoutSupport.columnSplit(in: proxy, spacing: spacing)
+            } action: { newValue in
+                split = newValue
             }
         } else {
             VStack(spacing: spacing) {

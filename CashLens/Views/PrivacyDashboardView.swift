@@ -50,6 +50,7 @@ struct PrivacyDashboardView: View {
             }
         }
         .background(Color.systemBackground)
+        .presentationDragIndicator(.visible)
         .sheet(isPresented: $showingExportSheet) {
             ExportDataView()
                 .environmentObject(viewModel)

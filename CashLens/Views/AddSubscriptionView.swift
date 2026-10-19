@@ -914,7 +914,7 @@ struct AddSubscriptionView: View {
             .disabled(!isValid || isSaving)
             .padding(.horizontal, Theme.Spacing.xxl)
             .padding(.top, Theme.Spacing.lg)
-            .padding(.bottom, 40)
+            .stickyCTABottomPadding()
             .background(Color(uiColor: .systemBackground))
         }
     }

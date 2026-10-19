@@ -308,10 +308,15 @@ struct ExportDataView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
+                    // Flow, not HStack: "Complete Backup" + RECOMMENDED
+                    // doesn't fit one row on iPhone and was breaking the
+                    // title itself onto two lines. Now the badge drops
+                    // under the title instead.
+                    ChipFlowLayout(spacing: 6, rowSpacing: 4) {
                         Text(format.rawValue)
                             .font(.system(size: 17, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
+                            .lineLimit(1)
                         if format == .json {
                             Text("RECOMMENDED")
                                 .font(.system(size: 9, weight: .heavy))

@@ -203,6 +203,7 @@ struct TodayView: View {
             }
         }
         .background(Color.systemBackground)
+        .statusBarScrim()
         .onAppear {
             if !animateSections {
                 withAnimation { animateSections = true }
@@ -259,12 +260,9 @@ struct TodayView: View {
         }
         .sheet(isPresented: $showingSubscriptions) {
             // No NavigationView wrapper — `SubscriptionsView` ships
-            // its own custom page header (title + Add) and presents
-            // its own Add/Edit sheets internally, so wrapping it
-            // here would only stack an empty nav bar on top and
-            // re-introduce the legacy ~50pt gap above the title.
+            // the shared `SheetHeader` (same as Budgets) and presents
+            // its own Add/Edit sheets internally.
             SubscriptionsView()
-                .presentationDragIndicator(.visible)
         }
         .sheet(item: $editingExpense) { expense in
             AddExpenseView(
@@ -1618,6 +1616,10 @@ struct TodayView: View {
                 .monospacedDigit()
                 .contentTransition(.numericText())
         }
+        // Never wrap to "24-day / streak": in a narrow column (iPhone
+        // Duo half-open right pane) the HStack squeezed the chip first.
+        .lineLimit(1)
+        .fixedSize()
         .foregroundColor(.orange)
         .padding(.horizontal, Theme.Spacing.sm + 2)
         .padding(.vertical, 4)
@@ -1631,7 +1633,10 @@ struct TodayView: View {
         if let selected = selectedWeekDay {
             return Self.selectedDayFormatter.string(from: selected.date)
         }
-        return "This week"
+        // The strip is a rolling 7-day window (`computeLast7Days`), not
+        // the calendar week the Summary card's "This Week" period uses.
+        // Both said "This week" with two different totals on one screen.
+        return "Last 7 days"
     }
 
     private var weekStripHeaderAmount: Double? {
@@ -1863,7 +1868,12 @@ struct TodayView: View {
                         customCategories: categoryMap,
                         now: now
                     )
-                    let insight = TodayInsight.pick(from: expensesSnapshot, verdict: v, now: now)
+                    let insight = TodayInsight.pick(
+                        from: expensesSnapshot,
+                        verdict: v,
+                        customCategories: categoryMap,
+                        now: now
+                    )
                     let summaryStats = SummaryStats.compute(
                         expenses: expensesSnapshot,
                         customCategories: summaryCategoryMap,
@@ -2141,13 +2151,15 @@ struct SummaryStats: Sendable, Equatable {
         now: Date
     ) -> SummaryStats {
         let range = period.dateRange(now: now)
-        // Refunds (negative signedAmount) deliberately excluded from
-        // both the total and the top-category breakdown — a "Top
+        let inRange = expenses.filter { $0.date >= range.start && $0.date < range.end }
+        // Total is net of refunds so it agrees with the hero's "spent
+        // this month" and Insights' TOTAL SPENT for the same period
+        // (both net). Showing a gross figure here put two different
+        // "This Month" totals on one screen whenever a refund existed.
+        let total = max(0, inRange.reduce(0) { $0 + $1.signedAmount })
+        // Refunds stay out of the top-category breakdown — a "Top
         // Category" of "Refunds" would read as celebratory nonsense.
-        let filtered = expenses.filter {
-            $0.date >= range.start && $0.date < range.end && $0.signedAmount > 0
-        }
-        let total = filtered.reduce(0) { $0 + $1.signedAmount }
+        let filtered = inRange.filter { $0.signedAmount > 0 }
 
         // Aggregate by display key (category name) so default and
         // custom categories with the same display name collapse
@@ -2172,11 +2184,14 @@ struct SummaryStats: Sendable, Equatable {
         }
 
         let top = byCategory.max(by: { $0.value.amount < $1.value.amount })
-        let topPct = total > 0 ? ((top?.value.amount ?? 0) / total) : 0
+        // Share of gross spend, so the percentage can't exceed 100 when
+        // refunds pull the net total down.
+        let gross = filtered.reduce(0) { $0 + $1.signedAmount }
+        let topPct = gross > 0 ? ((top?.value.amount ?? 0) / gross) : 0
 
         return SummaryStats(
             totalSpent: total,
-            transactionCount: filtered.count,
+            transactionCount: inRange.count,
             topCategoryName: top?.key,
             topCategoryAmount: top?.value.amount ?? 0,
             topCategoryPercentage: topPct,
@@ -2548,9 +2563,12 @@ struct TodayInsight: Sendable, Equatable {
 
     @MainActor var tint: Color { tintKind.color }
 
+    /// `customCategories` resolves a custom expense's real category name
+    /// in the "biggest expense" line (the enum alone prints "Custom").
     static func pick(
         from expenses: [Expense],
         verdict: TodayVerdict,
+        customCategories: [UUID: (name: String, color: String)] = [:],
         now: Date
     ) -> TodayInsight? {
         guard !expenses.isEmpty else {
@@ -2617,10 +2635,18 @@ struct TodayInsight: Sendable, Equatable {
             .filter { $0.date >= monthInterval.start && $0.date < monthInterval.end }
             .max(by: { $0.signedAmount < $1.signedAmount })
         if let biggest = monthMax {
+            let categoryName: String
+            if biggest.category == .custom,
+               let id = biggest.customCategoryId,
+               let custom = customCategories[id] {
+                categoryName = custom.name
+            } else {
+                categoryName = biggest.category.displayName
+            }
             return TodayInsight(
                 icon: "chart.line.uptrend.xyaxis",
                 headline: "Biggest expense this month",
-                detail: "\(biggest.title) — \(biggest.category.displayName).",
+                detail: "\(biggest.title) — \(categoryName).",
                 tintKind: .primary
             )
         }
@@ -2656,6 +2682,9 @@ private struct ColdStartFillsScreenModifier: ViewModifier {
 /// user "this card is live, the app is working."
 private struct FirstRunSparkleIcon: View {
     @State private var pulse: Bool = false
+    /// Reduce Motion: the breathing loop is decorative, so it simply
+    /// doesn't start — the icon renders in its resting state.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -2670,9 +2699,9 @@ private struct FirstRunSparkleIcon: View {
                 .scaleEffect(pulse ? 1.06 : 1.0)
         }
         .animation(
-            .easeInOut(duration: 1.6).repeatForever(autoreverses: true),
+            reduceMotion ? nil : .easeInOut(duration: 1.6).repeatForever(autoreverses: true),
             value: pulse
         )
-        .onAppear { pulse = true }
+        .onAppear { if !reduceMotion { pulse = true } }
     }
 }

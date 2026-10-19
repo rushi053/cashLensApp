@@ -50,7 +50,7 @@ struct EvenColumnGrid<Content: View>: View {
     }
 
     /// Column gap, widened by the hinge gutter when a division region
-    /// is present (Duo 27.1; zero everywhere else).
+    /// is present (a partially folded iPhone Duo; zero everywhere else).
     private var effectiveColumnSpacing: CGFloat {
         columnSpacing + measurement.divisionGutter
     }
@@ -81,8 +81,6 @@ struct EvenColumnGrid<Content: View>: View {
             content()
         }
         .onGeometryChange(for: Measurement.self) { proxy in
-            // `DuoLayoutSupport.divisionGutter` is 0 on today's SDK and
-            // on every non-Duo device; see `DuoLayoutSupport.swift`.
             Measurement(
                 width: proxy.size.width,
                 divisionGutter: DuoLayoutSupport.divisionGutter(in: proxy)

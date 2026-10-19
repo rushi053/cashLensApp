@@ -90,10 +90,28 @@ struct AllExpensesView: View {
     }
     @State var viewMode: ViewMode = .list
 
+    /// Calendar mode's selected day, held here so it survives the
+    /// calendar moving between the stacked (compact) and side-by-side
+    /// (regular: month | day) layouts on a Duo fold or Split View resize.
+    @State var calendarSelectedDay: Date? = nil
+    /// The selected day's entries as aggregated by the calendar — the
+    /// regular-width detail pane renders these directly.
+    @State var calendarDayEntries: [Expense] = []
+
     /// Measured width of the regular-width pane container. Decides
     /// whether the filter rail (third region) is shown; see
     /// `AllExpensesView+LargeScreen.swift`. Never read on compact width.
     @State var largeScreenMeasuredWidth: CGFloat = 0
+
+    /// Ledger | editor geometry on a partially folded iPhone Duo (ledger
+    /// on one half, editor on the other); nil everywhere else so the
+    /// min/ideal/max frame below applies.
+    @State private var hingePaneSplit: DuoLayoutSupport.PaneSplit?
+    /// Measured ledger-column width on regular width. The bulk-select
+    /// action bar is confined to that column when it fits, instead of
+    /// floating across the editor pane (and, on a half-folded Duo,
+    /// across the hinge). Never read on compact width.
+    @State private var ledgerColumnWidth: CGFloat = 0
     /// Accessibility text sizes drop the rail (240pt cannot hold AX
     /// rows); the chip row comes back instead.
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
@@ -616,6 +634,9 @@ struct AllExpensesView: View {
                             selectedIds.removeAll()
                             isSelecting = false
                         }
+                        // The detail pane belongs to the new mode (day
+                        // list in calendar, summary in list).
+                        if showsEditorInDetailColumn { selectedExpense = nil }
                         viewMode = mode
                     }
                 } label: {
@@ -870,19 +891,38 @@ struct AllExpensesView: View {
                     // With the rail on screen the ledger may grow a
                     // little: the chip row is gone, so the extra width
                     // goes to row titles and amounts.
+                    // On a half-folded Duo the ledger instead runs
+                    // exactly to the hinge (one frame modifier either
+                    // way, so the list keeps its identity and scroll
+                    // position when the fold changes).
                     .frame(
-                        minWidth: 300,
-                        idealWidth: showsFilterRail ? 380 : 340,
-                        maxWidth: showsFilterRail ? 480 : 420
+                        minWidth: hingePaneSplit?.leadingWidth ?? 300,
+                        idealWidth: hingePaneSplit?.leadingWidth ?? (showsFilterRail ? 380 : 340),
+                        maxWidth: hingePaneSplit?.leadingWidth ?? (showsFilterRail ? 480 : 420)
                     )
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newValue in
+                        ledgerColumnWidth = newValue
+                    }
 
                 Divider()
 
                 editorDetailColumn
+                    .padding(.leading, hingePaneSplit?.trailingInset ?? 0)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.systemBackground)
             }
             .measureLayoutWidth($largeScreenMeasuredWidth)
+            .onGeometryChange(for: DuoLayoutSupport.PaneSplit?.self) { proxy in
+                DuoLayoutSupport.paneSplit(
+                    in: proxy,
+                    leadingOffset: showsFilterRail ? LargeScreenLayout.filterRailWidth + 1 : 0,
+                    minimum: 300,
+                    maximum: 560,
+                    minimumTrailing: 300
+                )
+            } action: { newValue in
+                hingePaneSplit = newValue
+            }
         } else if isRootTab {
             content()
         } else {
@@ -897,6 +937,12 @@ struct AllExpensesView: View {
     /// every compact-width case keep the sheet editor.
     var showsEditorInDetailColumn: Bool {
         isRootTab && horizontalSizeClass == .regular
+    }
+
+    /// The bulk bar needs ~400pt (label + three 56pt actions + padding)
+    /// before it can live inside the ledger column alone.
+    private var confinesBulkBarToLedger: Bool {
+        showsEditorInDetailColumn && ledgerColumnWidth >= 400
     }
 
     /// True while one of this view's own sheets is presented (they are
@@ -941,6 +987,11 @@ struct AllExpensesView: View {
                 // form at a readable measure, centred in the column.
                 .frame(maxWidth: LargeScreenLayout.editorMaxWidth)
                 .frame(maxWidth: .infinity)
+        } else if viewMode == .calendar {
+            // Calendar mode: month on the left, the picked day's
+            // expenses here. A row opens the editor in this pane;
+            // Save / Cancel returns to the day.
+            calendarDayPane
         } else {
             // No selection: the pane summarises what the ledger is
             // showing and carries the primary action, so the largest
@@ -1022,7 +1073,19 @@ struct AllExpensesView: View {
                     if viewMode == .calendar {
                         // First-class calendar mode — embedded month grid
                         // (no NavigationView / sheet chrome of its own).
-                        ExpenseCalendarView(isEmbedded: true)
+                        ExpenseCalendarView(
+                            isEmbedded: true,
+                            selection: $calendarSelectedDay,
+                            showsDayDetailInline: !showsEditorInDetailColumn,
+                            onSelectedDayEntries: showsEditorInDetailColumn
+                                ? { calendarDayEntries = $0 }
+                                : nil
+                        )
+                            .onChange(of: calendarSelectedDay) { _, _ in
+                                // Picking another day replaces the editor
+                                // with that day's list in the detail pane.
+                                if showsEditorInDetailColumn { selectedExpense = nil }
+                            }
                             .padding(.top, Theme.Spacing.sm)
                             .transition(.opacity)
                     } else {
@@ -1205,9 +1268,16 @@ struct AllExpensesView: View {
         .sheet(isPresented: $showingDateRangePicker) {
             dateRangeSheet
         }
-        .overlay(alignment: .bottom) {
+        .overlay(alignment: confinesBulkBarToLedger ? .bottomLeading : .bottom) {
             if isSelecting {
                 bulkActionBar
+                    // Regular width: sit over the ledger column only, so
+                    // the bar never floats across the editor pane or the
+                    // Duo hinge. Falls back to full width when the column
+                    // is too narrow for the three actions plus the label.
+                    .frame(width: confinesBulkBarToLedger ? ledgerColumnWidth : nil)
+                    .padding(.leading, confinesBulkBarToLedger && showsFilterRail
+                             ? LargeScreenLayout.filterRailWidth + 1 : 0)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -1312,6 +1382,10 @@ struct AllExpensesView: View {
 
     private var bulkActionBar: some View {
         let count = selectedIds.count
+        // PERF: build the visible-id set once per render. It was being
+        // rebuilt (250-row copy + Set) up to three times per checkbox tap.
+        let visibleIdCount = min(displayLimit, computedExpenses.count)
+        let allVisibleSelected = count == visibleIdCount && visibleIdCount > 0
         return HStack(spacing: Theme.Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(count) selected")
@@ -1321,14 +1395,15 @@ struct AllExpensesView: View {
                 Button {
                     HapticManager.shared.lightTap()
                     withAnimation(Theme.Motion.snappy) {
-                        if selectedIds.count == visibleSelectableExpenseIds.count {
+                        let visibleIds = visibleSelectableExpenseIds
+                        if selectedIds.count == visibleIds.count {
                             selectedIds.removeAll()
                         } else {
-                            selectedIds = visibleSelectableExpenseIds
+                            selectedIds = visibleIds
                         }
                     }
                 } label: {
-                    Text(selectedIds.count == visibleSelectableExpenseIds.count && !visibleSelectableExpenseIds.isEmpty
+                    Text(allVisibleSelected
                          ? "Clear all"
                          : "Select all visible")
                         .font(.caption)

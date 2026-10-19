@@ -28,7 +28,13 @@ import StoreKit
 ///     in two seconds — verdict hero + 7-day spark + recent + one
 ///     insight. No browsing controls; this is a status screen.
 struct MainTabView: View {
-    @StateObject var viewModel: ExpenseViewModel
+    /// PERF: a plain reference, deliberately not `@StateObject` /
+    /// `@ObservedObject`. `CashLensApp` owns the object; this body reads
+    /// no `@Published` value (the few reads live in action closures and
+    /// helper funcs), so subscribing here only re-ran the whole TabView
+    /// — and every tab root that takes closure props — on each save.
+    /// Children subscribe themselves via `@EnvironmentObject`.
+    let viewModel: ExpenseViewModel
     @EnvironmentObject private var categoryViewModel: CategoryViewModel
     /// Subscribed (not just declared) so the tab bar tint and any
     /// SwiftUI-side `.appPrimary` reads re-render the moment the user picks
@@ -60,6 +66,15 @@ struct MainTabView: View {
     /// frame of the animation) never re-evaluates this body.
     @State private var hasVerticalSystemBar = false
 
+    /// Apple's own signal for the same condition —
+    /// `EnvironmentValues.toolbarVerticalEdge` (iOS 27.1), fed by
+    /// `DuoLayoutSupport.VerticalToolbarProbe`. Also covers inner-display
+    /// Split View, where the left app's bar is on the *leading* edge and
+    /// the safe-area heuristic says no. False before 27.1.
+    @State private var systemReportsVerticalBar = false
+
+    private var barsAreVertical: Bool { systemReportsVerticalBar || hasVerticalSystemBar }
+
     /// Native one-tap rating sheet. `ReviewPromptManager` decides *when*
     /// to ask; this action shows Apple's in-app star prompt directly —
     /// no intermediate modal, so rating is a single tap.
@@ -80,7 +95,7 @@ struct MainTabView: View {
     private let tabBarHeight: CGFloat = 60
 
     init(viewModel: ExpenseViewModel) {
-        _viewModel = StateObject(wrappedValue: viewModel)
+        self.viewModel = viewModel
 
         // iOS 26+ uses the native Liquid Glass floating tab bar — no UITabBar
         // appearance customization needed (and we must NOT hide UITabBar).
@@ -380,9 +395,6 @@ struct MainTabView: View {
         // iOS 18+ API, so no availability gate is needed inside this
         // iOS 26-only path.
         .tabViewStyle(.sidebarAdaptable)
-        // Duo 27.1: tab bar compresses before the add action on the
-        // outer display's vertical bar. No-op on today's SDK.
-        .duoTabBarCompression()
         .tint(.appPrimary)
         .environment(\.bulkSelectionBinding, $isBulkSelecting)
         // Applied *inside* the `.sheet` modifiers below, so the tab
@@ -418,8 +430,8 @@ struct MainTabView: View {
                     // Duo outer display: the bar is a vertical strip on
                     // the trailing edge, so there is nothing at the
                     // bottom to clear — tuck into the corner instead.
-                    // (`hasVerticalSystemBar` is false on every iPhone.)
-                    .padding(.bottom, isRegularWidth ? 28 : (hasVerticalSystemBar ? 20 : 68))
+                    // (`barsAreVertical` is false on every iPhone.)
+                    .padding(.bottom, isRegularWidth ? 28 : (barsAreVertical ? 20 : 68))
                     .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -437,6 +449,14 @@ struct MainTabView: View {
         } action: { detected in
             if detected != hasVerticalSystemBar {
                 hasVerticalSystemBar = detected
+            }
+        }
+        // Official iOS 27.1 signal for the same thing (see
+        // `systemReportsVerticalBar`). `Color.clear` background: zero
+        // layout effect, no hit testing.
+        .background {
+            if #available(iOS 27.1, *) {
+                DuoLayoutSupport.VerticalToolbarProbe(isVertical: $systemReportsVerticalBar)
             }
         }
         .sheet(isPresented: $showingAddExpense) {

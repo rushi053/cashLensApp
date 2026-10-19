@@ -58,6 +58,7 @@ struct BudgetListView: View {
             }
         }
         .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        .presentationDragIndicator(.visible)
         .sheet(isPresented: $showingAddBudget) {
             BudgetSetupView()
                 .environmentObject(budgetViewModel)

@@ -160,19 +160,24 @@ struct CurrencyData {
         CurrencyData(code: "IMP", symbol: "£", name: "Manx Pound"),
         CurrencyData(code: "JEP", symbol: "£", name: "Jersey Pound"),
         CurrencyData(code: "GGP", symbol: "£", name: "Guernsey Pound"),
-        CurrencyData(code: "AOA", symbol: "Kz", name: "Angolan Kwanza"),
-        CurrencyData(code: "CDF", symbol: "FC", name: "Congolese Franc"),
-        CurrencyData(code: "GHS", symbol: "GH₵", name: "Ghanaian Cedi"),
-        CurrencyData(code: "KES", symbol: "KSh", name: "Kenyan Shilling"),
-        CurrencyData(code: "NGN", symbol: "₦", name: "Nigerian Naira"),
-        CurrencyData(code: "TZS", symbol: "TSh", name: "Tanzanian Shilling"),
-        CurrencyData(code: "UGX", symbol: "USh", name: "Ugandan Shilling"),
-        CurrencyData(code: "ZAR", symbol: "R", name: "South African Rand"),
-        CurrencyData(code: "ZMW", symbol: "ZK", name: "Zambian Kwacha"),
-        CurrencyData(code: "ZWL", symbol: "Z$", name: "Zimbabwean Dollar")
+        CurrencyData(code: "AOA", symbol: "Kz", name: "Angolan Kwanza")
     ]
     
+    /// PERF: O(1) lookup. `Currency.symbol` / `fractionDigits` hit this
+    /// per rendered row (ExpenseCard init + 2–3× inside
+    /// `formattedAmount`), so a ~170-element linear scan was running
+    /// several hundred times per Activity body. First code wins if the
+    /// table ever contains a duplicate, matching the old `.first` semantics.
+    private static let byCode: [String: CurrencyData] = {
+        var map: [String: CurrencyData] = [:]
+        map.reserveCapacity(allCurrencies.count)
+        for currency in allCurrencies where map[currency.code] == nil {
+            map[currency.code] = currency
+        }
+        return map
+    }()
+
     static func getCurrencyData(for code: String) -> CurrencyData? {
-        return allCurrencies.first { $0.code == code }
+        return byCode[code]
     }
 } 

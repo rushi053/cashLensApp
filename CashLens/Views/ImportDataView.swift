@@ -246,6 +246,9 @@ struct ImportDataView: View {
                     Image(systemName: icon)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.appPrimary)
+                        // Fixed slot so the three step titles line up
+                        // (symbol widths differ by several points).
+                        .frame(width: 18)
                     Text(title)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.primary)

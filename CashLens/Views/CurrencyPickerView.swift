@@ -104,6 +104,7 @@ struct CurrencyPickerView: View {
             }
         }
         .interactiveDismissDisabled(isInitialSetup)
+        .presentationDragIndicator(isInitialSetup ? .hidden : .visible)
         .onAppear { recentCurrencies = RecentCurrenciesStore.load() }
         // Disclosure alert before silently relabeling existing
         // money. Only presented when the user has data that will be

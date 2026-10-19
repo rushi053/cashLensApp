@@ -149,7 +149,7 @@ struct ProInsightsSection: View {
     }
 
     private var teaserPreviewRow: some View {
-        HStack(spacing: Theme.Spacing.md) {
+        ChipFlowLayout(spacing: Theme.Spacing.sm, rowSpacing: Theme.Spacing.sm) {
             teaserPreviewPill(icon: "calendar.day.timeline.left", label: "Daily pace")
             teaserPreviewPill(icon: "bolt.fill", label: "Velocity")
             teaserPreviewPill(icon: "chart.bar.xaxis", label: "YoY")

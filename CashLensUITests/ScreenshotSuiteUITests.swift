@@ -23,6 +23,11 @@
 //                       `UIDevice.current.name`.
 //    CL_ORIENTATION     "portrait" (default) or "landscape".
 //    CL_SCREENSHOT_DIR  Host directory to also write PNGs into.
+//    CL_SEED_FILE       Host path of a `.cashlens.json` backup; passed to
+//                       the app as `-CLSeedBackupFile` (Debug builds
+//                       replace the store with it before the first frame).
+//                       Regenerate `Marketing/ScreenshotSampleData/` first
+//                       so the dates are relative to today.
 //
 //  Launch arguments the suite passes to the app:
 //
@@ -113,6 +118,10 @@ final class ScreenshotSuiteUITests: XCTestCase {
     func testCoreScreens() throws {
         app.launchArguments += [
             "-hasCompletedOnboarding", "YES",
+            // Never-launched installs reset the currency-picker flag in
+            // `checkFirstLaunch`; marking the install as launched keeps
+            // the Currency sheet out of a fresh simulator's captures.
+            "-hasLaunchedBefore", "YES",
             "-hasShownCurrencyPicker", "YES",
             // Post-value auto paywall fires on the 10th logged expense;
             // repeated runs on one simulator could cross that mid-walk.
@@ -120,6 +129,12 @@ final class ScreenshotSuiteUITests: XCTestCase {
             "-UITestSeedDemoData", "YES",
             "-UITestResetState", "YES"
         ]
+        // Debug-only app hook (`DebugExpenseSeeder`): replace the store
+        // with the marketing demo backup so the captures show real data.
+        // Simulator apps read host paths directly.
+        if let seedFile = ProcessInfo.processInfo.environment["CL_SEED_FILE"], !seedFile.isEmpty {
+            app.launchArguments += ["-CLSeedBackupFile", seedFile]
+        }
         app.launch()
         XCTAssertTrue(waitForTabBar(), "Main tab shell did not appear after launch")
         settle(1.5)
@@ -146,6 +161,14 @@ final class ScreenshotSuiteUITests: XCTestCase {
         shot(.activity)
 
         selectTab("Insights")
+        settle(1.0)
+        // Insights remembers its own period and defaults to Today; the
+        // month view is the one worth showing (trend, donut, heatmap
+        // all populated by the demo dataset).
+        let monthChip = app.buttons["This Month"].firstMatch
+        if monthChip.waitForExistence(timeout: 2), monthChip.isHittable {
+            monthChip.tap()
+        }
         settle(1.8) // charts animate in
         shot(.insights)
 
@@ -191,22 +214,29 @@ final class ScreenshotSuiteUITests: XCTestCase {
     // MARK: - Screenshots
 
     private func shot(_ screen: Screen) {
-        let name = "\(screen.rawValue)-\(deviceSlug)-\(orientationSlug)"
-        let screenshot = XCUIScreen.main.screenshot()
+        let baseName = "\(screen.rawValue)-\(deviceSlug)-\(orientationSlug)"
+        // iPhone Duo exposes both displays as screens; the one that is
+        // off (inner while closed, outer while open) captures black.
+        // Capture every screen so the active one is always included:
+        // `XCUIScreen.main` keeps the plain name, the rest get a suffix.
+        for (index, xcScreen) in XCUIScreen.screens.enumerated() {
+            let name = xcScreen == XCUIScreen.main ? baseName : "\(baseName)-screen\(index)"
+            let screenshot = xcScreen.screenshot()
 
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
 
-        if let dir = screenshotDirectory {
-            let url = dir.appendingPathComponent("\(name).png")
-            do {
-                try screenshot.pngRepresentation.write(to: url, options: .atomic)
-            } catch {
-                // Attachment already captured; a host-path write failure
-                // should not fail the run.
-                NSLog("ScreenshotSuite: could not write \(url.path): \(error.localizedDescription)")
+            if let dir = screenshotDirectory {
+                let url = dir.appendingPathComponent("\(name).png")
+                do {
+                    try screenshot.pngRepresentation.write(to: url, options: .atomic)
+                } catch {
+                    // Attachment already captured; a host-path write failure
+                    // should not fail the run.
+                    NSLog("ScreenshotSuite: could not write \(url.path): \(error.localizedDescription)")
+                }
             }
         }
     }
