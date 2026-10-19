@@ -477,6 +477,9 @@ struct SubscriptionsView: View {
                 onMarkPaid: subscription.isActive && subscription.daysUntilNext <= 0 ? {
                     Task { await subscriptionViewModel.markSubscriptionAsPaid(subscription) }
                 } : nil,
+                onSkip: {
+                    Task { await subscriptionViewModel.skipSubscriptionCycle(subscription) }
+                },
                 onDelete: {
                     subscriptionViewModel.deleteSubscription(subscription)
                 }

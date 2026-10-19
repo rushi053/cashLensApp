@@ -312,8 +312,21 @@ struct AddSubscriptionView: View {
     }
 
     private var nextPreviewText: String {
-        let next = Subscription.calculateNextDueDate(from: startDate, frequency: frequency)
+        let next = keptDueDate ?? Subscription.firstDueDate(startDate: startDate, frequency: frequency)
         return "Next bill: \(Self.previewDateFormatter.string(from: next)) · \(frequency.description)"
+    }
+
+    /// The due date an edit keeps: the current one when the schedule is
+    /// unchanged, and an unpaid due or overdue one even when it changes,
+    /// so an edit never drops a payment. Nil means a fresh schedule.
+    private var keptDueDate: Date? {
+        guard let editing = editingSubscription else { return nil }
+        let calendar = Calendar.current
+        let sameSchedule = calendar.isDate(editing.startDate, inSameDayAs: startDate) && editing.frequency == frequency
+        if sameSchedule || editing.daysUntilNext <= 0 {
+            return editing.nextDueDate
+        }
+        return nil
     }
 
     private static let previewDateFormatter: DateFormatter = {
@@ -964,7 +977,9 @@ struct AddSubscriptionView: View {
             if let editing = editingSubscription {
                 subscription.id = editing.id
                 subscription.isActive = editing.isActive
-                subscription.nextDueDate = editing.nextDueDate
+                if let keptDueDate {
+                    subscription.nextDueDate = keptDueDate
+                }
                 await subscriptionViewModel.updateSubscription(subscription)
             } else {
                 await subscriptionViewModel.addSubscription(subscription)

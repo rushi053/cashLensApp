@@ -219,14 +219,11 @@ struct CashLensApp: App {
                                 // history; don't compute them off the
                                 // partial launch window.
                                 await viewModel.waitUntilFullyHydrated()
-                                // Roll any past-due subscription forward to
-                                // its next future occurrence and re-arm its
-                                // reminder — otherwise overdue subscriptions
-                                // sit with a stale date forever and reminders
-                                // die after one cycle. Runs before the
-                                // scheduler refresh so digests see the
-                                // reconciled dates.
-                                subscriptionViewModel.reconcileOverdueSubscriptions()
+                                // Only Mark paid or Skip advances a
+                                // subscription's due date, so an overdue bill
+                                // keeps its Mark paid button; its one-shot
+                                // reminder moves on to the next renewal.
+                                subscriptionViewModel.refreshReminders()
                                 await NotificationScheduler.refreshScheduledNotificationsIfNeeded(
                                     viewModel: viewModel,
                                     isPro: proManager.isPro

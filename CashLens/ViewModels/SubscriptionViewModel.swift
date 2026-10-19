@@ -120,7 +120,25 @@ class SubscriptionViewModel: NSObject, ObservableObject {
     func toggleSubscriptionStatus(_ subscription: Subscription) async {
         var updatedSubscription = subscription
         updatedSubscription.isActive.toggle()
+        // Cycles that fell inside the pause were never charged; resuming
+        // picks up at the next renewal instead of showing them overdue.
+        if updatedSubscription.isActive,
+           updatedSubscription.nextDueDate < Calendar.current.startOfDay(for: Date()) {
+            updatedSubscription.nextDueDate = Subscription.firstDueDate(
+                startDate: updatedSubscription.startDate,
+                frequency: updatedSubscription.frequency
+            )
+        }
         await updateSubscription(updatedSubscription)
+    }
+
+    /// Re-arm every reminder. Reminders are one-shot notifications, so an
+    /// overdue bill's reminder has to be rescheduled for its next renewal.
+    func refreshReminders() {
+        // A payment or skip in flight reschedules its own reminder; a
+        // resync now would rebuild from the pre-save list.
+        guard cycleChangesInFlight.isEmpty else { return }
+        resyncAllSubscriptionNotifications()
     }
     
     /// Nonisolated Core Data save helper. Safe to invoke from inside
@@ -308,7 +326,8 @@ class SubscriptionViewModel: NSObject, ObservableObject {
             content.categoryIdentifier = "SUBSCRIPTION_REMINDER"
             
             let calendar = Calendar.current
-            let reminderDate = calendar.date(byAdding: .day, value: -subscription.reminderDaysBefore, to: subscription.nextDueDate) ?? subscription.nextDueDate
+            let target = subscription.reminderTargetDate()
+            let reminderDate = calendar.date(byAdding: .day, value: -subscription.reminderDaysBefore, to: target) ?? target
             
             let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: reminderDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
@@ -374,7 +393,11 @@ class SubscriptionViewModel: NSObject, ObservableObject {
             print("markSubscriptionAsPaid: expenseViewModel is nil — refusing to advance due date")
             return
         }
-        
+        // A second tap while the first is still saving would log the same
+        // cycle twice; only the cycle the user saw can be paid.
+        guard let subscription = beginCycleChange(for: subscription) else { return }
+        defer { cycleChangesInFlight.remove(subscription.id) }
+
         // Create expense from subscription
         var expense = subscription.toExpense()
         expense.isFromSubscription = true
@@ -390,40 +413,38 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         
         // Update subscription's next due date (anchor-based; see
         // `Subscription.updateNextDueDate`)
+        settledCycles[subscription.id] = subscription.nextDueDate
         var updatedSubscription = subscription
         updatedSubscription.updateNextDueDate()
         await updateSubscription(updatedSubscription)
     }
-    
-    // MARK: - Foreground Reconciliation
-    
-    /// Roll every active subscription whose due date has passed forward to
-    /// its next **future** startDate-anchored occurrence, persist it, and
-    /// re-arm its reminder. Called from the scenePhase-active handler in
-    /// `CashLensApp` — without this, nothing ever advances a past-due
-    /// `nextDueDate` except a manual "mark as paid", so overdue rows sit
-    /// with negative `daysUntilNext` forever and reminders (scheduled as
-    /// one-shot notifications) die after a single cycle.
-    ///
-    /// Deliberately does NOT auto-log expenses for missed cycles — we
-    /// can't know whether the user actually paid; we only fix the date.
-    ///
-    /// A subscription due *today* is left alone so the user can still see
-    /// it as due and mark it paid; only dates before today's start roll.
-    /// Re-scheduling goes through `updateSubscriptionInternal` →
-    /// `syncNotification`, which cancels before scheduling, so repeated
-    /// foregrounds can't stack duplicate reminders.
-    func reconcileOverdueSubscriptions() {
-        let startOfToday = Calendar.current.startOfDay(for: Date())
-        for subscription in subscriptions where subscription.isActive && subscription.nextDueDate < startOfToday {
-            var updated = subscription
-            updated.nextDueDate = Subscription.nextOccurrence(
-                after: Date(),
-                anchor: updated.startDate,
-                frequency: updated.frequency
-            )
-            updateSubscriptionInternal(updated)
-        }
+
+    /// Move past the current cycle without logging a payment (a free
+    /// month, a cycle paid outside the app, an old backup).
+    func skipSubscriptionCycle(_ subscription: Subscription) async {
+        guard let subscription = beginCycleChange(for: subscription) else { return }
+        defer { cycleChangesInFlight.remove(subscription.id) }
+        settledCycles[subscription.id] = subscription.nextDueDate
+        var updatedSubscription = subscription
+        updatedSubscription.updateNextDueDate()
+        await updateSubscription(updatedSubscription)
+    }
+
+    private var cycleChangesInFlight: Set<UUID> = []
+    /// Due date of the last cycle paid or skipped per subscription.
+    /// `subscriptions` refreshes in a later main-actor task after a save,
+    /// so it can still show a cycle that was just handled.
+    private var settledCycles: [UUID: Date] = [:]
+
+    /// The stored subscription, if the cycle the caller saw is still the
+    /// current one and no other payment or skip is running for it.
+    private func beginCycleChange(for subscription: Subscription) -> Subscription? {
+        guard !cycleChangesInFlight.contains(subscription.id),
+              settledCycles[subscription.id] != subscription.nextDueDate,
+              let current = subscriptions.first(where: { $0.id == subscription.id }),
+              current.nextDueDate == subscription.nextDueDate else { return nil }
+        cycleChangesInFlight.insert(subscription.id)
+        return current
     }
     
     // Setup listener for currency updates
