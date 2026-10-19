@@ -25,8 +25,29 @@ struct ExpenseCalendarView: View {
     /// (default) and keeps its existing behavior.
     var isEmbedded: Bool = false
 
+    /// Owner-held day selection. Activity passes one so the selection
+    /// survives a Duo fold / Split View resize that moves the day list
+    /// between the stacked and side-by-side layouts. `nil` → internal.
+    var selection: Binding<Date?>? = nil
+
+    /// `false` on regular-width Activity, where the selected day's list
+    /// lives in the detail pane beside the month instead of under it.
+    var showsDayDetailInline: Bool = true
+
+    /// Receives the selected day's entries (date-descending, already
+    /// aggregated off-main) whenever the selection or the month data
+    /// changes — the detail pane renders them without re-scanning.
+    var onSelectedDayEntries: (([Expense]) -> Void)? = nil
+
     @State private var visibleMonth: Date = Calendar.current.startOfMonth(for: Date())
-    @State private var selectedDay: Date? = nil
+    @State private var internalSelectedDay: Date? = nil
+
+    private var selectedDay: Date? {
+        get { selection?.wrappedValue ?? internalSelectedDay }
+        nonmutating set {
+            if let selection { selection.wrappedValue = newValue } else { internalSelectedDay = newValue }
+        }
+    }
     @State private var monthAggregate: MonthAggregate = .empty
     @State private var aggregationTask: Task<Void, Never>? = nil
     @State private var editingExpense: Expense? = nil
@@ -100,13 +121,21 @@ struct ExpenseCalendarView: View {
         .onAppear {
             guard !hasAppeared else { return }
             hasAppeared = true
+            // An owner-held selection outlives this view's month state
+            // (List/Calendar toggle, size-class change); reopen on it.
+            if let day = selectedDay,
+               !calendar.isDate(day, equalTo: visibleMonth, toGranularity: .month) {
+                visibleMonth = calendar.startOfMonth(for: day)
+            }
             recompute()
             withAnimation(Theme.Motion.emphasized.delay(0.05)) {
                 animateGridIn = true
             }
         }
         .onChange(of: visibleMonth) { _, _ in recompute() }
-        .onReceive(viewModel.$expenses) { _ in recompute() }
+        .onChange(of: selectedDay) { _, _ in reportSelectedDayEntries() }
+        .onChange(of: showsDayDetailInline) { _, _ in reportSelectedDayEntries() }
+        .onReceive(viewModel.$expenses) { latest in recompute(using: latest) }
         .sheet(item: $editingExpense) { expense in
             AddExpenseView(
                 viewModel: viewModel,
@@ -158,14 +187,16 @@ struct ExpenseCalendarView: View {
 
                     monthSummaryStrip
 
-                    if let day = selectedDay {
-                        dayDetailSection(for: day)
-                            .transition(
-                                .move(edge: .bottom)
-                                .combined(with: .opacity)
-                            )
-                    } else {
-                        calendarHintCard
+                    if showsDayDetailInline {
+                        if let day = selectedDay {
+                            dayDetailSection(for: day)
+                                .transition(
+                                    .move(edge: .bottom)
+                                    .combined(with: .opacity)
+                                )
+                        } else {
+                            calendarHintCard
+                        }
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
@@ -532,75 +563,22 @@ struct ExpenseCalendarView: View {
         // on every body evaluation while a day was selected — a
         // 10–30ms main-thread scan per render at 50k rows.
         let entries = monthAggregate.byDay[calendar.startOfDay(for: day)]?.entries ?? []
-        let net = entries.netTotal()
 
-        return VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.dayFormatter.string(from: day))
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-                    Text("\(entries.count) entr\(entries.count == 1 ? "y" : "ies") · net \(viewModel.formattedAmount(net))")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-
-            if entries.isEmpty {
-                emptyDayState
-            } else {
-                // v2: bare rows wrapped in a single elevated card with
-                // hairline dividers — matches the day-group treatment
-                // in AllExpensesView, so the calendar's day-drilldown
-                // and the Activity tab share an identical visual.
-                VStack(spacing: 0) {
-                    ForEach(Array(entries.enumerated()), id: \.element.id) { idx, expense in
-                        Button {
-                            HapticManager.shared.lightTap()
-                            editingExpense = expense
-                        } label: {
-                            ExpenseCard(
-                                expense: expense,
-                                viewModel: viewModel,
-                                categoryViewModel: categoryViewModel,
-                                style: .bare
-                            )
-                            .equatable()
-                        }
-                        .buttonStyle(.plain)
-
-                        if idx < entries.count - 1 {
-                            Divider()
-                                .padding(.leading, Theme.Spacing.xxl + 26)
-                                .opacity(0.4)
-                        }
-                    }
-                }
-                .cardSurface()
-            }
+        return CalendarDayDetail(day: day, entries: entries) { expense in
+            editingExpense = expense
         }
         .padding(.top, Theme.Spacing.sm)
     }
 
-    private var emptyDayState: some View {
-        HStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: "leaf.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.green)
-            Text("No expenses logged")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.primary)
-            Spacer(minLength: 0)
-            Text("No-spend day")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundColor(.green)
-                .padding(.horizontal, Theme.Spacing.sm)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.green.opacity(0.15)))
+    /// Pushes the selected day's entries to the owner (side-pane mode).
+    /// Dictionary lookup into the aggregate — never a full-array scan.
+    private func reportSelectedDayEntries() {
+        guard let onSelectedDayEntries else { return }
+        guard let day = selectedDay else {
+            onSelectedDayEntries([])
+            return
         }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.md)
-        .cardSurface()
+        onSelectedDayEntries(monthAggregate.byDay[calendar.startOfDay(for: day)]?.entries ?? [])
     }
 
     // MARK: - Aggregation
@@ -634,11 +612,13 @@ struct ExpenseCalendarView: View {
         )
     }
 
-    private func recompute() {
+    /// `using` must be passed from `$expenses` sinks: `@Published` emits
+    /// in `willSet`, so `viewModel.expenses` still holds the old array.
+    private func recompute(using latest: [Expense]? = nil) {
         aggregationTask?.cancel()
         let monthStart = visibleMonth
         let calendar = self.calendar
-        let expenses = viewModel.expenses
+        let expenses = latest ?? viewModel.expenses
         // Snapshot the custom-category map so the detached task doesn't touch
         // an `@MainActor` property mid-flight.
         let customColors: [UUID: String] = Dictionary(
@@ -708,6 +688,7 @@ struct ExpenseCalendarView: View {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 self.monthAggregate = aggregate
+                self.reportSelectedDayEntries()
             }
         }
     }
@@ -730,6 +711,96 @@ struct ExpenseCalendarView: View {
             }
         }
         return .appPrimary
+    }
+}
+
+// MARK: - Day detail
+
+/// One day's expenses: header (date, count, net) and the bare rows in a
+/// single card — the same treatment as Activity's day groups. Shared by
+/// the calendar's inline drill-down (compact width) and Activity's
+/// detail pane (regular width), so both modes look identical.
+struct CalendarDayDetail: View {
+    @EnvironmentObject var viewModel: ExpenseViewModel
+    @EnvironmentObject var categoryViewModel: CategoryViewModel
+
+    let day: Date
+    let entries: [Expense]
+    let onSelect: (Expense) -> Void
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate("EEEE, MMM d")
+        return f
+    }()
+
+    var body: some View {
+        let net = entries.netTotal()
+
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Self.dayFormatter.string(from: day))
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .accessibilityAddTraits(.isHeader)
+                    Text("\(entries.count) entr\(entries.count == 1 ? "y" : "ies") · net \(viewModel.formattedAmount(net))")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if entries.isEmpty {
+                emptyDayState
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { idx, expense in
+                        Button {
+                            HapticManager.shared.lightTap()
+                            onSelect(expense)
+                        } label: {
+                            ExpenseCard(
+                                expense: expense,
+                                viewModel: viewModel,
+                                categoryViewModel: categoryViewModel,
+                                style: .bare
+                            )
+                            .equatable()
+                        }
+                        .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
+
+                        if idx < entries.count - 1 {
+                            Divider()
+                                .padding(.leading, Theme.Spacing.xxl + 26)
+                                .opacity(0.4)
+                        }
+                    }
+                }
+                .cardSurface()
+            }
+        }
+    }
+
+    private var emptyDayState: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: "leaf.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.green)
+            Text("No expenses logged")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.primary)
+            Spacer(minLength: 0)
+            Text("No-spend day")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundColor(.green)
+                .padding(.horizontal, Theme.Spacing.sm)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.green.opacity(0.15)))
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, Theme.Spacing.md)
+        .cardSurface()
     }
 }
 

@@ -38,8 +38,11 @@ extension AllExpensesView {
 
     /// Third region on wide regular layouts only. Duo inner landscape
     /// (~830pt usable) and 11" portrait stay two-pane with the chip row.
+    /// Not in calendar mode: the month grid ignores list filters and
+    /// sort, so the rail would be a dead column beside it.
     var showsFilterRail: Bool {
         showsEditorInDetailColumn
+            && viewMode == .list
             && !dynamicTypeSize.isAccessibilitySize
             && largeScreenMeasuredWidth >= LargeScreenLayout.threeRegionMinimumWidth
     }
@@ -98,6 +101,58 @@ extension AllExpensesView {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(Theme.Spacing.xxl)
+    }
+
+    /// Regular-width calendar mode's detail pane: the selected day's
+    /// expenses beside the month grid (the compact layout stacks them
+    /// under it). Opens on today so the pane is useful before any tap.
+    var calendarDayPane: some View {
+        Group {
+            if let day = calendarSelectedDay {
+                ScrollView(showsIndicators: false) {
+                    // Entries arrive one update after the day changes;
+                    // drop the previous day's rows for that frame.
+                    CalendarDayDetail(
+                        day: day,
+                        entries: calendarDayEntries.filter { Calendar.current.isDate($0.date, inSameDayAs: day) }
+                    ) { expense in
+                        selectedExpense = expense
+                    }
+                    .frame(maxWidth: LargeScreenLayout.editorMaxWidth)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, Theme.Spacing.xl)
+                    .padding(.top, Theme.Spacing.xxl)
+                    .padding(.bottom, Theme.Spacing.scrollBottomClearance)
+                }
+                .id(day)
+                .transition(.opacity)
+            } else {
+                VStack(spacing: Theme.Spacing.sm) {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.system(size: 32, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                    Text("Pick a day")
+                        .font(Theme.Typography.sectionTitle)
+                        .foregroundColor(.primary)
+                    Text("Its expenses open here. Dots show the category mix, the amount is net spend.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 360)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(Theme.Spacing.xxl)
+            }
+        }
+        .animation(Theme.Motion.snappy, value: calendarSelectedDay)
+        .onAppear {
+            if calendarSelectedDay == nil {
+                calendarSelectedDay = Calendar.current.startOfDay(for: Date())
+            }
+        }
     }
 
     private var largeScreenEmptyDetailMessage: String {
