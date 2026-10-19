@@ -133,18 +133,20 @@ Regular (≥ 700pt):
 │ └────────────────────────────────────────────────────────────────┘  │
 │ ┌─ Where It Goes ────────────┐  ┌─ Payment Methods ───────────────┐  │
 │ │ (donut)  Food     45%      │  │ (donut) UPI 60% · Card 30%      │  │
-│ └────────────────────────────┘  └─────────────────────────────────┘  │
-│ ┌─ Spending Pattern ─────────┐  ┌─ Forecast ──────────────────────┐  │
-│ │ ▦▦▦▦▦▦▦ heatmap            │  │ 30-day projection chart         │  │
+│ │ legend + one row per       │  └─────────────────────────────────┘  │
+│ │ category                   │  ┌─ Spending Pattern ──────────────┐  │
+│ │                            │  │ ▦▦▦▦▦▦▦ calendar heatmap        │  │
+│ │                            │  └─────────────────────────────────┘  │
+│ │                            │  ┌─ Forecast ──────────────────────┐  │
+│ │                            │  │ 30-day projection chart         │  │
 │ └────────────────────────────┘  └─────────────────────────────────┘  │
 │ ┌─ Highlights ── 2-column grid of insight cards ──────────────────┐  │
 │ ┌─ Monthly Recap · August in review ──────────────────────────────┐  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- More: hero and Pro cards share the first row; donut, payment methods, heatmap and forecast tile in even pairs; the trend chart gets the full width. When the Payment Methods section has nothing to show (free user, nothing tagged) the donut pairs with the heatmap and the forecast takes the full width, so no card sits beside a blank half.
+- More: hero and Pro cards share the first row; the trend chart gets the full width. Where It Goes (donut + legend + a row per category) is the tallest tile, so it takes the leading column while Payment Methods (when it has anything to show), Spending Pattern and Forecast stack in the trailing column — pairing it with one short card left ~600pt of blank column on a 13" iPad. Even pairs still mean a Duo book-pose fold runs down the gutter.
 - Primary action: "+" disc beside Export in the header (the FAB is gone on regular width).
-- The trend section is wrapped in `DuoArrangement` (its pager tab bar as primary, chart as secondary) — an `ArrangementView(.split)` candidate on iOS 27.1 so the range picker and the chart land on opposite halves in book/table pose.
 - Narrow regular (< 700pt): single column, existing order.
 
 ## You
@@ -206,8 +208,8 @@ Regular (≥ 700pt):
 | Book (vertical fold) | regular / regular | Two columns / two panes straddle the fold along the gutter; `EvenColumnGrid` keeps even counts; alerts and form sheets move to the trailing half by the system. |
 | Table (horizontal fold) | regular / regular | Top half: header + hero (glanceable); bottom half: rows and controls. Scrolling lists are not displaced. |
 
-## iOS 27.1 hooks (`Design/DuoLayoutSupport.swift`, behind `CASHLENS_DUO_27_1`)
+## iOS 27.1 (`Design/DuoLayoutSupport.swift`)
 
-`DuoArrangement(mode: .split | .overlay)` (Insights trend), `duoHorizontalToolbar()` (Paywall, Add Expense), `duoTabBarCompression()` (tab shell), `DuoLayoutSupport.divisionGutter(in:)` (`EvenColumnGrid`). Everything compiles to a no-op with the flag undefined. `DuoLayoutSupport.hasVerticalSystemBar` is plain geometry and needs no flag.
+Requires Xcode 27.1 or later to build. All hinge logic reads active vertical `reservedRegions(kind: .division)`: `DuoLayoutSupport.divisionGutter(in:)` (`EvenColumnGrid` pickers), `columnSplit(in:spacing:)` (`LargeScreenColumns` — dashboard gutter centred on the hinge in book pose), `paneSplit(in:…)` (Activity ledger ends at the hinge, editor starts after it). `DuoLayoutSupport.hasVerticalSystemBar` is plain geometry; on 27.1 `MainTabView` also reads the official `EnvironmentValues.toolbarVerticalEdge` through `DuoLayoutSupport.VerticalToolbarProbe` and ORs the two for FAB placement. Checked against Apple's iPhone Duo guidance and the `app-resizability` skill on 2026-10-14 — details and deliberate gaps in `CODEBASE.md`. The Spending widget adds `.systemExtraLargePortrait`. `ArrangementView` and `toolbarVerticalBehavior` were evaluated and not adopted (see `CODEBASE.md`).
 
-To test on the 27.1 beta: Target → Build Settings → Swift Compiler – Custom Flags → Active Compilation Conditions (Debug) → add `CASHLENS_DUO_27_1`, build, and fix the lines marked `// Duo 27.1` against the real SDK names. Remove the flag before an App Store build from release Xcode.
+Known, accepted for 2.2: Insights' full-width filter card (period / month / category chips) and the Forecast card still span the fold in book pose; the sheets, alerts and two-column sections are all placed by half.
