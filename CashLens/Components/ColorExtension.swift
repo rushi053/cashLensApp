@@ -8,6 +8,18 @@ extension Color {
     static let systemGroupedBackground = Color(UIColor.systemGroupedBackground)
     static let secondarySystemGroupedBackground = Color(UIColor.secondarySystemGroupedBackground)
     static let tertiarySystemGroupedBackground = Color(UIColor.tertiarySystemGroupedBackground)
+
+    /// Resting fill for unselected chips, segment tracks and small
+    /// control discs. Reads on both the page background and a card in
+    /// either appearance: light uses `secondarySystemBackground`
+    /// (#F2F2F7 — `tertiary` is pure white there and vanished on white
+    /// cards), dark uses `tertiarySystemBackground` (#2C2C2E —
+    /// `secondary` matches the dark card fill and vanished there).
+    static let chipFill = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.tertiarySystemBackground
+            : UIColor.secondarySystemBackground
+    })
     
     // System text colors
     static let label = Color(UIColor.label)

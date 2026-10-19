@@ -44,7 +44,7 @@ struct TagInputField: View {
         if tags.isEmpty {
             EmptyView()
         } else {
-            TagFlowLayout(spacing: Theme.Spacing.xs + 2) {
+            ChipFlowLayout(spacing: Theme.Spacing.xs + 2) {
                 ForEach(tags, id: \.self) { tag in
                     TagChip(
                         tag,
@@ -191,58 +191,3 @@ struct TagInputField: View {
     }
 }
 
-// MARK: - Flow Layout
-
-/// Minimal flow layout used by the input card to wrap chips onto multiple lines.
-/// Uses SwiftUI's `Layout` (iOS 16+; matches the app's deployment target since
-/// other views already use SwiftUI features from that era).
-private struct TagFlowLayout: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        return arrange(subviews: subviews, maxWidth: maxWidth).size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let maxWidth = bounds.width
-        let result = arrange(subviews: subviews, maxWidth: maxWidth)
-        for (index, frame) in result.frames.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
-                proposal: ProposedViewSize(frame.size)
-            )
-        }
-    }
-
-    private struct Arrangement {
-        let frames: [CGRect]
-        let size: CGSize
-    }
-
-    private func arrange(subviews: Subviews, maxWidth: CGFloat) -> Arrangement {
-        var frames: [CGRect] = []
-        var rowY: CGFloat = 0
-        var rowX: CGFloat = 0
-        var rowHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if rowX + size.width > maxWidth && rowX > 0 {
-                rowY += rowHeight + spacing
-                rowX = 0
-                rowHeight = 0
-            }
-            frames.append(CGRect(origin: CGPoint(x: rowX, y: rowY), size: size))
-            rowX += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
-
-        let totalHeight = rowY + rowHeight
-        let usedWidth = frames.map { $0.maxX }.max() ?? 0
-        return Arrangement(
-            frames: frames,
-            size: CGSize(width: usedWidth, height: totalHeight)
-        )
-    }
-}

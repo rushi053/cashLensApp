@@ -1,36 +1,16 @@
 import SwiftUI
 
-// MARK: - iPhone Duo (iOS 27.1) layout support
+// MARK: - iPhone Duo layout support
 //
-// iOS 27.1 / Xcode 27.1 add the Duo-specific layout APIs (per the
-// "Design for iPhone Duo" tech talks): `ArrangementView`,
-// `toolbarVerticalBehavior`, `toolbarCompressionBehavior`, and
-// `GeometryProxy.reservedRegions(kind:)`. None of them are in the
-// release Xcode 27 SDK that 2.2 ships with, and their exact spellings
-// are not documented yet.
-//
-// Everything that names one of those APIs lives in this file behind
-// `#if CASHLENS_DUO_27_1`. That compilation condition is **not defined
-// anywhere**, so today every helper here compiles to a plain no-op and
-// the rest of the app only ever sees one modifier call per site
-// (`.duoHorizontalToolbar()`, `.duoTabBarCompression()`,
-// `DuoArrangement { } secondary: { }`, `DuoLayoutSupport.divisionGutter`).
-//
-// To finish this for 2.2.1 on the 27.1 SDK:
-//   1. Target → Build Settings → Swift Compiler – Custom Flags →
-//      Active Compilation Conditions → add `CASHLENS_DUO_27_1`.
-//   2. Fix every line marked `// Duo 27.1` against the real SDK names
-//      (the worklog's "Duo 27.1 TODO" list enumerates them).
-//   3. Build; remove the flag again if the SDK is not ready.
-//
-// Deployment target stays iOS 18: each real call is additionally
-// wrapped in `if #available(iOS 27.1, *)`.
+// Requires the iOS 27.1 SDK (Xcode 27.1 or later) to build. The deployment
+// target stays iOS 18, so every 27.1 call is behind `#available` and
+// earlier systems get the plain layout.
 
 enum DuoLayoutSupport {
 
     /// Heuristic for "the system has moved its bars to a vertical strip
-    /// on the trailing edge" — the iPhone Duo outer display (iOS 27
-    /// SDK builds). Pure geometry, no SDK dependency:
+    /// on the trailing edge" — the iPhone Duo outer display. Pure
+    /// geometry:
     ///
     ///   • compact width and regular height (a portrait phone-class
     ///     window), and
@@ -54,134 +34,122 @@ enum DuoLayoutSupport {
             && safeAreaInsets.trailing > safeAreaInsets.leading + Theme.Spacing.xxl
     }
 
-    /// Width of the hinge's division region intersecting `proxy`, or 0
-    /// when there is none (every non-Duo device, and a Duo that is
-    /// fully open or closed). `EvenColumnGrid` adds this to its column
-    /// spacing so the middle gutter clears the fold.
+    /// Width of an active vertical hinge division crossing `proxy`, or 0
+    /// when there is none (every non-Duo device, a Duo that is fully open
+    /// or closed, and a horizontal fold, which a column gutter can't
+    /// clear). Clamped so a bad region can never exceed half the width.
+    /// `EvenColumnGrid` adds this to its column spacing so the middle
+    /// gutter clears the fold.
     static func divisionGutter(in proxy: GeometryProxy) -> CGFloat {
-        #if CASHLENS_DUO_27_1
-        if #available(iOS 27.1, *) {
-            // Duo 27.1: best reading of the API — `reservedRegions(kind:)`
-            // returns the regions of that kind intersecting the proxy, each
-            // with a `frame` in the proxy's local space. If the SDK hands
-            // back plain `CGRect`s instead, drop `.frame`.
-            return proxy.reservedRegions(kind: .division)
-                .map { $0.frame.width }
-                .max() ?? 0
+        guard #available(iOS 27.1, *) else { return 0 }
+        guard let hinge = verticalHinge(in: proxy) else { return 0 }
+        return min(hinge.frame.width, proxy.size.width / 2)
+    }
+
+    // MARK: Two-column split on the hinge
+
+    /// Where a two-column layout should put its gutter. `equal` means
+    /// "no hinge here, split the width evenly with the normal spacing".
+    struct ColumnSplit: Equatable {
+        /// Fixed leading column width, or nil for an equal split.
+        var leadingWidth: CGFloat?
+        /// Gutter width, or nil for the caller's normal spacing.
+        var gutter: CGFloat?
+
+        static let equal = ColumnSplit(leadingWidth: nil, gutter: nil)
+    }
+
+    /// Narrowest column worth keeping when aligning to the hinge. Below
+    /// this the hinge is too far off-centre for two columns, so the
+    /// layout falls back to an even split (the fold then crosses one
+    /// column, which is still better than two unreadable ones).
+    static let minimumHingeColumnWidth: CGFloat = 280
+
+    /// Aligns a two-column gutter with an active vertical hinge crossing
+    /// `proxy`. The gutter covers the hinge's frame (which already
+    /// includes Apple's margins), is never narrower than `spacing`, and
+    /// is centred on the hinge so both columns keep the same clearance.
+    static func columnSplit(in proxy: GeometryProxy, spacing: CGFloat) -> ColumnSplit {
+        guard #available(iOS 27.1, *) else { return .equal }
+        let width = proxy.size.width
+        guard let hinge = verticalHinge(in: proxy) else { return .equal }
+
+        // `ReservedRegion.frame` already includes Apple's margins.
+        let gutter = max(spacing, hinge.frame.width)
+        let leadingWidth = hinge.frame.midX - gutter / 2
+        let trailingWidth = width - leadingWidth - gutter
+        guard leadingWidth >= minimumHingeColumnWidth, trailingWidth >= minimumHingeColumnWidth else {
+            return .equal
         }
-        return 0
-        #else
-        _ = proxy
-        return 0
-        #endif
-    }
-}
-
-extension View {
-
-    /// Duo 27.1: on the outer display the system moves toolbars to a
-    /// vertical bar on the right edge. A sheet whose only bar item is
-    /// Close (paywall, add expense) reads better with a horizontal bar,
-    /// so those sheets opt out. No-op today.
-    func duoHorizontalToolbar() -> some View {
-        #if CASHLENS_DUO_27_1
-        return Group {
-            if #available(iOS 27.1, *) {
-                // Duo 27.1: verify modifier name and the "never
-                // vertical" case name.
-                self.toolbarVerticalBehavior(.never)
-            } else {
-                self
-            }
-        }
-        #else
-        return self
-        #endif
+        return ColumnSplit(leadingWidth: leadingWidth, gutter: gutter)
     }
 
-    /// Duo 27.1: when the outer display's vertical bar runs out of room,
-    /// the tab bar should compress before the add-expense action does.
-    /// Applied to the root `TabView`. No-op today.
-    func duoTabBarCompression() -> some View {
-        #if CASHLENS_DUO_27_1
-        return Group {
-            if #available(iOS 27.1, *) {
-                // Duo 27.1: verify modifier name and the behavior case.
-                self.toolbarCompressionBehavior(.tabBarFirst)
-            } else {
-                self
-            }
-        }
-        #else
-        return self
-        #endif
-    }
-}
-
-/// Duo 27.1: two related views that should sit on opposite halves of a
-/// partially-folded inner display (`ArrangementView(.split)`), e.g. a
-/// chart and its range picker in Insights. Everywhere else — and on
-/// today's SDK — this is a plain `VStack`.
-struct DuoArrangement<Primary: View, Secondary: View>: View {
-    /// Our own spelling of the two arrangements so call sites compile
-    /// with the flag off. Mapped to the SDK's cases inside the flag.
-    enum Mode {
-        /// Primary and secondary on opposite halves of the fold
-        /// (chart | range picker).
-        case split
-        /// Secondary floats over the primary (e.g. controls over a
-        /// full-bleed chart) when the fold is not active.
-        case overlay
+    /// Two-pane (list | detail) geometry on a partially folded Duo.
+    struct PaneSplit: Equatable {
+        /// Leading pane width so that it ends just before the hinge.
+        var leadingWidth: CGFloat
+        /// Leading inset for the trailing pane so its content starts
+        /// just after the hinge (the pane itself begins at the divider).
+        var trailingInset: CGFloat
     }
 
-    var mode: Mode = .split
-    var spacing: CGFloat = Theme.Spacing.md
-    @ViewBuilder let primary: () -> Primary
-    @ViewBuilder let secondary: () -> Secondary
-
-    init(
-        mode: Mode = .split,
-        spacing: CGFloat = Theme.Spacing.md,
-        @ViewBuilder primary: @escaping () -> Primary,
-        @ViewBuilder secondary: @escaping () -> Secondary
-    ) {
-        self.mode = mode
-        self.spacing = spacing
-        self.primary = primary
-        self.secondary = secondary
+    /// Geometry for a leading pane (Activity's ledger) that ends at the
+    /// hinge, with the pane after it starting on the other half. Nil
+    /// without an active vertical hinge, or when the hinge would leave
+    /// the leading pane outside `minimum...maximum`. `leadingOffset` is
+    /// the width of anything laid out before the pane (the filter rail).
+    static func paneSplit(
+        in proxy: GeometryProxy,
+        leadingOffset: CGFloat = 0,
+        minimum: CGFloat,
+        maximum: CGFloat,
+        minimumTrailing: CGFloat
+    ) -> PaneSplit? {
+        guard #available(iOS 27.1, *) else { return nil }
+        guard let hinge = verticalHinge(in: proxy) else { return nil }
+        // `ReservedRegion.frame` already includes Apple's margins.
+        let leadingEnd = hinge.frame.minX
+        let trailingStart = hinge.frame.maxX
+        let width = leadingEnd - leadingOffset
+        guard width >= minimum, width <= maximum,
+              proxy.size.width - trailingStart >= minimumTrailing
+        else { return nil }
+        return PaneSplit(leadingWidth: width, trailingInset: max(0, trailingStart - leadingEnd))
     }
 
-    var body: some View {
-        #if CASHLENS_DUO_27_1
-        if #available(iOS 27.1, *) {
-            // Duo 27.1: best reading — `ArrangementView` takes the
-            // arrangement first and a two-view builder. The first view is
-            // the primary (kept on the display half the user is looking
-            // at in table pose); the second is displaced across the fold.
-            switch mode {
-            case .split:
-                ArrangementView(.split) {
-                    primary()
-                    secondary()
+    // MARK: Official vertical-bar signal (iOS 27.1)
+
+    /// Layout-neutral probe that reports Apple's own answer to "are the
+    /// system bars vertical?" — `EnvironmentValues.toolbarVerticalEdge`
+    /// (iOS 27.1). Non-nil on the Duo outer display and in inner-display
+    /// Split View, where each app's bar sits on its *outer* edge — the
+    /// left app's bar is on the leading edge, which the safe-area
+    /// heuristic above deliberately ignores. Callers OR this with the
+    /// heuristic so the FAB tucks into the corner in both cases.
+    @available(iOS 27.1, *)
+    struct VerticalToolbarProbe: View {
+        @Environment(\.toolbarVerticalEdge) private var edge
+        @Binding var isVertical: Bool
+
+        var body: some View {
+            Color.clear
+                .onChange(of: edge != nil, initial: true) { _, vertical in
+                    if vertical != isVertical { isVertical = vertical }
                 }
-            case .overlay:
-                ArrangementView(.overlay) {
-                    primary()
-                    secondary()
-                }
-            }
-        } else {
-            stacked
         }
-        #else
-        stacked
-        #endif
     }
 
-    private var stacked: some View {
-        VStack(spacing: spacing) {
-            primary()
-            secondary()
-        }
+    /// The active vertical hinge nearest the centre of `proxy`, if any.
+    /// "Vertical" means taller than wide, or spanning the view's full
+    /// height (in case the system clips the region to a short view).
+    @available(iOS 27.1, *)
+    private static func verticalHinge(in proxy: GeometryProxy) -> ReservedRegion? {
+        let midX = proxy.size.width / 2
+        return proxy.reservedRegions(kind: .division)
+            .filter { region in
+                region.isActive
+                    && (region.frame.height > region.frame.width || region.frame.height >= proxy.size.height)
+            }
+            .min { abs($0.frame.midX - midX) < abs($1.frame.midX - midX) }
     }
 }

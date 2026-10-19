@@ -65,6 +65,7 @@ struct TrendChartPager: View {
     let currencySymbol: String
 
     @State private var selection: Int = 0
+    @State private var topDaysPageHeight: CGFloat = 0
 
     /// Rank badge on the "Top days" rows — follows Dynamic Type so the
     /// digit never outgrows its box.
@@ -73,28 +74,22 @@ struct TrendChartPager: View {
     private let pageTitles = ["Over time", "By weekday", "Top days"]
 
     var body: some View {
-        // Duo 27.1: `DuoArrangement` is a plain VStack today; on a
-        // partially folded inner display it becomes
-        // `ArrangementView(.split)` so the page picker sits on one half
-        // and the chart on the other. See `DuoLayoutSupport.swift`.
-        DuoArrangement(spacing: Theme.Spacing.md) {
+        VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             pageTabBar
-        } secondary: {
-            VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                TabView(selection: $selection) {
-                    overTimePage.tag(0)
-                    weekdayPage.tag(1)
-                    topDaysPage.tag(2)
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                // Width-derived height: 280 on phones (the "Top days" page
-                // needs that for five rows), up to 420 in an iPad column so
-                // the trend chart inside can use its own larger cap.
-                .adaptiveHeight(ratio: 0.8, min: 280, max: 420)
-                .animation(Theme.Motion.snappy, value: selection)
 
-                pageIndicator
+            TabView(selection: $selection) {
+                overTimePage.tag(0)
+                weekdayPage.tag(1)
+                topDaysPage.tag(2)
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            // Width-derived height: 280 on phones (the "Top days" page
+            // needs that for five rows), up to 420 in an iPad column so
+            // the trend chart inside can use its own larger cap.
+            .adaptiveHeight(ratio: 0.8, min: 280, max: 420)
+            .animation(Theme.Motion.snappy, value: selection)
+
+            pageIndicator
         }
     }
 
@@ -111,7 +106,7 @@ struct TrendChartPager: View {
         .padding(3)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.tertiarySystemBackground)
+                .fill(Color.chipFill)
         )
     }
 
@@ -210,7 +205,10 @@ struct TrendChartPager: View {
                     AxisMarks(position: .leading) { value in
                         AxisValueLabel {
                             if let double = value.as(Double.self), double > 0 {
-                                Text(formattedAmount(double))
+                                // Compact axis ("₹15K") like the Forecast and
+                                // YoY charts; the full "₹15,000.00" ran into
+                                // the caption and crowded the leading edge.
+                                Text(compactAxisAmount(double))
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
@@ -226,6 +224,8 @@ struct TrendChartPager: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+                // Keeps the top axis label off the caption above.
+                .padding(.top, Theme.Spacing.xs)
 
                 if let busiest = weekdayPoints.first(where: { $0.isHighest && $0.average > 0 }) {
                     HStack(spacing: 4) {
@@ -248,6 +248,29 @@ struct TrendChartPager: View {
         .padding(.horizontal, 2)
     }
 
+    private func compactAxisAmount(_ value: Double) -> String {
+        let magnitude = Swift.abs(value)
+        let body: String
+        if magnitude >= 1_000_000 {
+            body = trimmedDecimal(value / 1_000_000) + "M"
+        } else if magnitude >= 10_000 {
+            body = String(format: "%.0fK", value / 1_000)
+        } else if magnitude >= 1_000 {
+            // One decimal below 10K: the axis steps are 500 apart here
+            // and "%.0fK" printed "₹2K" for both 1,500 and 2,000.
+            body = trimmedDecimal(value / 1_000) + "K"
+        } else {
+            body = String(format: "%.0f", value)
+        }
+        return currencySymbol + body
+    }
+
+    /// "1.5" for 1.5, "2" for 2.0 — one decimal, no trailing ".0".
+    private func trimmedDecimal(_ value: Double) -> String {
+        let text = String(format: "%.1f", value)
+        return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
+    }
+
     private func fullWeekdayName(_ weekday: Int) -> String {
         let symbols = Calendar.current.weekdaySymbols
         let index = max(0, min(symbols.count - 1, weekday - 1))
@@ -267,13 +290,32 @@ struct TrendChartPager: View {
             } else {
                 let maxAmount = topDays.first?.amount ?? 1
                 VStack(spacing: Theme.Spacing.sm) {
-                    ForEach(Array(topDays.prefix(5).enumerated()), id: \.element.id) { index, day in
+                    ForEach(Array(topDays.prefix(topDaysLimit).enumerated()), id: \.element.id) { index, day in
                         topDayRow(day, rank: index + 1, maxAmount: maxAmount)
                     }
                 }
             }
         }
         .padding(.horizontal, 2)
+        // Top-aligned: centring left an 80pt gap under the tab bar on
+        // the tall iPad / Duo page when fewer than eight days exist.
+        .frame(maxHeight: .infinity, alignment: .top)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { newValue in
+            topDaysPageHeight = newValue
+        }
+    }
+
+    /// Five rows fit the 280pt phone page; the 420pt iPad / Duo page
+    /// would otherwise float the same five rows in a lot of air, so it
+    /// shows as many as fit (capped at eight so it stays a "top" list).
+    private var topDaysLimit: Int {
+        guard topDaysPageHeight > 0 else { return 5 }
+        let rowHeight: CGFloat = 41          // label + bar + row spacing
+        let chrome: CGFloat = 40             // "Biggest spending days" + breathing room
+        let fit = Int((topDaysPageHeight - chrome) / rowHeight)
+        return min(8, max(5, fit))
     }
 
     private func topDayRow(_ day: TopDayPoint, rank: Int, maxAmount: Double) -> some View {
@@ -306,7 +348,7 @@ struct TrendChartPager: View {
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.tertiarySystemBackground)
+                            .fill(Color.chipFill)
                             .frame(height: 5)
 
                         Capsule()

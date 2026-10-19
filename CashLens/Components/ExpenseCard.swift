@@ -82,9 +82,14 @@ struct ExpenseCard: View, Equatable {
         rowContent
             .padding(.horizontal, Theme.Spacing.md + 2)
             .padding(.vertical, Theme.Spacing.md)
+            // PERF: the shadow is drawn by the opaque background shape
+            // (standalone rows only); bare rows inside a day group get no
+            // shadow modifier at all. Previously every row — including
+            // thousands of `.bare` rows in Activity — carried a
+            // `.shadow(color: .clear, radius: 6)` on the full composite,
+            // which still forces an offscreen pass per row while scrolling.
             .background(rowBackground)
             .overlay(rowBorder)
-            .shadow(color: rowShadowColor, radius: 6, x: 0, y: 2)
             .contentShape(Rectangle())
             // Pointer feedback on iPad / Duo with a trackpad; no-op
             // without an indirect pointer.
@@ -113,9 +118,14 @@ struct ExpenseCard: View, Equatable {
                 }
 
                 HStack(spacing: 6) {
+                    // Category wins over the note when the row is tight
+                    // (Duo outer display in select mode): the note
+                    // truncates, the category never hyphenates.
                     Text(categoryName)
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
 
                     if let notes = expense.notes, !notes.isEmpty {
                         // Inline bullet between category and notes so we
@@ -138,18 +148,23 @@ struct ExpenseCard: View, Equatable {
 
             Spacer(minLength: 8)
 
-            // Amount + date
+            // Amount + date. The amount is the one thing a finance row
+            // can never truncate, so it claims its width first and the
+            // title column gives way.
             VStack(alignment: .trailing, spacing: 3) {
                 Text(expense.isRefund ? "−\(formattedAmount)" : formattedAmount)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundColor(expense.isRefund ? .green : .primary)
                     .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
 
                 Text(expense.date, style: .date)
                     .font(.caption2)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
+            .layoutPriority(1)
         }
     }
 
@@ -158,6 +173,7 @@ struct ExpenseCard: View, Equatable {
         if style == .standalone {
             RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
                 .fill(Color(uiColor: .systemBackground))
+                .shadow(color: rowShadowColor, radius: 6, x: 0, y: 2)
         } else {
             Color.clear
         }
@@ -173,9 +189,9 @@ struct ExpenseCard: View, Equatable {
         }
     }
 
-    private var rowShadowColor: Color {
-        style == .standalone ? Color.black.opacity(0.04) : Color.clear
-    }
+    /// Only evaluated inside the standalone branch of `rowBackground`;
+    /// bare rows carry no shadow modifier at all.
+    private var rowShadowColor: Color { Color.black.opacity(0.04) }
 
     /// Compact paperclip glyph shown only when this expense has an
     /// attached receipt. Tinted to the brand color so it reads as a

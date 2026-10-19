@@ -25,6 +25,7 @@ struct SettingsRow<Trailing: View>: View {
     var showsChevron: Bool = true
     var style: Style = .standalone
     @ViewBuilder var trailing: () -> Trailing
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     enum Style: Equatable {
         case standalone, bare
@@ -40,6 +41,12 @@ struct SettingsRow<Trailing: View>: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .foregroundColor(.primary)
+                    // Narrow regular columns (Duo half-open ≈ 350pt) wrapped
+                    // "Default Time Frame" / "Theme & Appearance" onto two
+                    // lines beside their values; shrink a little instead.
+                    // Accessibility sizes keep wrapping (never truncate).
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .minimumScaleFactor(0.85)
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption)
@@ -47,10 +54,18 @@ struct SettingsRow<Trailing: View>: View {
                         .lineLimit(2)
                 }
             }
+            // Takes the leftover width instead of a `Spacer()`: an HStack
+            // divides its proposal by the number of still-unsized
+            // children, and a Spacer counts, so with one the title was
+            // offered ~⅓ of the row and truncated ("Theme & Appearan…" on
+            // a 375pt iPhone) while the Spacer absorbed the slack.
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
-
+            // Sized before the title column so a value is never squeezed
+            // by a long title; values are short ("Mauve", "This Month",
+            // a toggle), so the title still gets almost everything.
             trailing()
+                .layoutPriority(1)
 
             if showsChevron {
                 Image(systemName: "chevron.right")

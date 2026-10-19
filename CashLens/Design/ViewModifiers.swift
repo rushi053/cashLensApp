@@ -31,8 +31,24 @@ struct GlassSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
+                // PERF: both shadows live on the opaque background shape,
+                // not on `content`. A shadow on the composite view makes
+                // Core Animation rasterise the whole card (text, icons,
+                // charts) into an offscreen buffer and blur it on every
+                // frame while scrolling; a shadow on a plain rounded rect
+                // is a cheap path shadow. The fill is opaque, so the
+                // visible result is identical.
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(cardFill)
+                    // Crisp under-edge shadow — gives the card a defined
+                    // "lip" where it meets the page (the way a real card
+                    // casts a hard shadow right under itself).
+                    .shadow(color: shadowCrisp, radius: 1, x: 0, y: 1)
+                    // Soft lift shadow — the diffuse halo that makes the
+                    // card feel like it's hovering. Single-layer shadows
+                    // look flat; crisp + soft together feels like real
+                    // elevation.
+                    .shadow(color: shadowSoft, radius: 18, x: 0, y: 8)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -41,14 +57,6 @@ struct GlassSurfaceModifier: ViewModifier {
                         lineWidth: strokeColor == nil ? 0.5 : strokeWidth
                     )
             )
-            // Crisp under-edge shadow — gives the card a defined "lip"
-            // where it meets the page (the way a real card casts a hard
-            // shadow right under itself).
-            .shadow(color: shadowCrisp, radius: 1, x: 0, y: 1)
-            // Soft lift shadow — the diffuse halo that makes the card
-            // feel like it's hovering. Single-layer shadows look flat;
-            // crisp + soft together feels like real elevation.
-            .shadow(color: shadowSoft, radius: 18, x: 0, y: 8)
     }
 
     /// Pure white in light (vs the white page bg, the shadow defines
@@ -175,13 +183,15 @@ struct ElevatedCircleSurface: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
+                // PERF: shadows on the opaque shape, not the content (see
+                // `GlassSurfaceModifier`).
                 Circle().fill(cardFill)
+                    .shadow(color: shadowCrisp, radius: 1, x: 0, y: 1)
+                    .shadow(color: shadowSoft, radius: 10, x: 0, y: 4)
             )
             .overlay(
                 Circle().stroke(borderColor, lineWidth: 0.5)
             )
-            .shadow(color: shadowCrisp, radius: 1, x: 0, y: 1)
-            .shadow(color: shadowSoft, radius: 10, x: 0, y: 4)
     }
 
     private var cardFill: Color {
@@ -242,14 +252,16 @@ struct FieldCardModifier: ViewModifier {
 
         return content
             .background(
+                // PERF: shadow on the opaque shape, not the content (see
+                // `GlassSurfaceModifier`).
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .fill(fill)
+                    .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .stroke(borderColor, lineWidth: borderWidth)
             )
-            .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
             .animation(Theme.Motion.snappy, value: isFocused)
     }
 }
@@ -438,15 +450,18 @@ extension View {
 // that would violate the no-gradient rule.
 struct SkeletonShimmerModifier: ViewModifier {
     @State private var dimmed = false
+    /// Reduce Motion: hold the skeleton at a steady 0.75 opacity instead
+    /// of breathing — still reads as a placeholder, no perpetual motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
-            .opacity(dimmed ? 0.55 : 1.0)
+            .opacity(reduceMotion ? 0.75 : (dimmed ? 0.55 : 1.0))
             .animation(
-                .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
+                reduceMotion ? nil : .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
                 value: dimmed
             )
-            .onAppear { dimmed = true }
+            .onAppear { if !reduceMotion { dimmed = true } }
     }
 }
 

@@ -47,7 +47,7 @@ struct PillChip: View {
             if isSelected {
                 Capsule().fill(Color.appPrimary)
             } else {
-                Capsule().fill(Color.secondarySystemBackground)
+                Capsule().fill(Color.chipFill)
             }
         case .rounded:
             if isSelected {
@@ -55,7 +55,7 @@ struct PillChip: View {
                     .fill(Color.appPrimary)
             } else {
                 RoundedRectangle(cornerRadius: Theme.Radius.chip, style: .continuous)
-                    .fill(Color.secondarySystemBackground)
+                    .fill(Color.chipFill)
             }
         }
     }

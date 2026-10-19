@@ -290,14 +290,11 @@ struct BudgetMiniCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: cardHeight, alignment: .topLeading)
             // Glass surface so the multi-budget grid matches the Pinned
-            // Categories grid sitting next to it.
+            // Categories grid sitting next to it. Single elevation: the
+            // extra `.shadow(...)` that used to follow painted a third
+            // shadow over the composite (same "smudge" the Insights hero
+            // audit removed) and cost an offscreen pass per card.
             .cardSurface(radius: Theme.Radius.card)
-            .shadow(
-                color: Theme.Shadow.cardColor,
-                radius: Theme.Shadow.cardRadius,
-                x: 0,
-                y: Theme.Shadow.cardY
-            )
         }
         .buttonStyle(ScaleButtonStyle())
         // Pointer hover lifts the tile (iPad trackpad); no-op on touch.
