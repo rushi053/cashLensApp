@@ -63,6 +63,7 @@ struct TrendChartPager: View {
     /// PERF: passed in explicitly so neither this pager nor the chart
     /// observes `ExpenseViewModel` (see `ExpenseTrendChart`).
     let currencySymbol: String
+    let currencyCode: String
 
     @State private var selection: Int = 0
     @State private var topDaysPageHeight: CGFloat = 0
@@ -171,7 +172,8 @@ struct TrendChartPager: View {
             chartValues: trendValues,
             timeFrame: timeFrame,
             categoryColor: accent,
-            currencySymbol: currencySymbol
+            currencySymbol: currencySymbol,
+            currencyCode: currencyCode
         )
     }
 

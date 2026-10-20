@@ -82,3 +82,43 @@ struct SubscriptionScheduleTests {
         #expect(sub.toExpense(now: now).date == now)
     }
 }
+
+struct MoneyFormatTests {
+
+    private func indiaRegionFormatter(currencyCode: String) -> NumberFormatter {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "en_IN")
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 2
+        f.maximumFractionDigits = 2
+        MoneyFormat.configure(f, currencyCode: currencyCode)
+        return f
+    }
+
+    @Test func usdOnIndiaRegionUsesThousandsGrouping() {
+        let f = indiaRegionFormatter(currencyCode: "USD")
+        #expect(f.string(from: 114_594.13) == "114,594.13")
+        #expect(f.string(from: 12_345_678.9) == "12,345,678.90")
+    }
+
+    @Test func inrKeepsLakhGrouping() {
+        let f = indiaRegionFormatter(currencyCode: "INR")
+        #expect(f.string(from: 114_594.13) == "1,14,594.13")
+    }
+
+    @Test func roundsHalfAwayFromZeroDespiteBinaryNoise() {
+        #expect(MoneyFormat.rounded(3614.225, fractionDigits: 2) == 3614.23)
+        #expect(MoneyFormat.rounded(0.125, fractionDigits: 2) == 0.13)
+        #expect(MoneyFormat.rounded(-0.125, fractionDigits: 2) == -0.13)
+        #expect(MoneyFormat.rounded(1234.5, fractionDigits: 0) == 1235)
+        #expect(MoneyFormat.rounded(3614.2249, fractionDigits: 2) == 3614.22)
+        #expect(MoneyFormat.rounded(-1e-13, fractionDigits: 2).sign == .plus)
+    }
+
+    @Test func summationOrderCannotChangeTheCent() {
+        let amounts = [0.1, 0.2, 0.3, 1000.005, 2614.1, 0.01, -0.5]
+        let forward = amounts.reduce(0, +)
+        let backward = amounts.reversed().reduce(0, +)
+        #expect(MoneyFormat.rounded(forward, fractionDigits: 2) == MoneyFormat.rounded(backward, fractionDigits: 2))
+    }
+}

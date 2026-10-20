@@ -107,14 +107,12 @@ enum QuickLogService {
     /// Currency-aware "₹1,240" formatting without needing a live
     /// `ExpenseViewModel`. Mirrors `formattedAmount`'s digit rules.
     static func formatAmount(_ amount: Double, currency: Expense.Currency) -> String {
-        let digits = currency.fractionDigits
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = digits
-        formatter.maximumFractionDigits = digits
-        let magnitude = formatter.string(from: NSNumber(value: abs(amount.isFinite ? amount : 0)))
-            ?? (digits == 0 ? "0" : "0." + String(repeating: "0", count: digits))
-        let sign = amount < 0 ? "-" : ""
+        let magnitude = MoneyFormat.decimalString(
+            abs(amount.isFinite ? amount : 0),
+            fractionDigits: currency.fractionDigits,
+            currencyCode: currency.rawValue
+        )
+        let sign = MoneyFormat.rounded(amount, fractionDigits: currency.fractionDigits) < 0 ? "-" : ""
         return "\(sign)\(currency.symbol)\(magnitude)"
     }
 

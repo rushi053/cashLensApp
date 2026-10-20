@@ -346,7 +346,7 @@ extension ExpenseViewModel {
     ///   • everything else                   → 2 decimals
     ///
     /// **Concurrency.** Uses a lock-guarded cache of immutable
-    /// formatters (see `AmountFormatterCache`) rather than a shared
+    /// formatters (see `MoneyFormat`) rather than a shared
     /// mutable instance. `formattedAmount` is called from background
     /// `Task.detached` work in `StatisticsView`, the forecast pipeline,
     /// and the widget snapshot builder — a previous shared instance
@@ -370,10 +370,13 @@ extension ExpenseViewModel {
         // hid refund-heavy periods behind a fake $0.00 total. Format the
         // magnitude and prepend the sign manually so negatives read
         // "-$12.50" rather than the formatter's "$-12.50".
-        let formatter = AmountFormatterCache.formatter(fractionDigits: digits)
-        let formatted = formatter.string(from: NSNumber(value: abs(amount))) ?? zeroFallback
+        let formatted = MoneyFormat.decimalString(
+            abs(amount),
+            fractionDigits: digits,
+            currencyCode: selectedCurrency.rawValue
+        )
         // Don't show "-$0.00" when a tiny negative rounds to zero.
-        let sign = (amount < 0 && formatted != zeroFallback) ? "-" : ""
+        let sign = MoneyFormat.rounded(amount, fractionDigits: digits) < 0 ? "-" : ""
         return "\(sign)\(selectedCurrency.symbol)\(formatted)"
     }
 
@@ -408,31 +411,6 @@ extension ExpenseViewModel {
         }
         
         return nil
-    }
-}
-
-/// Thread-safe cache of amount formatters keyed by fraction-digit count
-/// (the only axis `formattedAmount` varies on — the currency symbol is
-/// prepended separately). Each formatter is fully configured under the
-/// lock before it's published to callers and never mutated afterward,
-/// so concurrent `string(from:)` calls from detached stats / widget /
-/// forecast work are safe.
-private enum AmountFormatterCache {
-    private static let lock = NSLock()
-    private static var formatters: [Int: NumberFormatter] = [:]
-
-    static func formatter(fractionDigits: Int) -> NumberFormatter {
-        lock.lock()
-        defer { lock.unlock() }
-        if let cached = formatters[fractionDigits] {
-            return cached
-        }
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = fractionDigits
-        formatter.maximumFractionDigits = fractionDigits
-        formatters[fractionDigits] = formatter
-        return formatter
     }
 }
 

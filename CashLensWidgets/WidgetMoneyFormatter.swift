@@ -45,7 +45,9 @@ enum WidgetMoneyFormatter {
         f.currencyCode = currencyCode
         f.maximumFractionDigits = 2
         f.minimumFractionDigits = 2
-        return f.string(from: NSNumber(value: amount.isFinite ? amount : 0)) ?? "\(symbol(for: currencyCode))0.00"
+        MoneyFormat.configure(f, currencyCode: currencyCode)
+        let value = MoneyFormat.rounded(amount, fractionDigits: 2)
+        return f.string(from: NSNumber(value: value)) ?? "\(symbol(for: currencyCode))0.00"
     }
 
     /// Compact "$1.2K" / "$3.4M" style. Used by Small surfaces and

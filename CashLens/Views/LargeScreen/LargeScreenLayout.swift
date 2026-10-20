@@ -103,6 +103,7 @@ struct LargeScreenColumns<Leading: View, Trailing: View>: View {
                 trailing()
                     .frame(maxWidth: .infinity, alignment: .top)
             }
+            .environment(\.columnsSplitOnHinge, split.leadingWidth != nil)
             .onGeometryChange(for: DuoLayoutSupport.ColumnSplit.self) { proxy in
                 DuoLayoutSupport.columnSplit(in: proxy, spacing: spacing)
             } action: { newValue in
@@ -114,6 +115,24 @@ struct LargeScreenColumns<Leading: View, Trailing: View>: View {
                 trailing()
             }
         }
+    }
+}
+
+extension EnvironmentValues {
+    /// True inside `LargeScreenColumns` while its gutter is aligned to a
+    /// Duo hinge (half-open book pose), where the usable height is short.
+    @Entry var columnsSplitOnHinge: Bool = false
+}
+
+/// Vertical stack of dashboard sections. Spacing tightens on a Duo hinge
+/// split so the last section in a column still reaches the screen.
+struct LargeScreenSectionStack<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    @Environment(\.columnsSplitOnHinge) private var onHinge
+
+    var body: some View {
+        VStack(spacing: onHinge ? Theme.Spacing.lg : Theme.Spacing.xxl, content: content)
     }
 }
 
