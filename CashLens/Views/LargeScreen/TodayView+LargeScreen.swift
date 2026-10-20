@@ -91,7 +91,7 @@ extension TodayView {
                     .modifier(SectionEntrance(order: 1, animate: animateSections))
             } else {
                 LargeScreenColumns(twoColumns: usesTwoColumns) {
-                    VStack(spacing: Theme.Spacing.xxl) {
+                    LargeScreenSectionStack {
                         budgetsSection
                             .modifier(SectionEntrance(order: 1, animate: animateSections))
                             .sectionScrollTransition()
@@ -103,7 +103,7 @@ extension TodayView {
                         }
                     }
                 } trailing: {
-                    VStack(spacing: Theme.Spacing.xxl) {
+                    LargeScreenSectionStack {
                         ForEach(Array(trailingSections.enumerated()), id: \.element) { index, section in
                             largeScreenSection(for: section)
                                 .modifier(SectionEntrance(order: index + 2, animate: animateSections))

@@ -1425,17 +1425,18 @@ struct TodayView: View {
     // Recent answers "did I log that?". One question per block.
     private func upcomingBillsSection(_ bills: [UpcomingBill]) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
-                Text("Upcoming Subscriptions")
-                    .font(Theme.Typography.sectionTitle)
-                    .foregroundColor(.primary)
-                Spacer()
-                Text(upcomingHeaderTotal(bills: bills))
-                    .font(Theme.Typography.numericSmall)
-                    .monospacedDigit()
-                    .foregroundColor(.secondary)
-                sectionJumpButton(label: "Manage", accessibilityLabel: "Open all subscriptions") {
-                    showingSubscriptions = true
+            // Narrow columns (Duo half-open right pane) drop "Upcoming"
+            // before anything wraps, then stack the total under the title.
+            ViewThatFits(in: .horizontal) {
+                upcomingHeaderRow(title: "Upcoming Subscriptions", bills: bills)
+                upcomingHeaderRow(title: "Subscriptions", bills: bills)
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    sectionHeaderTitle("Subscriptions")
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                        upcomingHeaderAmount(bills: bills)
+                        Spacer(minLength: Theme.Spacing.sm)
+                        upcomingManageButton
+                    }
                 }
             }
 
@@ -1449,6 +1450,41 @@ struct TodayView: View {
             }
             .cardSurface()
         }
+    }
+
+    private func upcomingHeaderRow(title: String, bills: [UpcomingBill]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+            sectionHeaderTitle(title)
+            Spacer(minLength: Theme.Spacing.sm)
+            upcomingHeaderAmount(bills: bills)
+            upcomingManageButton
+        }
+    }
+
+    private func upcomingHeaderAmount(bills: [UpcomingBill]) -> some View {
+        Text(upcomingHeaderTotal(bills: bills))
+            .font(Theme.Typography.numericSmall)
+            .monospacedDigit()
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    private var upcomingManageButton: some View {
+        sectionJumpButton(label: "Manage", accessibilityLabel: "Open all subscriptions") {
+            showingSubscriptions = true
+        }
+    }
+
+    /// Section title that never wraps. Rows that hold one offer a
+    /// shorter or stacked fallback through `ViewThatFits`; the scale
+    /// factor only covers what even the last fallback can't fit.
+    private func sectionHeaderTitle(_ title: String) -> some View {
+        Text(title)
+            .font(Theme.Typography.sectionTitle)
+            .foregroundColor(.primary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 
     /// Shared trailing-arrow button used by section headers that
@@ -1472,6 +1508,8 @@ struct TodayView: View {
             }
             .font(Theme.Typography.caption.weight(.medium))
             .foregroundColor(.appPrimary)
+            .lineLimit(1)
+            .fixedSize()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
@@ -1537,36 +1575,22 @@ struct TodayView: View {
         // The card body below holds only the chart, no internal
         // header — there's exactly one place to find the title.
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
-                Text(weekStripHeaderTitle)
-                    .font(Theme.Typography.sectionTitle)
-                    .foregroundColor(.primary)
-                // Streak chip — the design review's #7: StreakCalculator
-                // was orphaned (widget-only) since HomeView died; this
-                // re-homes the same metric in the week-strip header's
-                // empty slot. Hidden while a day is selected so the
-                // header doesn't fight the selected-day readout.
-                if selectedWeekDay == nil, let streak, streak.isMeaningful, streak.currentStreak >= 1 {
-                    streakChip(streak)
-                }
-                Spacer()
-                if let amount = weekStripHeaderAmount {
-                    Text(viewModel.formattedAmount(amount))
-                        .font(Theme.Typography.numericSmall)
-                        .monospacedDigit()
-                        .foregroundColor(.secondary)
-                        .contentTransition(.numericText())
-                        .moneyAnimation(amount: amount, currency: viewModel.selectedCurrency)
-                }
-                sectionJumpButton(label: "Insights", accessibilityLabel: "Open Insights") {
-                    // Preselect the .week timeframe in StatisticsView
-                    // so the user lands on the same window they were
-                    // glancing at, then perform the tab switch.
-                    NotificationCenter.default.post(
-                        name: .insightsRequestTimeFrame,
-                        object: ExpenseViewModel.TimeFrame.week
-                    )
-                    onOpenInsights()
+            // Narrow columns (Duo half-open right pane) first shrink the
+            // streak chip to its flame + count, then move the total and
+            // link under the title. Nothing in the row ever wraps.
+            ViewThatFits(in: .horizontal) {
+                weekStripHeaderRow(compactStreak: false)
+                weekStripHeaderRow(compactStreak: true)
+                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                        sectionHeaderTitle(weekStripHeaderTitle)
+                        weekStripStreakChip(compact: true)
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+                        weekStripHeaderAmountLabel
+                        Spacer(minLength: Theme.Spacing.sm)
+                        weekStripInsightsButton
+                    }
                 }
             }
 
@@ -1602,16 +1626,66 @@ struct TodayView: View {
         }
     }
 
+    private func weekStripHeaderRow(compactStreak: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.sm) {
+            sectionHeaderTitle(weekStripHeaderTitle)
+            weekStripStreakChip(compact: compactStreak)
+            Spacer(minLength: Theme.Spacing.sm)
+            weekStripHeaderAmountLabel
+            weekStripInsightsButton
+        }
+    }
+
+    /// Streak chip — the design review's #7: StreakCalculator was
+    /// orphaned (widget-only) since HomeView died; this re-homes the
+    /// same metric in the week-strip header's empty slot. Hidden while
+    /// a day is selected so the header doesn't fight the selected-day
+    /// readout.
+    @ViewBuilder
+    private func weekStripStreakChip(compact: Bool) -> some View {
+        if selectedWeekDay == nil, let streak, streak.isMeaningful, streak.currentStreak >= 1 {
+            streakChip(streak, compact: compact)
+        }
+    }
+
+    @ViewBuilder
+    private var weekStripHeaderAmountLabel: some View {
+        if let amount = weekStripHeaderAmount {
+            Text(viewModel.formattedAmount(amount))
+                .font(Theme.Typography.numericSmall)
+                .monospacedDigit()
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .fixedSize()
+                .contentTransition(.numericText())
+                .moneyAnimation(amount: amount, currency: viewModel.selectedCurrency)
+        }
+    }
+
+    private var weekStripInsightsButton: some View {
+        sectionJumpButton(label: "Insights", accessibilityLabel: "Open Insights") {
+            // Preselect the .week timeframe in StatisticsView
+            // so the user lands on the same window they were
+            // glancing at, then perform the tab switch.
+            NotificationCenter.default.post(
+                name: .insightsRequestTimeFrame,
+                object: ExpenseViewModel.TimeFrame.week
+            )
+            onOpenInsights()
+        }
+    }
+
     /// Small flame chip: "3-day streak". Same `StreakCalculator`
     /// numbers the widget renders, so the two surfaces never disagree.
     /// Scale-pops once when the count increments (driven by
     /// `streakPop`, set in the recompute commit) — a single spring,
     /// never a loop.
-    private func streakChip(_ s: StreakCalculator.StreakSummary) -> some View {
+    /// `compact` drops the "-day streak" words for narrow header rows.
+    private func streakChip(_ s: StreakCalculator.StreakSummary, compact: Bool = false) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "flame.fill")
                 .font(.system(size: 10, weight: .semibold))
-            Text("\(s.currentStreak)-day streak")
+            Text(compact ? "\(s.currentStreak)" : "\(s.currentStreak)-day streak")
                 .font(.caption2.weight(.semibold))
                 .monospacedDigit()
                 .contentTransition(.numericText())

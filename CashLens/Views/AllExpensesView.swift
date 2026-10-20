@@ -714,28 +714,52 @@ struct AllExpensesView: View {
     }
 
     private var sortBar: some View {
-        HStack(spacing: Theme.Spacing.sm + 2) {
-            // With the regular-width filter rail on screen, sort and
-            // date range live in the rail; the bar keeps the count.
-            // `showsFilterRail` is false on every compact layout.
-            if !showsFilterRail {
-                sortPill
-                dateRangePill
+        // The count never truncates: when the pills leave no room for it
+        // (Duo outer display, long date range) it drops under them. The
+        // reserved width keeps the bar from flipping rows as the count
+        // grows and shrinks while searching.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Theme.Spacing.sm + 2) {
+                sortBarPills
+                Spacer(minLength: Theme.Spacing.sm)
+                countText
+                    .frame(minWidth: Self.sortBarCountReservedWidth, alignment: .trailing)
             }
-
-            Spacer(minLength: Theme.Spacing.sm)
-
-            Text(countLabel)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .contentTransition(.numericText())
-                .animation(Theme.Motion.snappy, value: totalMatchCount)
-                .accessibilityLabel(countAccessibilityLabel)
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+                HStack(spacing: Theme.Spacing.sm + 2) {
+                    sortBarPills
+                }
+                countText
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, Theme.Spacing.lg)
+    }
+
+    /// Fits "487 · $12,345.67" at the bar's 13pt size.
+    private static let sortBarCountReservedWidth: CGFloat = 120
+
+    // With the regular-width filter rail on screen, sort and date range
+    // live in the rail; the bar keeps the count. `showsFilterRail` is
+    // false on every compact layout.
+    @ViewBuilder
+    private var sortBarPills: some View {
+        if !showsFilterRail {
+            sortPill
+            dateRangePill
+        }
+    }
+
+    private var countText: some View {
+        Text(countLabel)
+            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .monospacedDigit()
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+            .fixedSize()
+            .contentTransition(.numericText())
+            .animation(Theme.Motion.snappy, value: totalMatchCount)
+            .accessibilityLabel(countAccessibilityLabel)
     }
 
     /// Sort dropdown — native SwiftUI `Menu` sits just below the pill so the
