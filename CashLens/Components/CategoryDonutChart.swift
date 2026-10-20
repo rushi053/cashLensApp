@@ -14,6 +14,10 @@ struct CategoryDonutChart: View {
     let slices: [Slice]
     let total: Double
     let selectedId: String?
+    /// Formatted `total`, shown in the centre when no slice is selected.
+    /// Without it the resting state read "Total / 100%" — true, but
+    /// says nothing the ring doesn't already say.
+    var formattedTotal: String? = nil
     let onSelect: (Slice?) -> Void
     
     private var normalizedSlices: [(slice: Slice, start: Double, end: Double)] {
@@ -44,7 +48,7 @@ struct CategoryDonutChart: View {
         if let s = selectedSlice {
             return "\(Int(round((s.amount / total) * 100)))%"
         }
-        return "100%"
+        return formattedTotal ?? "100%"
     }
     
     private let strokeWidth: CGFloat = 18
@@ -88,7 +92,13 @@ struct CategoryDonutChart: View {
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
                 }
+                // Keep the label inside the ring's hole.
+                .frame(width: chartSize - strokeWidth * 2 - 12)
                 .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.85), value: selectedId)
             }
             
@@ -113,6 +123,10 @@ struct CategoryDonutChart: View {
                                 .font(.caption)
                                 .foregroundColor(.primary)
                                 .lineLimit(1)
+                                // "Transportation" in a two-up legend on
+                                // the Duo outer display: shrink a little
+                                // before resorting to "Transportati…".
+                                .minimumScaleFactor(0.8)
                             
                             Spacer(minLength: 0)
                             
@@ -120,6 +134,8 @@ struct CategoryDonutChart: View {
                                 Text("\(Int(round((slice.amount / total) * 100)))%")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .fixedSize()
                             }
                         }
                         .padding(.horizontal, 10)
