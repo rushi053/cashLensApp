@@ -348,7 +348,7 @@ struct NotificationScheduler {
     
     private static func nextWeeklyFireDate(weekday: Int, hour: Int, minute: Int) -> Date {
         let calendar = Calendar.current
-        let now = Date()
+        let now = AppNow.date
         var comps = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)
         comps.weekday = weekday
         comps.hour = hour
@@ -365,7 +365,7 @@ struct NotificationScheduler {
     
     private static func nextMonthlyFireDate(dayOfMonth: Int, hour: Int, minute: Int) -> Date {
         let calendar = Calendar.current
-        let now = Date()
+        let now = AppNow.date
         var comps = calendar.dateComponents([.year, .month], from: now)
         comps.day = dayOfMonth
         comps.hour = hour
@@ -418,7 +418,7 @@ struct NotificationScheduler {
         // fetch per expense.
         let categoryNameLookup = Self.makeCategoryNameLookup(viewModel: viewModel)
         let inputs = SmartInsightsEngine.Inputs(
-            now: Date(),
+            now: AppNow.date,
             calendar: .current,
             allExpenses: viewModel.expenses,
             activeSubscriptions: activeSubs,
@@ -475,7 +475,7 @@ struct NotificationScheduler {
             // request stays pending until it actually delivers or we cancel.
             let updatedHistory = SmartInsightsEngine.record(insight: insight, in: history)
             saveSmartInsightHistory(updatedHistory)
-            UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.smartInsightsLastFireDate)
+            UserDefaults.standard.set(AppNow.date, forKey: UserDefaultsKeys.smartInsightsLastFireDate)
             return true
         } catch {
             return false

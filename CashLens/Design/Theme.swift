@@ -120,13 +120,24 @@ enum Theme {
     // MARK: - Motion
 
     /// Standardized spring timings. Use one of these three everywhere.
+    /// Durations are computed so a Debug promo recording
+    /// (`-slowAnimations`) can stretch them by 1.5×. Release stays
+    /// at scale 1, which is the durations below.
     enum Motion {
+        static var scale: Double {
+            #if DEBUG
+            return PromoDemo.animationScale
+            #else
+            return 1
+            #endif
+        }
+
         /// Quick snap for selection toggles, filter chips.
-        static let snappy: Animation = .easeOut(duration: 0.18)
+        static var snappy: Animation { .easeOut(duration: 0.18 * scale) }
         /// Default for taps, reveals, state changes.
-        static let tap: Animation = .spring(response: 0.4, dampingFraction: 0.8)
+        static var tap: Animation { .spring(response: 0.4 * scale, dampingFraction: 0.8) }
         /// Larger reveals (card appear, section expand).
-        static let emphasized: Animation = .spring(response: 0.55, dampingFraction: 0.78)
+        static var emphasized: Animation { .spring(response: 0.55 * scale, dampingFraction: 0.78) }
     }
 
     // MARK: - Icon Sizes

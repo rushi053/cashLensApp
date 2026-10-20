@@ -1450,7 +1450,7 @@ struct ProfileView: View {
             return .critical
         }
 
-        let daysSinceBackup = Calendar.current.dateComponents([.day], from: lastBackup, to: Date()).day ?? Int.max
+        let daysSinceBackup = Calendar.current.dateComponents([.day], from: lastBackup, to: AppNow.date).day ?? Int.max
 
         switch daysSinceBackup {
         case 0...7:   return .good
@@ -1470,7 +1470,7 @@ struct ProfileView: View {
 
     private func formatBackupDate(_ date: Date) -> String {
         let calendar = Calendar.current
-        let now = Date()
+        let now = AppNow.date
 
         if calendar.isDateInToday(date) {
             return "Today"

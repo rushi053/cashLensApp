@@ -41,7 +41,7 @@ struct ExpenseDraft: Codable {
         self.tags = tags.isEmpty ? nil : tags
         self.isRefund = isRefund ? true : nil
         self.paymentMethod = paymentMethod?.rawValue
-        self.timestamp = Date()
+        self.timestamp = AppNow.date
     }
 
     /// Convenience: read the stored raw string back through the tolerant

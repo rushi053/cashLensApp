@@ -28,7 +28,7 @@ enum AdvancedStatsCalculator {
         previousTotal: Double,
         rangeStart: Date,
         rangeEnd: Date,
-        now: Date = Date(),
+        now: Date = AppNow.date,
         calendar: Calendar = .current
     ) -> DailyPace {
         let startDay = calendar.startOfDay(for: rangeStart)
@@ -89,7 +89,7 @@ enum AdvancedStatsCalculator {
         previousTotal: Double,
         rangeStart: Date,
         rangeEnd: Date,
-        now: Date = Date(),
+        now: Date = AppNow.date,
         calendar: Calendar = .current
     ) -> Velocity {
         let startDay = calendar.startOfDay(for: rangeStart)
@@ -154,7 +154,7 @@ enum AdvancedStatsCalculator {
     /// O(n) regardless of the window length.
     static func yearOverYear(
         allExpenses: [Expense],
-        referenceDate: Date = Date(),
+        referenceDate: Date = AppNow.date,
         count: Int = 6,
         calendar: Calendar = .current
     ) -> [YearOverYearPoint] {

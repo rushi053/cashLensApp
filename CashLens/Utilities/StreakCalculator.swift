@@ -37,7 +37,7 @@ enum StreakCalculator {
     /// function does its own date filtering.
     static func summary(
         from expenses: [Expense],
-        now: Date = Date(),
+        now: Date = AppNow.date,
         calendar: Calendar = .current
     ) -> StreakSummary {
         let today = calendar.startOfDay(for: now)

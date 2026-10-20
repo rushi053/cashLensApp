@@ -33,7 +33,7 @@ extension ExpenseViewModel {
             // (e.g. a huge same-day import) so the sync phase can never
             // degrade back into a full-table materialization.
             let calendar = Calendar.current
-            let startOfThisMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
+            let startOfThisMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: AppNow.date)) ?? AppNow.date
             let windowStart = calendar.date(byAdding: .month, value: -1, to: startOfThisMonth) ?? startOfThisMonth
             fetchRequest.predicate = NSPredicate(format: "date >= %@", windowStart as NSDate)
             fetchRequest.fetchLimit = 2000

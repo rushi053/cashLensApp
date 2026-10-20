@@ -9,7 +9,7 @@ extension SubscriptionEntity {
             name: self.name ?? "",
             amount: self.amount,
             currency: Expense.Currency(rawValue: self.currency ?? "USD") ?? .usd,
-            startDate: self.startDate ?? Date(),
+            startDate: self.startDate ?? AppNow.date,
             frequency: Subscription.Frequency(rawValue: self.frequency ?? "Monthly") ?? .monthly,
             category: Expense.Category(rawValue: self.category ?? "Other") ?? .other,
             customCategoryId: self.customCategoryId,
@@ -17,7 +17,7 @@ extension SubscriptionEntity {
         )
         
         subscription.id = self.id ?? UUID()
-        subscription.nextDueDate = self.nextDueDate ?? Date()
+        subscription.nextDueDate = self.nextDueDate ?? AppNow.date
         subscription.isActive = self.isActive
         subscription.reminderEnabled = self.reminderEnabled
         subscription.reminderDaysBefore = Int(self.reminderDaysBefore)

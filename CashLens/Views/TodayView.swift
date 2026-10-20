@@ -480,7 +480,7 @@ struct TodayView: View {
     }
 
     var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
+        let hour = Calendar.current.component(.hour, from: AppNow.date)
         switch hour {
         case 5..<12:  return "Good morning"
         case 12..<17: return "Good afternoon"
@@ -1171,7 +1171,7 @@ struct TodayView: View {
             if newStatus == .over {
                 startOverPulseIfNeeded(status: newStatus)
             } else {
-                withAnimation(.easeOut(duration: 0.4)) {
+                withAnimation(.easeOut(duration: 0.4 * Theme.Motion.scale)) {
                     overRingPulse = 0
                 }
             }
@@ -1188,13 +1188,13 @@ struct TodayView: View {
             return
         }
         overRingPulse = 0
-        withAnimation(.easeInOut(duration: 0.9).repeatCount(5, autoreverses: true)) {
+        withAnimation(.easeInOut(duration: 0.9 * Theme.Motion.scale).repeatCount(5, autoreverses: true)) {
             overRingPulse = 0.6
         }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 4_600_000_000)
             guard overRingPulse > 0 else { return }
-            withAnimation(.easeOut(duration: 0.6)) { overRingPulse = 0.35 }
+            withAnimation(.easeOut(duration: 0.6 * Theme.Motion.scale)) { overRingPulse = 0.35 }
         }
     }
 
@@ -1886,7 +1886,7 @@ struct TodayView: View {
         }
         let activeBudgets = budgetViewModel.currentBudgets
         let activeProgress = activeBudgets.map { budgetViewModel.progress(for: $0) }
-        let now = Date()
+        let now = AppNow.date
         let categoryMap: [UUID: (name: String, color: String)] = Dictionary(
             uniqueKeysWithValues: categoryViewModel.customCategories.map { ($0.id, (name: $0.name, color: $0.colorName)) }
         )
@@ -1990,7 +1990,7 @@ struct TodayView: View {
             if let old = verdict,
                result.verdict.status.severity > old.status.severity,
                result.verdict.status == .tight || result.verdict.status == .over {
-                let todayStart = Calendar.current.startOfDay(for: Date())
+                let todayStart = Calendar.current.startOfDay(for: AppNow.date)
                 let last = UserDefaults.standard.object(forKey: UserDefaultsKeys.verdictWarningLastDate) as? Date
                 if last != todayStart {
                     UserDefaults.standard.set(todayStart, forKey: UserDefaultsKeys.verdictWarningLastDate)
@@ -2049,7 +2049,7 @@ struct TodayView: View {
     /// transform — runs synchronously on the main actor because the
     /// active set is typically <100 items.
     private func recomputeUpcomingBills() {
-        let now = Date()
+        let now = AppNow.date
         let cal = Calendar.current
         let windowEnd = cal.date(byAdding: .day, value: Self.upcomingBillsWindow, to: now) ?? now
 

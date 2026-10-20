@@ -87,7 +87,7 @@ final class ReviewPromptManager: ObservableObject {
     /// Call when any sheet the ask could collide with has just closed
     /// (the add-expense sheet is the one that matters in practice).
     func noteSheetDismissed() {
-        lastSheetDismiss = Date()
+        lastSheetDismiss = AppNow.date
         if isPending { schedule() }
     }
 
@@ -139,7 +139,7 @@ final class ReviewPromptManager: ObservableObject {
     /// screen.
     private func schedule() {
         scheduledFire?.cancel()
-        let sinceDismiss = lastSheetDismiss.map { Date().timeIntervalSince($0) } ?? Self.sheetQuietInterval
+        let sinceDismiss = lastSheetDismiss.map { AppNow.date.timeIntervalSince($0) } ?? Self.sheetQuietInterval
         let delay = max(Self.sheetQuietInterval - sinceDismiss, 0) + Self.sheetQuietInterval
 
         let work = DispatchWorkItem { [weak self] in
@@ -151,7 +151,7 @@ final class ReviewPromptManager: ObservableObject {
 
     private func fireIfStillAllowed() {
         guard isPending, canAsk, !isPaywallVisible else { return }
-        if let last = lastSheetDismiss, Date().timeIntervalSince(last) < Self.sheetQuietInterval {
+        if let last = lastSheetDismiss, AppNow.date.timeIntervalSince(last) < Self.sheetQuietInterval {
             schedule()
             return
         }

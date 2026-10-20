@@ -150,7 +150,7 @@ extension AllExpensesView {
         .animation(Theme.Motion.snappy, value: calendarSelectedDay)
         .onAppear {
             if calendarSelectedDay == nil {
-                calendarSelectedDay = Calendar.current.startOfDay(for: Date())
+                calendarSelectedDay = Calendar.current.startOfDay(for: AppNow.date)
             }
         }
     }

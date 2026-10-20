@@ -81,7 +81,7 @@ struct BudgetProgressCard: View {
         }
         .buttonStyle(ScaleButtonStyle())
         .onAppear {
-            withAnimation(.easeOut(duration: 0.9).delay(0.15)) {
+            withAnimation(.easeOut(duration: 0.9 * Theme.Motion.scale).delay(0.15 * Theme.Motion.scale)) {
                 animateProgress = true
             }
         }

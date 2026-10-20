@@ -33,11 +33,11 @@ struct BudgetSetupView: View {
     /// Custom-window dates, only persisted when `period == .custom`.
     /// Defaults: today → a week out (a typical short trip), adjusted
     /// in `loadEditingData` when editing an existing custom budget.
-    @State private var customStart: Date = Calendar.current.startOfDay(for: Date())
+    @State private var customStart: Date = Calendar.current.startOfDay(for: AppNow.date)
     @State private var customEnd: Date = Calendar.current.date(
         byAdding: .day, value: 6,
-        to: Calendar.current.startOfDay(for: Date())
-    ) ?? Date()
+        to: Calendar.current.startOfDay(for: AppNow.date)
+    ) ?? AppNow.date
     @State private var alertAt80 = true
     @State private var alertAt100 = true
     @State private var showDeleteConfirm = false

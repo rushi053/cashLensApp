@@ -6,8 +6,8 @@ struct StatisticsView: View {
     @EnvironmentObject var categoryViewModel: CategoryViewModel
     @EnvironmentObject var proManager: ProManager
     @State private var selectedTimeFrame: ExpenseViewModel.TimeFrame = .month
-    @State private var rangeStartDate = Date()
-    @State private var rangeEndDate = Date()
+    @State private var rangeStartDate = AppNow.date
+    @State private var rangeEndDate = AppNow.date
     @State private var showingAddExpense = false
     @State private var selectedCategory: Expense.Category? = nil
     @State private var selectedCustomCategoryId: UUID? = nil
@@ -97,8 +97,8 @@ struct StatisticsView: View {
     @State private var exportErrorMessage: String? = nil
     
     // Date range sheet uses temporary values to avoid recomputing while scrolling the picker.
-    @State private var tempRangeStartDate = Date()
-    @State private var tempRangeEndDate = Date()
+    @State private var tempRangeStartDate = AppNow.date
+    @State private var tempRangeEndDate = AppNow.date
     
     // Donut selection is highlight-only (keeps animation smooth without triggering full stats recompute).
     @State private var donutSelectedId: String? = nil
@@ -188,7 +188,7 @@ struct StatisticsView: View {
                 // animation transaction right in the middle of the tab
                 // transition.
                 if !animateCards {
-                    withAnimation(.easeOut(duration: 0.6).delay(0.1)) {
+                    withAnimation(.easeOut(duration: 0.6 * Theme.Motion.scale).delay(0.1 * Theme.Motion.scale)) {
                         animateCards = true
                     }
                 }
@@ -250,7 +250,7 @@ struct StatisticsView: View {
             // Recap always covers the most recent *complete* month.
             // Env objects (ExpenseViewModel / CategoryViewModel)
             // inherit from this view automatically.
-            if let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: Date()) {
+            if let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: AppNow.date) {
                 MonthlyRecapSheet(month: lastMonth)
             }
         }
@@ -632,7 +632,7 @@ struct StatisticsView: View {
     private var canGoForwardPeriod: Bool {
         guard selectedTimeFrame != .all else { return false }
         let calendar = Calendar.current
-        let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date())) ?? Date()
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: AppNow.date)) ?? AppNow.date
         return rangeEndDate < endOfToday
     }
 
@@ -645,7 +645,7 @@ struct StatisticsView: View {
     /// per-call allocations as a P1 hot path.
     private var currentPeriodLabel: String {
         let calendar = Calendar.current
-        let now = Date()
+        let now = AppNow.date
 
         switch selectedTimeFrame {
         case .all:
@@ -737,7 +737,7 @@ struct StatisticsView: View {
     /// Used to show a contextual "Reset" pill only when there's actually something to reset.
     private var rangeWasModifiedFromPreset: Bool {
         let calendar = Calendar.current
-        let range = selectedTimeFrame.dateRange(referenceDate: Date())
+        let range = selectedTimeFrame.dateRange(referenceDate: AppNow.date)
         let presetStart = calendar.startOfDay(for: range.start)
         let presetEnd = calendar.startOfDay(for: calendar.date(byAdding: .day, value: -1, to: range.end) ?? range.end)
         return calendar.startOfDay(for: rangeStartDate) != presetStart
@@ -800,7 +800,7 @@ struct StatisticsView: View {
         // series is built off-main, in the same pass as the rest of the
         // stats, instead of recomputing in the chart view body.
         let trendTimeFrame = selectedTimeFrame
-        let referenceNow = Date()
+        let referenceNow = AppNow.date
         
         // Show loading for large datasets
         if expensesSnapshot.count > 500 {
@@ -1027,7 +1027,7 @@ struct StatisticsView: View {
     
     private func applyPresetTimeFrame(_ timeFrame: ExpenseViewModel.TimeFrame) {
         let calendar = Calendar.current
-        let now = Date()
+        let now = AppNow.date
         let range = timeFrame.dateRange(referenceDate: now)
         rangeStartDate = range.start
         rangeEndDate = calendar.date(byAdding: .day, value: -1, to: range.end) ?? now
@@ -1168,7 +1168,7 @@ struct StatisticsView: View {
     }
 
     private var lastMonthName: String {
-        guard let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: Date()) else { return "Last month" }
+        guard let lastMonth = Calendar.current.date(byAdding: .month, value: -1, to: AppNow.date) else { return "Last month" }
         return Self.formatterMonthOnly.string(from: lastMonth)
     }
 
@@ -2385,7 +2385,7 @@ struct StatisticsView: View {
             subtitle: subtitle,
             rangeStart: rangeStartDate,
             rangeEnd: rangeEndDate,
-            generatedAt: Date(),
+            generatedAt: AppNow.date,
             currencyCode: viewModel.selectedCurrency.rawValue,
             totalSpent: cachedTotalSpent,
             transactionCount: cachedFilteredCount,

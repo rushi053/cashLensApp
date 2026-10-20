@@ -75,7 +75,7 @@ struct SaveErrorPayload: Sendable {
     /// Wall-clock timestamp used by the banner host's debounce —
     /// repeated identical errors fired within the dedup window
     /// only present once.
-    let timestamp: Date = Date()
+    let timestamp: Date = AppNow.date
 }
 
 extension Notification.Name {

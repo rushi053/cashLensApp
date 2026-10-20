@@ -128,7 +128,7 @@ enum SmartInsightsEngine {
 
     /// Records that `insight` was just sent. Returns the updated history;
     /// the caller is responsible for persisting it back to `UserDefaults`.
-    static func record(insight: Insight, in history: HistoryRecord, now: Date = Date()) -> HistoryRecord {
+    static func record(insight: Insight, in history: HistoryRecord, now: Date = AppNow.date) -> HistoryRecord {
         var updated = history
         updated.entries[insight.fingerprint] = now
         // Trim entries older than 60 days so the dictionary doesn't grow

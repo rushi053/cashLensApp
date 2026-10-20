@@ -6,7 +6,7 @@ struct ExpenseFilter {
         category: Expense.Category?,
         customCategoryId: UUID?,
         timeFrame: ExpenseViewModel.TimeFrame,
-        referenceDate: Date = Date(),
+        referenceDate: Date = AppNow.date,
         dateRangeStart: Date? = nil,
         dateRangeEnd: Date? = nil,
         calendar: Calendar = .current

@@ -252,11 +252,11 @@ struct ExportDataView: View {
 
     private var lastBackupRelative: String {
         guard let date = lastBackupDate else { return "Never" }
-        let interval = Date().timeIntervalSince(date)
+        let interval = AppNow.date.timeIntervalSince(date)
         if interval < 60 { return "Just now" }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return formatter.localizedString(for: date, relativeTo: AppNow.date)
     }
 
     private var lastBackupFormatDisplay: String {
@@ -516,7 +516,7 @@ struct ExportDataView: View {
     /// while Settings was open. The targeted notification keeps the
     /// UX (instant footer update) while costing essentially nothing.
     private static func recordBackup(format: ExportFormat) {
-        UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastBackupDate)
+        UserDefaults.standard.set(AppNow.date, forKey: UserDefaultsKeys.lastBackupDate)
         UserDefaults.standard.set(format.rawValue, forKey: UserDefaultsKeys.lastBackupFormat)
         let count = UserDefaults.standard.integer(forKey: UserDefaultsKeys.totalBackupCount)
         UserDefaults.standard.set(count + 1, forKey: UserDefaultsKeys.totalBackupCount)

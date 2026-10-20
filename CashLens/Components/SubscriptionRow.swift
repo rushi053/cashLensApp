@@ -291,7 +291,7 @@ struct SubscriptionRow: View {
         SubscriptionRow(
             subscription: {
                 var s = Subscription.sampleData[2]
-                s.nextDueDate = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+                s.nextDueDate = Calendar.current.date(byAdding: .day, value: -1, to: AppNow.date) ?? AppNow.date
                 return s
             }(),
             monthlyEquivalentText: nil,

@@ -142,7 +142,7 @@ enum ForecastEngine {
         history: [Expense],
         upcomingSubscriptions: [Subscription],
         horizonDays: Int = 30,
-        now: Date = Date(),
+        now: Date = AppNow.date,
         calendar: Calendar = .current
     ) -> Forecast {
         guard horizonDays > 0 else { return .empty }

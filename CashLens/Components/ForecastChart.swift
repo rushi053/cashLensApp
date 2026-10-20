@@ -22,7 +22,7 @@ struct ForecastChart: View {
     /// chart does — drag to read any day's actual or projected total.
     @State private var rawSelectedDate: Date? = nil
 
-    private var today: Date { Calendar.current.startOfDay(for: Date()) }
+    private var today: Date { Calendar.current.startOfDay(for: AppNow.date) }
 
     /// Day point nearest the scrub position, or `nil` when idle.
     private var selectedPoint: ForecastEngine.DayPoint? {

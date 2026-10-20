@@ -83,6 +83,54 @@ struct SubscriptionScheduleTests {
     }
 }
 
+struct PromoDemoTests {
+
+    @Test func datasetMatchesTheBudgetStory() {
+        #expect(PromoDemo.rows.count == 46)
+        #expect(PromoDemo.netCents(monthOffset: 0) == 175_000)
+        #expect(PromoDemo.netCents(monthOffset: -1) == 152_000)
+        #expect(PromoDemo.cents(monthOffset: 0, category: .groceries) == 42_840)
+        #expect(PromoDemo.rows.filter { $0.monthOffset == 0 && $0.refund }.count == 1)
+        #expect(PromoDemo.rows.allSatisfy { $0.cents > 0 })
+    }
+
+    @Test func demoDateFreezesToThatAfternoon() {
+        let date = PromoDemo.parseDemoDate("2026-10-20")
+        let calendar = Calendar(identifier: .gregorian)
+        let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date!)
+        #expect(parts.year == 2026)
+        #expect(parts.month == 10)
+        #expect(parts.day == 20)
+        #expect(parts.hour == 15)
+        #expect(parts.minute == 30)
+        #expect(PromoDemo.parseDemoDate("20-10-2026") == nil)
+    }
+
+    @Test func flagsAreReadFromTheArgumentList() {
+        let suiteName = "PromoDemoTests.\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suiteName)!
+        defer {
+            isolated.removePersistentDomain(forName: suiteName)
+            PromoDemo.resetForTests()
+        }
+        PromoDemo.apply(
+            arguments: ["-demoData", "-slowAnimations", "-skipOnboarding", "-proUnlocked", "-demoDate", "2026-10-20"],
+            defaults: isolated
+        )
+        #expect(PromoDemo.forcedIsPro == true)
+        #expect(PromoDemo.animationScale == 1.5)
+        #expect(PromoDemo.frozenNow != nil)
+        #expect(isolated.string(forKey: UserDefaultsKeys.selectedCurrency) == "USD")
+        #expect(isolated.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding))
+        #expect(isolated.string(forKey: UserDefaultsKeys.userName) == "Alex")
+        #expect(isolated.bool(forKey: UserDefaultsKeys.appLockEnabled) == false)
+
+        PromoDemo.apply(arguments: ["-proLocked", "-showOnboarding"], defaults: isolated)
+        #expect(PromoDemo.forcedIsPro == false)
+        #expect(isolated.bool(forKey: UserDefaultsKeys.hasCompletedOnboarding) == false)
+    }
+}
+
 struct MoneyFormatTests {
 
     private func indiaRegionFormatter(currencyCode: String) -> NumberFormatter {

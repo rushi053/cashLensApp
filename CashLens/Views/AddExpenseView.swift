@@ -261,7 +261,7 @@ struct AddExpenseView: View {
         // Empty / default state — the draft (if any) populates in `.task`.
         _title = State(initialValue: "")
         _amount = State(initialValue: "")
-        _date = State(initialValue: Date())
+        _date = State(initialValue: AppNow.date)
         _selectedCategory = State(initialValue: .food)
         _selectedCustomCategoryId = State(initialValue: nil)
         _notes = State(initialValue: "")
@@ -1340,7 +1340,7 @@ struct AddExpenseView: View {
                     selected: Calendar.current.isDateInToday(date)
                 ) {
                     HapticManager.shared.selectionChanged()
-                    date = Date()
+                    date = AppNow.date
                 }
 
                 dateChip(
@@ -1348,7 +1348,7 @@ struct AddExpenseView: View {
                     selected: Calendar.current.isDateInYesterday(date)
                 ) {
                     HapticManager.shared.selectionChanged()
-                    date = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+                    date = Calendar.current.date(byAdding: .day, value: -1, to: AppNow.date) ?? AppNow.date
                 }
 
                 pickDateChip
@@ -2329,12 +2329,12 @@ struct AddExpenseView: View {
             HStack(spacing: Theme.Spacing.sm + 2) {
                 quickDateChip(title: "Today") {
                     HapticManager.shared.selectionChanged()
-                    date = Date()
+                    date = AppNow.date
                 }
 
                 quickDateChip(title: "Yesterday") {
                     HapticManager.shared.selectionChanged()
-                    date = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+                    date = Calendar.current.date(byAdding: .day, value: -1, to: AppNow.date) ?? AppNow.date
                 }
 
                 Spacer()

@@ -48,6 +48,9 @@ class ProManager: ObservableObject {
     // MARK: - Init
 
     private init() {
+        #if DEBUG
+        PromoDemo.configureFromLaunchArguments()
+        #endif
         Task {
             await loadProducts()
             // Donor grandfathering runs after products load so launch
@@ -121,6 +124,13 @@ class ProManager: ObservableObject {
     /// persisted last-known-Pro state up to date and flags a lapse for
     /// the win-back flow.
     private func recomputeIsPro() {
+        #if DEBUG
+        if let forced = PromoDemo.forcedIsPro {
+            if isPro != forced { isPro = forced }
+            // Don't record a lapse or a grant off a recording flag.
+            return
+        }
+        #endif
         let newValue = hasStoreEntitlement || donorGrantIsActive
         if isPro != newValue {
             isPro = newValue
@@ -304,7 +314,7 @@ class ProManager: ObservableObject {
             guard let granted = UserDefaults.standard.object(forKey: UserDefaultsKeys.donorGrantDate) as? Date else {
                 return false
             }
-            return Date() < granted.addingTimeInterval(365 * 86_400)
+            return AppNow.date < granted.addingTimeInterval(365 * 86_400)
         }
     }
 
@@ -346,7 +356,7 @@ class ProManager: ObservableObject {
             }
             defaults.set(DonorGrant.founder.rawValue, forKey: UserDefaultsKeys.donorGrantType)
             if defaults.object(forKey: UserDefaultsKeys.donorGrantDate) == nil {
-                defaults.set(Date(), forKey: UserDefaultsKeys.donorGrantDate)
+                defaults.set(AppNow.date, forKey: UserDefaultsKeys.donorGrantDate)
             }
             queueDonorThanksIfNeeded(.founder)
         } else {
@@ -359,7 +369,7 @@ class ProManager: ObservableObject {
                 return
             }
             defaults.set(DonorGrant.yearOfPro.rawValue, forKey: UserDefaultsKeys.donorGrantType)
-            defaults.set(Date(), forKey: UserDefaultsKeys.donorGrantDate)
+            defaults.set(AppNow.date, forKey: UserDefaultsKeys.donorGrantDate)
             queueDonorThanksIfNeeded(.yearOfPro)
         }
 

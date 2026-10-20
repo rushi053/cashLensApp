@@ -624,7 +624,7 @@ struct OnboardingView: View {
             title: resolvedTitle,
             amount: amountValue,
             currency: viewModel.selectedCurrency,
-            date: Date(),
+            date: AppNow.date,
             category: firstExpenseCategory
         )
         viewModel.addExpense(expense)

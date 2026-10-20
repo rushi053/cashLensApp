@@ -28,7 +28,7 @@ struct PaywallTrigger {
     /// visits don't count — only the automatic trigger).
     let hasAutoShownBefore: Bool
     let lastAutoShowDate: Date?
-    var now: Date = Date()
+    var now: Date = AppNow.date
 
     var shouldAutoShow: Bool {
         guard !isPro else { return false }

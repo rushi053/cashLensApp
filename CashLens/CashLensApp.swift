@@ -60,6 +60,11 @@ struct CashLensApp: App {
     @State private var showCurrencyPicker = false
 
     init() {
+        #if DEBUG
+        // Before any preference read. ProManager and AppLockManager
+        // also call this; it runs once.
+        PromoDemo.configureFromLaunchArguments()
+        #endif
         // SAFETY: If the persistent store failed to load, every view model
         // is wired to a throwaway in-memory container instead — fetching
         // against a coordinator with zero stores raises an exception, and
@@ -83,6 +88,12 @@ struct CashLensApp: App {
             // the store with the marketing demo backup. Compiled out of
             // Release.
             DebugExpenseSeeder.restoreBackupFromLaunchArgumentsIfRequested(
+                container: PersistenceController.shared.container
+            )
+            // Promo recordings: wipe and seed the fixed demo dataset.
+            // Runs last so it wins over the stress seeder and the
+            // screenshot backup restore.
+            PromoDemo.seedIfRequested(
                 container: PersistenceController.shared.container
             )
             #endif
@@ -134,6 +145,9 @@ struct CashLensApp: App {
             .onChange(of: scenePhase) { _, newPhase in
                 appLockManager.handleScenePhase(newPhase)
             }
+            #if DEBUG
+            .onAppear { PromoDemo.applySlowAnimations() }
+            #endif
         }
         // Hardware-keyboard shortcuts (Cmd-N / Cmd-F / Cmd-,). See
         // `AppCommands`; `MainTabView` and the Activity root react.

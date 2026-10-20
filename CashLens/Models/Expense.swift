@@ -404,11 +404,11 @@ struct Expense: Identifiable, Codable, Equatable {
 // Sample data for previews
 extension Expense {
     static var sampleData: [Expense] = [
-        Expense(title: "Grocery Shopping", amount: 45.67, currency: .usd, date: Date().addingTimeInterval(-86400), category: .food),
-        Expense(title: "Movie Tickets", amount: 24.99, currency: .usd, date: Date().addingTimeInterval(-172800), category: .entertainment),
-        Expense(title: "Uber Ride", amount: 12.50, currency: .usd, date: Date().addingTimeInterval(-259200), category: .transportation),
-        Expense(title: "Coffee", amount: 4.25, currency: .usd, date: Date(), category: .food, notes: "Morning coffee with Sarah"),
-        Expense(title: "New Headphones", amount: 89.99, currency: .usd, date: Date().addingTimeInterval(-432000), category: .shopping)
+        Expense(title: "Grocery Shopping", amount: 45.67, currency: .usd, date: AppNow.date.addingTimeInterval(-86400), category: .food),
+        Expense(title: "Movie Tickets", amount: 24.99, currency: .usd, date: AppNow.date.addingTimeInterval(-172800), category: .entertainment),
+        Expense(title: "Uber Ride", amount: 12.50, currency: .usd, date: AppNow.date.addingTimeInterval(-259200), category: .transportation),
+        Expense(title: "Coffee", amount: 4.25, currency: .usd, date: AppNow.date, category: .food, notes: "Morning coffee with Sarah"),
+        Expense(title: "New Headphones", amount: 89.99, currency: .usd, date: AppNow.date.addingTimeInterval(-432000), category: .shopping)
     ]
 }
 

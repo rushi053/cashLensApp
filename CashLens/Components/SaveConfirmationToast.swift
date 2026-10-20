@@ -34,7 +34,7 @@ struct SaveConfirmationPayload: Sendable {
     let message: String
     /// Drives the host's animation identity so back-to-back saves
     /// re-trigger the transition instead of silently swapping text.
-    let timestamp: Date = Date()
+    let timestamp: Date = AppNow.date
 }
 
 extension Notification.Name {

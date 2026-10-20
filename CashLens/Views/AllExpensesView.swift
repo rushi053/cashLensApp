@@ -141,8 +141,8 @@ struct AllExpensesView: View {
     
     // Date range filter
     @State var useDateRangeFilter = false
-    @State private var rangeStartDate = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-    @State private var rangeEndDate = Date()
+    @State private var rangeStartDate = Calendar.current.date(byAdding: .day, value: -30, to: AppNow.date) ?? AppNow.date
+    @State private var rangeEndDate = AppNow.date
     @State var showingDateRangePicker = false
     
     // Quick filters
@@ -1700,16 +1700,16 @@ struct AllExpensesView: View {
     /// the sheet dismisses itself with the filter applied.
     private var dateRangePresets: [(label: String, range: () -> (Date, Date))] {
         let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
+        let today = cal.startOfDay(for: AppNow.date)
         return [
-            ("Last 7 days", { (cal.date(byAdding: .day, value: -6, to: today) ?? today, Date()) }),
-            ("Last 30 days", { (cal.date(byAdding: .day, value: -29, to: today) ?? today, Date()) }),
+            ("Last 7 days", { (cal.date(byAdding: .day, value: -6, to: today) ?? today, AppNow.date) }),
+            ("Last 30 days", { (cal.date(byAdding: .day, value: -29, to: today) ?? today, AppNow.date) }),
             ("This month", {
-                let start = cal.dateInterval(of: .month, for: Date())?.start ?? today
-                return (start, Date())
+                let start = cal.dateInterval(of: .month, for: AppNow.date)?.start ?? today
+                return (start, AppNow.date)
             }),
             ("Last month", {
-                let thisMonthStart = cal.dateInterval(of: .month, for: Date())?.start ?? today
+                let thisMonthStart = cal.dateInterval(of: .month, for: AppNow.date)?.start ?? today
                 let start = cal.date(byAdding: .month, value: -1, to: thisMonthStart) ?? today
                 let end = cal.date(byAdding: .day, value: -1, to: thisMonthStart) ?? today
                 return (start, end)

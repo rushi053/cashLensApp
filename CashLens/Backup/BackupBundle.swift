@@ -77,7 +77,7 @@ struct BackupBundle: Codable {
             return Schema(
                 version: BackupBundle.currentSchemaVersion,
                 minimumReaderVersion: BackupBundle.minimumReaderVersion,
-                exportedAt: Date(),
+                exportedAt: AppNow.date,
                 appVersion: appVersion.trimmingCharacters(in: .whitespaces).isEmpty ? nil : appVersion,
                 device: UIDevice.current.model
             )

@@ -788,7 +788,7 @@ enum BackupImporter {
     private static func isValidExpense(_ expense: Expense) -> Bool {
         guard expense.amount.isFinite, expense.amount >= 0 else { return false }
         guard !expense.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        let now = Date()
+        let now = AppNow.date
         let tenYearsAgo = Calendar.current.date(byAdding: .year, value: -10, to: now) ?? now
         let oneYearFromNow = Calendar.current.date(byAdding: .year, value: 1, to: now) ?? now
         guard expense.date >= tenYearsAgo, expense.date <= oneYearFromNow else { return false }

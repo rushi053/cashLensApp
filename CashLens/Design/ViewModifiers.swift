@@ -331,14 +331,14 @@ struct SectionEntrance: ViewModifier {
     let order: Int
     let animate: Bool
 
-    private var delay: Double { Double(order) * 0.06 }
+    private var delay: Double { Double(order) * 0.06 * Theme.Motion.scale }
 
     func body(content: Content) -> some View {
         content
             .opacity(animate ? 1 : 0)
             .offset(y: animate ? 0 : 12)
             .animation(
-                .spring(response: 0.55, dampingFraction: 0.82, blendDuration: 0)
+                .spring(response: 0.55 * Theme.Motion.scale, dampingFraction: 0.82, blendDuration: 0)
                     .delay(delay),
                 value: animate
             )

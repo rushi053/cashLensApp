@@ -51,7 +51,7 @@ struct ExpenseTemplate: Identifiable, Codable, Equatable {
         isRefund: Bool = false,
         paymentMethod: PaymentMethod? = nil,
         lastUsedAt: Date? = nil,
-        createdAt: Date = Date()
+        createdAt: Date = AppNow.date
     ) {
         self.id = id
         self.name = name
@@ -87,7 +87,7 @@ struct ExpenseTemplate: Identifiable, Codable, Equatable {
         let pmRaw = try c.decodeIfPresent(String.self, forKey: .paymentMethod)
         self.paymentMethod = PaymentMethod.tolerant(from: pmRaw)
         self.lastUsedAt = try c.decodeIfPresent(Date.self, forKey: .lastUsedAt)
-        self.createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? AppNow.date
     }
 
     /// Display label for chips: "☕ Coffee · $4" style. Built by the view

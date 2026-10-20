@@ -8,7 +8,7 @@ struct Budget: Identifiable, Codable {
     var categoryFilter: CategoryFilter
     var alertAtPercentages: [Double]
     var isActive: Bool = true
-    var createdAt: Date = Date()
+    var createdAt: Date = AppNow.date
 
     /// Fixed date window for `.custom` period budgets (trips, events,
     /// a visit home). Both are `nil` for weekly/monthly budgets.
@@ -40,7 +40,7 @@ struct Budget: Identifiable, Codable {
         /// go through `Budget.dateRange` instead.
         var standardDateRange: (start: Date, end: Date) {
             let calendar = Calendar.current
-            let now = Date()
+            let now = AppNow.date
             switch self {
             case .weekly:
                 let start = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? calendar.startOfDay(for: now)
@@ -80,7 +80,7 @@ struct Budget: Identifiable, Codable {
     var daysRemaining: Int {
         let range = dateRange
         let cal = Calendar.current
-        let todayStart = cal.startOfDay(for: Date())
+        let todayStart = cal.startOfDay(for: AppNow.date)
         let lastInclusive = cal.startOfDay(for: cal.date(byAdding: .day, value: -1, to: range.end) ?? range.end)
         if todayStart > lastInclusive { return 0 }
         let anchor = max(todayStart, cal.startOfDay(for: range.start))
@@ -101,7 +101,7 @@ struct Budget: Identifiable, Codable {
     /// Weekly/monthly budgets never end — they roll over.
     var hasEnded: Bool {
         guard period == .custom else { return false }
-        return Date() >= dateRange.end
+        return AppNow.date >= dateRange.end
     }
 
     enum CategoryFilter: Codable, Equatable, Hashable {

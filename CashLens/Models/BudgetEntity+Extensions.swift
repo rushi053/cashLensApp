@@ -27,7 +27,7 @@ extension BudgetEntity {
             categoryFilter: categoryFilter,
             alertAtPercentages: percentages,
             isActive: isActive,
-            createdAt: createdAt ?? Date(),
+            createdAt: createdAt ?? AppNow.date,
             customStartDate: customStartDate,
             customEndDate: customEndDate
         )

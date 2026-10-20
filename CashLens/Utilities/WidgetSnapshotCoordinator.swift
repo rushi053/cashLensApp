@@ -247,7 +247,7 @@ final class WidgetSnapshotCoordinator: ObservableObject {
                 userName: userName,
                 activeThemeId: activeThemeId,
                 isPro: isPro,
-                now: Date()
+                now: AppNow.date
             )
             return WidgetSnapshotBuilder.build(inputs)
         }.value

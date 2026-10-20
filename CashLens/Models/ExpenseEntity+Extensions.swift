@@ -39,7 +39,7 @@ extension ExpenseEntity {
             title: self.title ?? "",
             amount: self.amount,
             currency: Expense.Currency(rawValue: self.currency ?? "USD") ?? .usd,
-            date: self.date ?? Date(),
+            date: self.date ?? AppNow.date,
             category: Expense.Category(rawValue: self.category ?? "Other") ?? .other,
             notes: self.notes,
             customCategoryId: self.customCategoryId,

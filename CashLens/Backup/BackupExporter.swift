@@ -362,6 +362,6 @@ enum BackupExporter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd_HHmmss"
-        return f.string(from: Date())
+        return f.string(from: AppNow.date)
     }
 }

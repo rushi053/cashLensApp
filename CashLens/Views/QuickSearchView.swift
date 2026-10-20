@@ -592,7 +592,7 @@ struct QuickSearchView: View {
     /// detached search task (never on the main thread per redraw).
     nonisolated private static func groupResults(_ results: [Expense]) -> [(title: String, expenses: [Expense])] {
         let calendar = Calendar.current
-        let now = Date()
+        let now = AppNow.date
         let startOfToday = calendar.startOfDay(for: now)
         let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday) ?? startOfToday
         let startOfWeek = calendar.date(from: calendar.dateComponents(
@@ -1017,7 +1017,7 @@ struct QuickSearchView: View {
     /// returns `nil` so the rest of the ranker still runs as a text search.
     nonisolated private static func parseDateRange(from query: String) -> (start: Date, end: Date)? {
         let calendar = Calendar.current
-        let now = Date()
+        let now = AppNow.date
 
         if query.contains("today") {
             let start = calendar.startOfDay(for: now)

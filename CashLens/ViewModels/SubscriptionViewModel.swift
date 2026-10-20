@@ -123,7 +123,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
         // Cycles that fell inside the pause were never charged; resuming
         // picks up at the next renewal instead of showing them overdue.
         if updatedSubscription.isActive,
-           updatedSubscription.nextDueDate < Calendar.current.startOfDay(for: Date()) {
+           updatedSubscription.nextDueDate < Calendar.current.startOfDay(for: AppNow.date) {
             updatedSubscription.nextDueDate = Subscription.firstDueDate(
                 startDate: updatedSubscription.startDate,
                 frequency: updatedSubscription.frequency
@@ -266,7 +266,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
     
     var upcomingSubscriptions: [Subscription] {
         let calendar = Calendar.current
-        let nextWeek = calendar.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+        let nextWeek = calendar.date(byAdding: .day, value: 7, to: AppNow.date) ?? AppNow.date
         
         return subscriptions
             .filter { $0.isActive && $0.nextDueDate <= nextWeek }

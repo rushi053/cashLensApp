@@ -383,7 +383,7 @@ struct TrendChartPager: View {
         let calendar = Calendar.current
         if calendar.isDateInToday(date) { return "Today" }
         if calendar.isDateInYesterday(date) { return "Yesterday" }
-        let currentYear = calendar.component(.year, from: Date())
+        let currentYear = calendar.component(.year, from: AppNow.date)
         let dateYear = calendar.component(.year, from: date)
         let formatter = currentYear == dateYear
             ? Self.formatterCurrentYear

@@ -57,7 +57,7 @@ struct AddSubscriptionView: View {
 
         _name = State(initialValue: "")
         _amount = State(initialValue: "")
-        _startDate = State(initialValue: Date())
+        _startDate = State(initialValue: AppNow.date)
         _frequency = State(initialValue: .monthly)
         _selectedCategory = State(initialValue: .entertainment)
         _selectedCustomCategoryId = State(initialValue: nil)
@@ -613,7 +613,7 @@ struct AddSubscriptionView: View {
                     selected: Calendar.current.isDateInToday(startDate)
                 ) {
                     HapticManager.shared.selectionChanged()
-                    startDate = Date()
+                    startDate = AppNow.date
                 }
 
                 dateChip(
@@ -621,7 +621,7 @@ struct AddSubscriptionView: View {
                     selected: Calendar.current.isDateInTomorrow(startDate)
                 ) {
                     HapticManager.shared.selectionChanged()
-                    startDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+                    startDate = Calendar.current.date(byAdding: .day, value: 1, to: AppNow.date) ?? AppNow.date
                 }
 
                 pickDateChip

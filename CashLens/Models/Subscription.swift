@@ -70,7 +70,7 @@ struct Subscription: Identifiable, Codable, Equatable {
     /// it. A start in the past ("Netflix since January") is due on its
     /// first anchored occurrence from today on, instead of arriving
     /// months overdue.
-    static func firstDueDate(startDate: Date, frequency: Frequency, now: Date = Date(), calendar: Calendar = .current) -> Date {
+    static func firstDueDate(startDate: Date, frequency: Frequency, now: Date = AppNow.date, calendar: Calendar = .current) -> Date {
         let startOfToday = calendar.startOfDay(for: now)
         let reference = max(startDate, startOfToday.addingTimeInterval(-1))
         return nextOccurrence(after: reference, anchor: startDate, frequency: frequency, calendar: calendar)
@@ -146,7 +146,7 @@ struct Subscription: Identifiable, Codable, Equatable {
     
     // Check if the subscription is due
     var isDue: Bool {
-        return Date() >= nextDueDate && isActive
+        return AppNow.date >= nextDueDate && isActive
     }
     
     // Check if reminder should be sent
@@ -154,12 +154,12 @@ struct Subscription: Identifiable, Codable, Equatable {
         guard reminderEnabled && isActive else { return false }
         let calendar = Calendar.current
         let reminderDate = calendar.date(byAdding: .day, value: -reminderDaysBefore, to: nextDueDate) ?? nextDueDate
-        return Date() >= reminderDate && Date() < nextDueDate
+        return AppNow.date >= reminderDate && AppNow.date < nextDueDate
     }
     
     /// The payment for the current cycle. An overdue cycle is logged on
     /// its due date so it lands in the month it was charged.
-    func toExpense(now: Date = Date()) -> Expense {
+    func toExpense(now: Date = AppNow.date) -> Expense {
         return Expense(
             title: name,
             amount: amount,
@@ -175,14 +175,14 @@ struct Subscription: Identifiable, Codable, Equatable {
     /// once overdue, independent of the time of day stored with the date.
     var daysUntilNext: Int {
         let calendar = Calendar.current
-        let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: nextDueDate))
+        let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: AppNow.date), to: calendar.startOfDay(for: nextDueDate))
         return components.day ?? 0
     }
 
     /// The renewal a reminder should point at. An overdue cycle has no
     /// future reminder of its own, so reminders follow the next anchored
     /// renewal instead of stopping after one cycle.
-    func reminderTargetDate(now: Date = Date()) -> Date {
+    func reminderTargetDate(now: Date = AppNow.date) -> Date {
         nextDueDate > now ? nextDueDate : Self.nextOccurrence(after: now, anchor: startDate, frequency: frequency)
     }
     
@@ -217,7 +217,7 @@ extension Subscription {
             name: "Netflix",
             amount: 15.99,
             currency: .usd,
-            startDate: Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date(),
+            startDate: Calendar.current.date(byAdding: .month, value: -1, to: AppNow.date) ?? AppNow.date,
             frequency: .monthly,
             category: .entertainment,
             notes: "Family plan"
@@ -226,7 +226,7 @@ extension Subscription {
             name: "Spotify Premium",
             amount: 9.99,
             currency: .usd,
-            startDate: Calendar.current.date(byAdding: .month, value: -2, to: Date()) ?? Date(),
+            startDate: Calendar.current.date(byAdding: .month, value: -2, to: AppNow.date) ?? AppNow.date,
             frequency: .monthly,
             category: .entertainment
         ),
@@ -234,7 +234,7 @@ extension Subscription {
             name: "iCloud Storage",
             amount: 2.99,
             currency: .usd,
-            startDate: Calendar.current.date(byAdding: .month, value: -3, to: Date()) ?? Date(),
+            startDate: Calendar.current.date(byAdding: .month, value: -3, to: AppNow.date) ?? AppNow.date,
             frequency: .monthly,
             category: .utilities,
             notes: "200GB plan"
@@ -243,7 +243,7 @@ extension Subscription {
             name: "Gym Membership",
             amount: 45.00,
             currency: .usd,
-            startDate: Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date(),
+            startDate: Calendar.current.date(byAdding: .month, value: -1, to: AppNow.date) ?? AppNow.date,
             frequency: .monthly,
             category: .health
         )

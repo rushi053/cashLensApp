@@ -92,7 +92,7 @@ enum ZipWriter {
         var totalEntriesWritten: UInt32 = 0
         var centralDirectoryStart: UInt32 = 0
 
-        let dosTime = DOSDateTime(date: Date())
+        let dosTime = DOSDateTime(date: AppNow.date)
 
         for entry in entries {
             let entrySize = UInt64(entry.data.count)

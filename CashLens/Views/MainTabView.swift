@@ -212,7 +212,7 @@ struct MainTabView: View {
                 .onAppear {
                     let defaults = UserDefaults.standard
                     defaults.set(true, forKey: UserDefaultsKeys.hasAutoShownPaywall)
-                    defaults.set(Date(), forKey: UserDefaultsKeys.lastAutoPaywallDate)
+                    defaults.set(AppNow.date, forKey: UserDefaultsKeys.lastAutoPaywallDate)
                 }
                 // Regular width: centred form-sized card (the paywall
                 // already caps its column at 640pt).

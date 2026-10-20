@@ -51,7 +51,7 @@ enum QuickLogService {
         log.info("\(line, privacy: .public)")
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
         let url = docs.appendingPathComponent("quicklog-diagnostics.log")
-        let stamp = ISO8601DateFormatter().string(from: Date())
+        let stamp = ISO8601DateFormatter().string(from: AppNow.date)
         let entry = "\(stamp) \(line)"
         var lines = (try? String(contentsOf: url, encoding: .utf8))?
             .split(separator: "\n").map(String.init) ?? []
@@ -242,7 +242,7 @@ enum QuickLogService {
         title: String,
         category: Expense.Category,
         customCategoryId: UUID? = nil,
-        date: Date = Date(),
+        date: Date = AppNow.date,
         notifyChange: Bool = true
     ) throws -> Expense {
         guard !PersistenceController.shared.storeLoadFailed else {
@@ -346,7 +346,7 @@ enum QuickLogService {
 
     /// Net spend (refund-aware) for today and the current month,
     /// computed with a direct Core Data fetch — no view model needed.
-    static func spendingSummary(now: Date = Date()) -> (today: Double, month: Double) {
+    static func spendingSummary(now: Date = AppNow.date) -> (today: Double, month: Double) {
         guard !PersistenceController.shared.storeLoadFailed else { return (0, 0) }
 
         let calendar = Calendar.current
@@ -386,7 +386,7 @@ enum QuickLogService {
     /// where `WidgetSnapshotCoordinator` (which needs live view models)
     /// may not be bootstrapped. Safe to call alongside the coordinator —
     /// both writers are atomic and produce equivalent content.
-    static func rebuildWidgetSnapshotFromStore(now: Date = Date()) {
+    static func rebuildWidgetSnapshotFromStore(now: Date = AppNow.date) {
         guard !PersistenceController.shared.storeLoadFailed else { return }
 
         let context = PersistenceController.shared.container.newBackgroundContext()

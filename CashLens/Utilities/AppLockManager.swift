@@ -93,6 +93,9 @@ final class AppLockManager: ObservableObject {
     // MARK: - Init
 
     private init() {
+        #if DEBUG
+        PromoDemo.configureFromLaunchArguments()
+        #endif
         let defaults = UserDefaults.standard
         let enabled = defaults.bool(forKey: UserDefaultsKeys.appLockEnabled)
         let grace = GracePeriod(rawValue: defaults.integer(forKey: UserDefaultsKeys.appLockGraceSeconds)) ?? .immediately
@@ -108,7 +111,7 @@ final class AppLockManager: ObservableObject {
         if enabled {
             if grace != .immediately,
                let backgroundedAt = defaults.object(forKey: UserDefaultsKeys.appLockLastBackgroundedAt) as? Date,
-               Date().timeIntervalSince(backgroundedAt) < TimeInterval(grace.rawValue) {
+               AppNow.date.timeIntervalSince(backgroundedAt) < TimeInterval(grace.rawValue) {
                 shouldLock = false
             } else {
                 shouldLock = true
@@ -144,7 +147,7 @@ final class AppLockManager: ObservableObject {
         case .background:
             isSceneActive = false
             if isEnabled {
-                UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.appLockLastBackgroundedAt)
+                UserDefaults.standard.set(AppNow.date, forKey: UserDefaultsKeys.appLockLastBackgroundedAt)
                 if gracePeriod == .immediately {
                     lock()
                 }
@@ -161,7 +164,7 @@ final class AppLockManager: ObservableObject {
     private func lockIfGraceExpired() {
         guard isEnabled, !isLocked, gracePeriod != .immediately else { return }
         guard let backgroundedAt = UserDefaults.standard.object(forKey: UserDefaultsKeys.appLockLastBackgroundedAt) as? Date else { return }
-        if Date().timeIntervalSince(backgroundedAt) >= TimeInterval(gracePeriod.rawValue) {
+        if AppNow.date.timeIntervalSince(backgroundedAt) >= TimeInterval(gracePeriod.rawValue) {
             lock()
         }
     }

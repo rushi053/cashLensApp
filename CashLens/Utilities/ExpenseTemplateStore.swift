@@ -104,7 +104,7 @@ final class ExpenseTemplateStore: ObservableObject {
 
     /// Bumps `lastUsedAt` so the chip strip reorders to surface the just-used
     /// template at the top.
-    func markUsed(id: UUID, at date: Date = Date()) {
+    func markUsed(id: UUID, at date: Date = AppNow.date) {
         guard let idx = templates.firstIndex(where: { $0.id == id }) else { return }
         templates[idx].lastUsedAt = date
         persist()

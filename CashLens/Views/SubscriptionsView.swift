@@ -609,7 +609,7 @@ struct SubscriptionsView: View {
 
             let subs = subscriptionViewModel.subscriptions
             let calendar = Calendar.current
-            let weekAhead = calendar.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+            let weekAhead = calendar.date(byAdding: .day, value: 7, to: AppNow.date) ?? AppNow.date
 
             var stats = HeroStats()
             var monthlyTotal = 0.0

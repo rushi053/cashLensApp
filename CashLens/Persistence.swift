@@ -21,7 +21,7 @@ struct PersistenceController {
         sampleExpense.title = "Sample Expense"
         sampleExpense.amount = 49.99
         sampleExpense.currency = "USD"
-        sampleExpense.date = Date()
+        sampleExpense.date = AppNow.date
         sampleExpense.category = "Food"
         
         do {

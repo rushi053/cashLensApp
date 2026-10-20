@@ -39,7 +39,7 @@ struct ExpenseCalendarView: View {
     /// changes — the detail pane renders them without re-scanning.
     var onSelectedDayEntries: (([Expense]) -> Void)? = nil
 
-    @State private var visibleMonth: Date = Calendar.current.startOfMonth(for: Date())
+    @State private var visibleMonth: Date = Calendar.current.startOfMonth(for: AppNow.date)
     @State private var internalSelectedDay: Date? = nil
 
     private var selectedDay: Date? {
@@ -230,7 +230,7 @@ struct ExpenseCalendarView: View {
             Button {
                 HapticManager.shared.lightTap()
                 withAnimation(Theme.Motion.snappy) {
-                    visibleMonth = calendar.startOfMonth(for: Date())
+                    visibleMonth = calendar.startOfMonth(for: AppNow.date)
                     selectedDay = nil
                 }
             } label: {
@@ -239,7 +239,7 @@ struct ExpenseCalendarView: View {
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                         .contentTransition(.numericText())
-                    if !calendar.isDate(visibleMonth, equalTo: Date(), toGranularity: .month) {
+                    if !calendar.isDate(visibleMonth, equalTo: AppNow.date, toGranularity: .month) {
                         Text("Tap to return to today")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.secondary)
@@ -273,7 +273,7 @@ struct ExpenseCalendarView: View {
     }
 
     private var canMoveForward: Bool {
-        let nowMonth = calendar.startOfMonth(for: Date())
+        let nowMonth = calendar.startOfMonth(for: AppNow.date)
         return visibleMonth < nowMonth
     }
 
@@ -281,7 +281,7 @@ struct ExpenseCalendarView: View {
         guard let next = calendar.date(byAdding: .month, value: offset, to: visibleMonth) else { return }
         if offset > 0 {
             // Never allow stepping past the current month.
-            let nowMonth = calendar.startOfMonth(for: Date())
+            let nowMonth = calendar.startOfMonth(for: AppNow.date)
             if next > nowMonth { return }
         }
         HapticManager.shared.selectionChanged()
@@ -367,7 +367,7 @@ struct ExpenseCalendarView: View {
         let snapshot = monthAggregate.byDay[key]
         let isSelected = selectedDay.map { calendar.isDate($0, inSameDayAs: date) } ?? false
         let isToday = calendar.isDateInToday(date)
-        let isFuture = date > Date()
+        let isFuture = date > AppNow.date
 
         Button {
             guard !isFuture else { return }

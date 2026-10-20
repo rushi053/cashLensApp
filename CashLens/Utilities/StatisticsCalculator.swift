@@ -5,7 +5,7 @@ struct StatisticsCalculator {
     static func previousPeriodExpenses(
         allExpenses: [Expense],
         timeFrame: ExpenseViewModel.TimeFrame,
-        now: Date = Date(),
+        now: Date = AppNow.date,
         calendar: Calendar = .current
     ) -> [Expense] {
         var startDate: Date

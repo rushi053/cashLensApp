@@ -289,7 +289,7 @@ extension ExpenseTrendChart {
         let series = ExpenseTrendChart.buildChartData(
             expenses: expenses,
             timeFrame: timeFrame,
-            referenceDate: Date()
+            referenceDate: AppNow.date
         )
         self.init(
             chartDates: series.dates,

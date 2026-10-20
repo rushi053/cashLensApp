@@ -35,7 +35,7 @@ struct NotificationsSettingsView: View {
 
     @State private var showingWeeklySchedule = false
     @State private var weeklyTempWeekday: Int = 2
-    @State private var weeklyTempTime: Date = Date()
+    @State private var weeklyTempTime: Date = AppNow.date
 
     // MARK: - Monthly digest
 
@@ -46,7 +46,7 @@ struct NotificationsSettingsView: View {
 
     @State private var showingMonthlySchedule = false
     @State private var monthlyTempDayOfMonth: Int = 1
-    @State private var monthlyTempTime: Date = Date()
+    @State private var monthlyTempTime: Date = AppNow.date
 
     // MARK: - Backup reminder
 
@@ -57,7 +57,7 @@ struct NotificationsSettingsView: View {
 
     @State private var showingBackupSchedule = false
     @State private var backupTempDayOfMonth: Int = 1
-    @State private var backupTempTime: Date = Date()
+    @State private var backupTempTime: Date = AppNow.date
 
     // MARK: - Smart Insights (Pro)
 
@@ -463,10 +463,10 @@ struct NotificationsSettingsView: View {
     }
 
     private func makeTimeDate(hour: Int, minute: Int) -> Date {
-        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: AppNow.date)
         comps.hour = hour
         comps.minute = minute
-        return Calendar.current.date(from: comps) ?? Date()
+        return Calendar.current.date(from: comps) ?? AppNow.date
     }
 }
 

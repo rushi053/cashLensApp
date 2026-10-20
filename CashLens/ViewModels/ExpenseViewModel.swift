@@ -123,7 +123,7 @@ class ExpenseViewModel: ObservableObject {
         
         /// Returns a half-open date interval: \([start, end)\).
         /// `referenceDate` controls "which" day/week/month/year we mean (enables browsing history).
-        func dateRange(referenceDate: Date = Date(), calendar: Calendar = .current) -> (start: Date, end: Date) {
+        func dateRange(referenceDate: Date = AppNow.date, calendar: Calendar = .current) -> (start: Date, end: Date) {
             switch self {
             case .day:
                 let start = calendar.startOfDay(for: referenceDate)
@@ -498,7 +498,7 @@ class ExpenseViewModel: ObservableObject {
                     category: category,
                     customCategoryId: customCategoryId,
                     timeFrame: timeFrame,
-                    referenceDate: Date()
+                    referenceDate: AppNow.date
                 )
 
                 var total: Double = 0
