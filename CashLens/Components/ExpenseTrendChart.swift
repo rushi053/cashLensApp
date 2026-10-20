@@ -32,6 +32,8 @@ struct ExpenseTrendChart: View {
     /// chart and re-laid out Swift Charts. Now it only re-renders when
     /// its inputs change.
     let currencySymbol: String
+    /// ISO code for the active currency; decides digit grouping.
+    let currencyCode: String
 
     /// Raw scrub position from `chartXSelection`; snapped to the
     /// nearest bucket in `selectedPoint`.
@@ -241,21 +243,28 @@ struct ExpenseTrendChart: View {
         return f
     }()
 
-    /// Shared cached formatter — allocating a NumberFormatter per call
-    /// was measurable on the axis-label hot path. The currency symbol
-    /// is user-changeable, so it's (re)applied per call; that's a cheap
-    /// property write, unlike the allocation.
-    private static let currencyFormatter: NumberFormatter = {
+    /// Shared cached formatters (one per grouping style) — allocating a
+    /// NumberFormatter per call was measurable on the axis-label hot
+    /// path. The currency symbol is user-changeable, so it's (re)applied
+    /// per call; that's a cheap property write, unlike the allocation.
+    private static let currencyFormatter = makeCurrencyFormatter(currencyCode: "USD")
+    private static let lakhCurrencyFormatter = makeCurrencyFormatter(currencyCode: "INR")
+
+    private static func makeCurrencyFormatter(currencyCode: String) -> NumberFormatter {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.maximumFractionDigits = 0 // No decimals — better readability in small space
+        MoneyFormat.configure(formatter, currencyCode: currencyCode)
         return formatter
-    }()
+    }
 
     private func formatCurrency(_ value: Double) -> String {
-        let formatter = Self.currencyFormatter
+        let formatter = MoneyFormat.usesLakhGrouping(currencyCode: currencyCode)
+            ? Self.lakhCurrencyFormatter
+            : Self.currencyFormatter
         formatter.currencySymbol = currencySymbol
-        return formatter.string(from: NSNumber(value: value)) ?? "$0"
+        let rounded = MoneyFormat.rounded(value, fractionDigits: 0)
+        return formatter.string(from: NSNumber(value: rounded)) ?? "$0"
     }
 }
 
@@ -274,7 +283,8 @@ extension ExpenseTrendChart {
         expenses: [Expense],
         timeFrame: ExpenseViewModel.TimeFrame,
         categoryColor: Color,
-        currencySymbol: String
+        currencySymbol: String,
+        currencyCode: String
     ) {
         let series = ExpenseTrendChart.buildChartData(
             expenses: expenses,
@@ -286,7 +296,8 @@ extension ExpenseTrendChart {
             chartValues: series.values,
             timeFrame: timeFrame,
             categoryColor: categoryColor,
-            currencySymbol: currencySymbol
+            currencySymbol: currencySymbol,
+            currencyCode: currencyCode
         )
     }
 
@@ -394,7 +405,8 @@ struct ExpenseTrendChart_Previews: PreviewProvider {
                 expenses: Expense.sampleData,
                 timeFrame: .month,
                 categoryColor: .appPrimary,
-                currencySymbol: "$"
+                currencySymbol: "$",
+                currencyCode: "USD"
             )
             .padding()
             .background(Color.systemBackground)

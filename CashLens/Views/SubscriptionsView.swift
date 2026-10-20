@@ -659,22 +659,6 @@ struct SubscriptionsView: View {
         return f
     }()
 
-    private static let wholeNumberFormatter: NumberFormatter = {
-        let nf = NumberFormatter()
-        nf.numberStyle = .decimal
-        nf.maximumFractionDigits = 0
-        nf.minimumFractionDigits = 0
-        return nf
-    }()
-
-    private static let twoDecimalFormatter: NumberFormatter = {
-        let nf = NumberFormatter()
-        nf.numberStyle = .decimal
-        nf.maximumFractionDigits = 2
-        nf.minimumFractionDigits = 2
-        return nf
-    }()
-
     private func relativeDueText(for sub: Subscription) -> String {
         let days = sub.daysUntilNext
         if days < 0 { return "overdue" }
@@ -687,9 +671,13 @@ struct SubscriptionsView: View {
     }
 
     private func formatCurrency(_ value: Double) -> String {
-        let nf = value >= 100 ? Self.wholeNumberFormatter : Self.twoDecimalFormatter
-        let str = nf.string(from: NSNumber(value: value)) ?? "0"
-        return "\(expenseViewModel.selectedCurrency.symbol)\(str)"
+        let currency = expenseViewModel.selectedCurrency
+        let str = MoneyFormat.decimalString(
+            value,
+            fractionDigits: value >= 100 ? 0 : 2,
+            currencyCode: currency.rawValue
+        )
+        return "\(currency.symbol)\(str)"
     }
 }
 
@@ -735,11 +723,7 @@ private struct MonthlySpendingBreakdownSheet: View {
     }
 
     private func format(_ value: Double) -> String {
-        let nf = NumberFormatter()
-        nf.numberStyle = .decimal
-        nf.minimumFractionDigits = 2
-        nf.maximumFractionDigits = 2
-        return nf.string(from: NSNumber(value: value)) ?? "0.00"
+        MoneyFormat.decimalString(value, fractionDigits: 2, currencyCode: currency.rawValue)
     }
 
     var body: some View {

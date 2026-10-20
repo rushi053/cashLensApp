@@ -1978,7 +1978,8 @@ struct StatisticsView: View {
                 weekdayPoints: cachedWeekdayAverages,
                 topDays: cachedTopDays,
                 formattedAmount: viewModel.formattedAmount,
-                currencySymbol: viewModel.currencySymbol
+                currencySymbol: viewModel.currencySymbol,
+                currencyCode: viewModel.selectedCurrency.rawValue
             )
             .padding(Theme.Spacing.lg)
             .cardSurface()

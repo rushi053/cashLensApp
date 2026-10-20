@@ -252,11 +252,11 @@ class SubscriptionViewModel: NSObject, ObservableObject {
     }
     
     func formattedMonthlyEquivalent(for subscription: Subscription) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        let formatted = formatter.string(from: NSNumber(value: monthlyEquivalentAmount(for: subscription))) ?? "0.00"
+        let formatted = MoneyFormat.decimalString(
+            monthlyEquivalentAmount(for: subscription),
+            fractionDigits: 2,
+            currencyCode: subscription.currency.rawValue
+        )
         return "\(subscription.currency.symbol)\(formatted)/mo"
     }
     
@@ -373,11 +373,7 @@ class SubscriptionViewModel: NSObject, ObservableObject {
     }
     
     func formattedTotalMonthlyAmount(currency: Expense.Currency) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        let formatted = formatter.string(from: NSNumber(value: totalMonthlyAmount)) ?? "0.00"
+        let formatted = MoneyFormat.decimalString(totalMonthlyAmount, fractionDigits: 2, currencyCode: currency.rawValue)
         return "\(currency.symbol)\(formatted)"
     }
 

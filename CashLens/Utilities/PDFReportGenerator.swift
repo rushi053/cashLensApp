@@ -57,7 +57,9 @@ enum PDFReportGenerator {
             f.numberStyle = .currency
             f.currencyCode = currencyCode
             f.maximumFractionDigits = 2
-            return f.string(from: NSNumber(value: amount)) ?? String(format: "%.2f", amount)
+            MoneyFormat.configure(f, currencyCode: currencyCode)
+            return f.string(from: NSNumber(value: MoneyFormat.rounded(amount, fractionDigits: 2)))
+                ?? String(format: "%.2f", amount)
         }
     }
 

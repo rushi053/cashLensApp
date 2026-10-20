@@ -199,21 +199,13 @@ struct Subscription: Identifiable, Codable, Equatable {
     }
 
     var formattedAmount: String {
-        let formatted = Self.amountFormatter.string(from: NSNumber(value: amount)) ?? "0.00"
+        let formatted = MoneyFormat.decimalString(amount, fractionDigits: 2, currencyCode: currency.rawValue)
         return "\(currency.symbol)\(formatted)"
     }
 
     private static let dueDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium
-        return f
-    }()
-
-    private static let amountFormatter: NumberFormatter = {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.minimumFractionDigits = 2
-        f.maximumFractionDigits = 2
         return f
     }()
 }
