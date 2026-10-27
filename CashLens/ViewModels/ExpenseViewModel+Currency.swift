@@ -18,7 +18,17 @@ extension ExpenseViewModel {
                 entity.currency = selectedCurrency.rawValue
             }
             saveContext()
-            loadExpenses()
+            // PERF: Apply the currency rewrite in-memory instead of
+            // refetching the whole table. This is a global one-pass
+            // mutation triggered by a user switching currency in
+            // Settings — at scale (1500+ rows) the full reload was a
+            // visible stall. Single linear pass, single publish.
+            let newCurrency = selectedCurrency
+            var mutated = expenses
+            for i in mutated.indices {
+                mutated[i].currency = newCurrency
+            }
+            expenses = mutated
         } catch {
             print("Error updating expenses currency: \(error.localizedDescription)")
         }

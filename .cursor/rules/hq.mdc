@@ -1,0 +1,23 @@
+---
+description: CashLens iOS — expense tracker with live Pro tier (Stream C). Repo facts, StoreKit conventions, release checklist; HQ at ~/Desktop/hq
+alwaysApply: true
+---
+
+# CashLens (Stream C — marketable now)
+
+Business context and protocols: `/Users/rushiraj/Desktop/hq/` — read `CONTEXT.md`, `LOG.md`, `BACKLOG.md`, `PLAYBOOK.md` first.
+
+## Facts
+- SwiftUI + Core Data + WidgetKit, iOS 18+. **Active branch is `redesign/v2`**; `main` is stale at v1.0.5 — never base work on `main`. Sibling folders `ios apps/CashLens` and `CashLens copy` are dead 2025 snapshots; ignore them.
+- Live: App Store id6743153951, v2.1 (2026-08-29), ~3K downloads, 4.83★. Site: cashlens.app (`website/`).
+- Monetization: StoreKit 2 direct, no RevenueCat, no server. `CashLens/Models/ProManager.swift` is the single source of truth: `Product.products`, `Transaction.currentEntitlements`, one consolidated `Transaction.updates` listener (routes Pro vs donation IDs; finishes each transaction once), `PurchaseIntent.intents` listener for App Store promoted IAPs, donor grandfathering, win-back sheet.
+- Products: `com.cashlens.pro.monthly` $2.99 (7-day trial), `com.cashlens.pro.yearly` $19.99 (7-day trial), `com.cashlens.pro.lifetime` $39.99, plus `com.cashlens.donation.*` tip jar. Config: `Donations.storekit`. Gated features listed in `PRO_FEATURES.md`.
+- Privacy positioning: zero analytics SDKs, App Store label "Data Not Collected". Do NOT add tracking; conversion data comes from App Store Connect only.
+- Promo images for promoted IAPs: `Marketing/PromoImages/` (1024×1024, no pricing text per Apple rules).
+- Build check: `xcodebuild -project CashLens.xcodeproj -scheme CashLens -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build`.
+
+## Conventions
+- Entitlement logic changes: re-derive from `currentEntitlements`, never blindly grant on a transaction (refunds/revocations arrive on the same stream).
+- Paywall copy must respect `isEligibleForIntroOffer` (App Review guideline 2.3.1).
+- Release checklist: bump `MARKETING_VERSION` (align with store — store shows 2.1, local says 2.0.1), archive/upload/submit is Rushiraj's job; promoted-IAP images get reviewed with the build.
+- Never read `.env*` or signing secrets.

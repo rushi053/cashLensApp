@@ -1,0 +1,7 @@
+# Secrets and signing material are never agent-readable.
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
+*.p8

@@ -68,3 +68,14 @@ fastlane/test_output
 # https://github.com/johnno1962/injectionforxcode
 
 iOSInjectionProject/ 
+# Website (local deps / build)
+website/node_modules/
+website/dist/
+
+## Screenshot suite output (Scripts/screenshots.sh)
+/build/
+
+# Apple product bezels (Apple Design Resources licence; not redistributed)
+Marketing/StoreAssets/bezels/
+Marketing/StoreAssets/2.2/source/pages/
+Marketing/StoreAssets/.taste-skill/inspect/
