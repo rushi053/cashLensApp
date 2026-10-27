@@ -28,6 +28,7 @@ struct StatisticsView: View {
     @State private var statsRecomputeTask: Task<Void, Never>?
     @State private var didInitializeRange = false
     @State private var isRecomputingStats = false
+    @State private var showingWrapped = false
     
     // Date range sheet uses temporary values to avoid recomputing while scrolling the picker.
     @State private var tempRangeStartDate = Date()
@@ -108,6 +109,11 @@ struct StatisticsView: View {
         .sheet(isPresented: $showingAddExpense) {
             AddExpenseView(viewModel: viewModel)
         }
+        .fullScreenCover(isPresented: $showingWrapped) {
+            WrappedFlowView()
+                .environmentObject(viewModel)
+                .environmentObject(categoryViewModel)
+        }
         .onReceive(viewModel.$expenses) { _ in
             scheduleRecomputeStats(immediate: false)
         }
@@ -145,6 +151,23 @@ struct StatisticsView: View {
                 }
                 
                 Spacer()
+
+                Button {
+                    HapticManager.shared.lightTap()
+                    showingWrapped = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                        Text("Wrapped")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.mauve.opacity(0.18)))
+                    .foregroundColor(Color.mauve)
+                }
+                .buttonStyle(ScaleButtonStyle())
+                .accessibilityLabel("CashLens Wrapped")
             }
             .padding(.bottom, 24)
         }

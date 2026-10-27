@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var showingManageCategories = false
     @State private var showOnlySubscriptionsOnHome = false
     @State private var showingSearch = false
+    @State private var showingWrapped = false
     
     private var isIPad: Bool {
         return UIDevice.current.userInterfaceIdiom == .pad
@@ -86,6 +87,11 @@ struct HomeView: View {
                 .environmentObject(viewModel)
                 .environmentObject(categoryViewModel)
         }
+        .fullScreenCover(isPresented: $showingWrapped) {
+            WrappedFlowView()
+                .environmentObject(viewModel)
+                .environmentObject(categoryViewModel)
+        }
     }
     
     // MARK: - iPhone Layout
@@ -94,6 +100,10 @@ struct HomeView: View {
             VStack(spacing: isCompactPhone ? 18 : 24) {
                 // Header
                 headerView
+
+                wrappedEntry
+                    .opacity(animateCards ? 1 : 0)
+                    .offset(y: animateCards ? 0 : 20)
                 
                 if viewModel.expenses.isEmpty {
                     // Empty state
@@ -135,6 +145,11 @@ struct HomeView: View {
                 headerView
                     .padding(.bottom, 12)
                     .padding(.horizontal, 16)
+
+                wrappedEntry
+                    .padding(.horizontal, 16)
+                    .opacity(animateCards ? 1 : 0)
+                    .offset(y: animateCards ? 0 : 20)
                 
                 if viewModel.expenses.isEmpty {
                     // Empty state
@@ -359,6 +374,13 @@ struct HomeView: View {
         }
     }
     
+    private var wrappedEntry: some View {
+        WrappedEntryBanner {
+            HapticManager.shared.lightTap()
+            showingWrapped = true
+        }
+    }
+
     // MARK: - Header View
     private var headerView: some View {
         HStack {
